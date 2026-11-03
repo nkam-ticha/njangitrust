@@ -1,0 +1,15 @@
+{
+  "name": "@njangi/verify-ledger",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Recomputes the hash chain, balances and invariants of a NjangiTrust ledger export (spec 2.14).",
+  "scripts": {
+    "verify": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@njangi/rules": "workspace:*"
+  }
+}

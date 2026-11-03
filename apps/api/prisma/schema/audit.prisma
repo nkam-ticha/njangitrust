@@ -1,0 +1,22 @@
+// Audit log (spec 2.4, 2.10, R1.2): security and admin actions. Details are redacted before
+// they are written: no PIN, token or phone number ever reaches this table.
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  actorUserId String?  @db.Uuid
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  groupId     String?  @db.Uuid
+  group       Group?   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  /// Stable dotted name: `auth.login.failed`, `invite.created`, `pin.reset.completed`, ...
+  action      String
+  /// The affected record, as `<Model>:<id>`.
+  target      String?
+  details     Json     @default("{}")
+  deviceId    String?  @db.Uuid
+  requestId   String?
+
+  @@index([actorUserId, createdAt])
+  @@index([groupId, createdAt])
+  @@index([action, createdAt])
+}

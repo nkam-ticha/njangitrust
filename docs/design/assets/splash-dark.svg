@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-label="NjangiTrust splash, dark">
+  <!-- In-app splash, dark theme: the ground is night; the band keeps its own
+       indigo cloth, so it reads as a strip of fabric across the screen. -->
+  <defs>
+    <pattern id="ndop" width="64" height="32" patternUnits="userSpaceOnUse" patternTransform="translate(0 1600) scale(3)">
+      <rect width="64" height="32" fill="#1E2A5A"/>
+      <g fill="#F5F6FA">
+        <path d="M0 0h64l-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4z"/>
+        <path d="M0 32h64l-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4z"/>
+        <rect x="0.5" y="8" width="1" height="16"/>
+        <rect x="30.5" y="8" width="1" height="16"/>
+        <rect x="32.5" y="8" width="1" height="16"/>
+        <rect x="62.5" y="8" width="1" height="16"/>
+        <circle cx="16" cy="16" r="1.75"/>
+        <circle cx="52.6" cy="11.4" r="1.3"/>
+        <circle cx="54.5" cy="16" r="1.3"/>
+        <circle cx="52.6" cy="20.6" r="1.3"/>
+        <circle cx="48" cy="22.5" r="1.3"/>
+        <circle cx="43.4" cy="20.6" r="1.3"/>
+        <circle cx="41.5" cy="16" r="1.3"/>
+        <circle cx="43.4" cy="11.4" r="1.3"/>
+      </g>
+      <path d="M16 9.25 22.75 16 16 22.75 9.25 16Z" fill="none" stroke="#F5F6FA" stroke-width="1.5"/>
+      <circle cx="48" cy="9.5" r="1.9" fill="#D9A520"/>
+    </pattern>
+  </defs>
+  <rect width="1080" height="1920" fill="#141B3D"/>
+  <circle cx="540" cy="840" r="150" fill="none" stroke="#E8EBF6" stroke-width="3" stroke-opacity="0.32"/>
+  <g fill="#E8EBF6">
+    <circle cx="628.17" cy="718.65" r="19"/>
+    <circle cx="682.66" cy="793.65" r="19"/>
+    <circle cx="682.66" cy="886.35" r="19"/>
+    <circle cx="628.17" cy="961.35" r="19"/>
+    <circle cx="540" cy="990" r="19"/>
+    <circle cx="451.83" cy="961.35" r="19"/>
+    <circle cx="397.34" cy="886.35" r="19"/>
+    <circle cx="397.34" cy="793.65" r="19"/>
+    <circle cx="451.83" cy="718.65" r="19"/>
+  </g>
+  <circle cx="540" cy="690" r="28" fill="#D9A520"/>
+  <text x="540" y="1150" text-anchor="middle" fill="#E8EBF6" font-family="'Bricolage Grotesque', system-ui, sans-serif" font-weight="700" font-size="72">NjangiTrust</text>
+  <rect x="0" y="1600" width="1080" height="96" fill="url(#ndop)"/>
+</svg>

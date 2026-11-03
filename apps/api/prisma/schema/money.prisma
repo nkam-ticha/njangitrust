@@ -1,0 +1,256 @@
+// Money: cycles, rounds, obligations, payments, disbursements, loans, bids, statements
+// (spec 2.4, 2.6, R2 to R9, R14). Owned by the money engineer after this first version.
+// Every amount is an Int of whole FCFA. Calculations live in @njangi/rules, never here.
+
+enum RotationMode {
+  FIXED
+  BIDDING
+}
+
+model Cycle {
+  id             String       @id @default(uuid()) @db.Uuid
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  groupId        String       @db.Uuid
+  group          Group        @relation("GroupCycles", fields: [groupId], references: [id], onDelete: Restrict)
+  currentOfGroup Group?       @relation("GroupCurrentCycle")
+  number         Int
+  mode           RotationMode
+  /// R2.2: round k pays out at firstPayoutAt + (k - 1) x frequency.
+  firstPayoutAt  DateTime     @db.Timestamptz(3)
+  /// R2.3: recorded with the order in an EVENT ledger entry.
+  drawSeed       String?
+  /// R2.3: ordered membership IDs.
+  rotation       String[]     @db.Uuid
+  startedAt      DateTime?    @db.Timestamptz(3)
+  closedAt       DateTime?    @db.Timestamptz(3)
+
+  rounds Round[]
+
+  @@unique([groupId, number])
+}
+
+enum RoundStatus {
+  /// Created with the cycle, not yet open for contributions.
+  SCHEDULED
+  OPEN
+  PAYOUT
+  CLOSED
+}
+
+model Round {
+  id                      String      @id @default(uuid()) @db.Uuid
+  createdAt               DateTime    @default(now()) @db.Timestamptz(3)
+  groupId                 String      @db.Uuid
+  group                   Group       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  cycleId                 String      @db.Uuid
+  cycle                   Cycle       @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  number                  Int
+  /// Null until the bid closes in bidding mode (R8.3).
+  beneficiaryMembershipId String?     @db.Uuid
+  beneficiary             Membership? @relation(fields: [beneficiaryMembershipId], references: [id], onDelete: Restrict)
+  dueAt                   DateTime    @db.Timestamptz(3)
+  payoutAt                DateTime    @db.Timestamptz(3)
+  status                  RoundStatus @default(SCHEDULED)
+  ruleSetVersion          Int
+
+  obligations        Obligation[]
+  bids               Bid[]
+  ledgerTransactions LedgerTransaction[]
+  ruleSetsEffective  RuleSet[]
+
+  @@unique([cycleId, number])
+  @@index([groupId, status])
+}
+
+enum ObligationKind {
+  CONTRIBUTION
+  SOLIDARITY
+  FINE
+  LOAN_INSTALLMENT
+  BID
+  SHORTFALL_SHARE
+}
+
+enum ObligationStatus {
+  DUE
+  PAID
+  SETTLED
+  CANCELLED
+}
+
+model Obligation {
+  id                   String           @id @default(uuid()) @db.Uuid
+  createdAt            DateTime         @default(now()) @db.Timestamptz(3)
+  groupId              String           @db.Uuid
+  group                Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  membershipId         String           @db.Uuid
+  membership           Membership       @relation("ObligationDebtor", fields: [membershipId], references: [id], onDelete: Restrict)
+  kind                 ObligationKind
+  roundId              String?          @db.Uuid
+  round                Round?           @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  loanId               String?          @db.Uuid
+  loan                 Loan?            @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  /// For CONTRIBUTION and SHORTFALL_SHARE: who receives the money (R3.4, R12.3).
+  creditorMembershipId String?          @db.Uuid
+  creditor             Membership?      @relation("ObligationCreditor", fields: [creditorMembershipId], references: [id], onDelete: Restrict)
+  amount               Int
+  dueAt                DateTime         @db.Timestamptz(3)
+  status               ObligationStatus @default(DUE)
+  paidAt               DateTime?        @db.Timestamptz(3)
+  /// R3.5: set when paid.
+  onTime               Boolean?
+
+  @@index([membershipId, status])
+  @@index([groupId, roundId, kind])
+  @@index([loanId])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  SUCCESSFUL
+  FAILED
+  EXPIRED
+}
+
+enum FeeSource {
+  PROVIDER
+  SCHEDULE
+}
+
+/// Spec 2.6: `id` is the externalRef sent to the provider, so every collection is idempotent.
+model PaymentIntent {
+  id            String        @id @default(uuid()) @db.Uuid
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime      @updatedAt @db.Timestamptz(3)
+  groupId       String        @db.Uuid
+  group         Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  membershipId  String        @db.Uuid
+  membership    Membership    @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  obligationIds String[]      @db.Uuid
+  amount        Int
+  /// E.164 number used for this operation (R13.3: operations in progress keep the old number).
+  phoneSnapshot String
+  provider      String
+  providerRef   String?       @unique
+  status        PaymentStatus @default(CREATED)
+  fee           Int?
+  feeSource     FeeSource?
+  operator      Operator?
+  operatorRef   String?
+  settledAt     DateTime?     @db.Timestamptz(3)
+
+  @@index([membershipId, status])
+  @@index([status, createdAt])
+}
+
+enum DisbursementPurpose {
+  WITHDRAWAL
+  LOAN
+  SOLIDARITY
+}
+
+enum DisbursementStatus {
+  CREATED
+  PENDING
+  SUCCESSFUL
+  FAILED
+  EXPIRED
+}
+
+/// Spec 2.6. R5.4: one withdrawal in progress per member (partial unique index in SQL).
+model Disbursement {
+  id                String              @id @default(uuid()) @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
+  groupId           String              @db.Uuid
+  group             Group               @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  membershipId      String              @db.Uuid
+  membership        Membership          @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  purpose           DisbursementPurpose
+  amount            Int
+  feeEstimated      Int
+  feeActual         Int?
+  phoneSnapshot     String
+  provider          String
+  providerRef       String?             @unique
+  status            DisbursementStatus  @default(CREATED)
+  settledAt         DateTime?           @db.Timestamptz(3)
+  loan              Loan?
+  solidarityRequest SolidarityRequest?
+
+  @@index([membershipId, status])
+  @@index([status, createdAt])
+}
+
+enum LoanStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  DISBURSED
+  REPAID
+  OVERDUE
+  EXPIRED
+}
+
+/// R7. R7.1: one active loan per member (partial unique index in SQL).
+model Loan {
+  id                    String        @id @default(uuid()) @db.Uuid
+  createdAt             DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @db.Timestamptz(3)
+  groupId               String        @db.Uuid
+  group                 Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  membershipId          String        @db.Uuid
+  membership            Membership    @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  principal             Int
+  months                Int
+  ratePermille          Int
+  interest              Int
+  feeEstimated          Int
+  totalDue              Int
+  status                LoanStatus    @default(REQUESTED)
+  decidedByMembershipId String?       @db.Uuid
+  decisionReason        String?
+  decidedAt             DateTime?     @db.Timestamptz(3)
+  /// R7.4: an admin's own request goes to an ADMIN_LOAN vote.
+  proposalId            String?       @unique @db.Uuid
+  proposal              Proposal?     @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  disbursementId        String?       @unique @db.Uuid
+  disbursement          Disbursement? @relation(fields: [disbursementId], references: [id], onDelete: Restrict)
+
+  obligations Obligation[]
+
+  @@index([groupId, status])
+}
+
+/// R8: one sealed bid per member per round, raised in place.
+model Bid {
+  id           String     @id @default(uuid()) @db.Uuid
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  roundId      String     @db.Uuid
+  round        Round      @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  membershipId String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  amount       Int
+  placedAt     DateTime   @db.Timestamptz(3)
+  /// When the current amount was reached; earlier wins a tie (R8.3, E6).
+  updatedAt    DateTime   @db.Timestamptz(3)
+
+  @@unique([roundId, membershipId])
+}
+
+/// Spec 2.14: verification code = first 12 hex of SHA-256(statement data + ledger head hash).
+model Statement {
+  id               String     @id @default(uuid()) @db.Uuid
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  membershipId     String     @db.Uuid
+  membership       Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  periodStart      DateTime   @db.Timestamptz(3)
+  periodEnd        DateTime   @db.Timestamptz(3)
+  language         Language
+  fileKey          String
+  verificationCode String     @unique
+  ledgerHeadHash   String
+
+  @@index([membershipId, periodStart])
+}

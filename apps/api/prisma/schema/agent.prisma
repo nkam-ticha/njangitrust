@@ -1,0 +1,102 @@
+// The agent's conversations and the confirmation protocol (spec 2.4, 4.2, 4.5, 4.10).
+
+enum AgentChannel {
+  PRIVATE
+  GROUP
+}
+
+model AgentConversation {
+  id             String         @id @default(uuid()) @db.Uuid
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+  userId         String         @db.Uuid
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The active group of the conversation; null only before the member joins a group.
+  groupId        String?        @db.Uuid
+  group          Group?         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  channel        AgentChannel
+  rollingSummary String?
+
+  messages AgentMessage[]
+
+  @@index([userId, channel])
+}
+
+enum AgentMessageRole {
+  user
+  assistant
+  tool
+}
+
+enum ToolCallStatus {
+  OK
+  REFUSED
+  INVALID
+  ERROR
+}
+
+/// Phone numbers are redacted from stored content and tool arguments (4.8 point 7).
+model AgentMessage {
+  id               String            @id @default(uuid()) @db.Uuid
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  conversationId   String            @db.Uuid
+  conversation     AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role             AgentMessageRole
+  content          String
+  toolName         String?
+  toolArgsRedacted Json?
+  toolStatus       ToolCallStatus?
+
+  @@index([conversationId, createdAt])
+}
+
+enum ActionLevel {
+  L1
+  L2
+}
+
+enum ActionOrigin {
+  AGENT
+  UI
+}
+
+enum PendingActionStatus {
+  PENDING
+  /// Confirmed and executing; stays here while a provider operation is in progress.
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  DONE
+  FAILED
+}
+
+/// Spec 4.5: every action that moves money or changes the group. The preview is built by the
+/// server; the app draws the confirmation card from it, never from the AI's text. Only the owner
+/// confirms, through the app (POST /v1/pending-actions/:id/confirm); the LLM has no path to it.
+model PendingAction {
+  id           String              @id @default(uuid()) @db.Uuid
+  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
+  userId       String              @db.Uuid
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId      String?             @db.Uuid
+  group        Group?              @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  type         String
+  /// Normalised by the handler; never a raw phone number, PIN or token.
+  args         Json
+  preview      Json
+  level        ActionLevel
+  status       PendingActionStatus @default(PENDING)
+  origin       ActionOrigin
+  expiresAt    DateTime            @db.Timestamptz(3)
+  confirmedAt  DateTime?           @db.Timestamptz(3)
+  completedAt  DateTime?           @db.Timestamptz(3)
+  /// The record the action produced (payment, invite, vote receipt, ...).
+  resultRef    String?
+  /// Short bilingual result shown on the card ("Payé, réf. MP2611…").
+  resultSummary Json?
+  failureCode  String?
+  failureText  Json?
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+}

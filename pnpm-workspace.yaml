@@ -1,0 +1,24 @@
+packages:
+  - apps/*
+  - packages/*
+  - tools/*
+
+# React Native and Metro expect a flat node_modules.
+nodeLinker: hoisted
+saveExact: true
+
+# Patient network settings for slow connections.
+fetchTimeout: 600000
+fetchRetries: 6
+fetchRetryMintimeout: 10000
+fetchRetryMaxtimeout: 120000
+networkConcurrency: 16
+
+# pnpm 11: packages allowed to run install scripts.
+allowBuilds:
+  "@prisma/engines": true
+  argon2: true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  workerd: false

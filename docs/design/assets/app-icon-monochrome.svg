@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432" role="img" aria-label="NjangiTrust themed icon">
+  <!-- Android 13+ themed (monochrome) icon. The launcher uses only the alpha
+       channel and tints it, so the beneficiary is told apart by size and by being
+       an open ring, not by colour. -->
+  <g fill="#1B2140">
+    <circle cx="272.43" cy="138.33" r="12"/>
+    <circle cx="307.30" cy="186.33" r="12"/>
+    <circle cx="307.30" cy="245.67" r="12"/>
+    <circle cx="272.43" cy="293.67" r="12"/>
+    <circle cx="216" cy="312" r="12"/>
+    <circle cx="159.57" cy="293.67" r="12"/>
+    <circle cx="124.70" cy="245.67" r="12"/>
+    <circle cx="124.70" cy="186.33" r="12"/>
+    <circle cx="159.57" cy="138.33" r="12"/>
+  </g>
+  <circle cx="216" cy="120" r="15" fill="none" stroke="#1B2140" stroke-width="8"/>
+</svg>

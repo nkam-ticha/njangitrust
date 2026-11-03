@@ -1,0 +1,89 @@
+// Group chat and media (spec 2.4, 2.12, D7 UploadTicket, D9 thumbnails).
+
+enum MessageKind {
+  TEXT
+  IMAGE
+  VIDEO
+  DOCUMENT
+  VOICE
+  SYSTEM
+  AGENT
+}
+
+model Message {
+  id                 String      @id @default(uuid()) @db.Uuid
+  createdAt          DateTime    @default(now()) @db.Timestamptz(3)
+  groupId            String      @db.Uuid
+  group              Group       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  /// Null for SYSTEM and AGENT messages.
+  authorMembershipId String?     @db.Uuid
+  author             Membership? @relation(fields: [authorMembershipId], references: [id], onDelete: Restrict)
+  kind               MessageKind
+  /// A member's text as typed, or the agent's reply.
+  text               String?
+  /// SYSTEM events, written by the server in both languages: { fr, en }.
+  systemText         Json?
+  attachmentId       String?     @unique @db.Uuid
+  attachment         Attachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  replyToId          String?     @db.Uuid
+  replyTo            Message?    @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies            Message[]   @relation("MessageReplies")
+  /// Mentioned membership IDs.
+  mentions           String[]    @db.Uuid
+  /// Pinned announcement posted by the admin (R1.2).
+  isAnnouncement     Boolean     @default(false)
+  deletedAt          DateTime?   @db.Timestamptz(3)
+  hiddenByAdminAt    DateTime?   @db.Timestamptz(3)
+
+  @@index([groupId, createdAt])
+}
+
+enum AttachmentKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  VOICE
+}
+
+model Attachment {
+  id                   String         @id @default(uuid()) @db.Uuid
+  createdAt            DateTime       @default(now()) @db.Timestamptz(3)
+  groupId              String         @db.Uuid
+  group                Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  uploaderMembershipId String         @db.Uuid
+  uploader             Membership     @relation(fields: [uploaderMembershipId], references: [id], onDelete: Restrict)
+  kind                 AttachmentKind
+  /// The type detected from the file's bytes after upload, not the one the phone declared.
+  mime                 String
+  sizeBytes            Int
+  durationSec          Int?
+  width                Int?
+  height               Int?
+  storageKey           String         @unique
+  /// D9: 320 px preview of chat images.
+  thumbnailKey         String?        @unique
+  message              Message?
+
+  @@index([groupId, createdAt])
+}
+
+/// D7, spec 2.12: one presigned upload. The attachment exists only once the real file type has
+/// been checked after upload.
+model UploadTicket {
+  id           String         @id @default(uuid()) @db.Uuid
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  userId       String         @db.Uuid
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId      String         @db.Uuid
+  group        Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  kind         AttachmentKind
+  declaredMime String
+  maxBytes     Int
+  storageKey   String         @unique
+  thumbnailKey String?        @unique
+  expiresAt    DateTime       @db.Timestamptz(3)
+  completedAt  DateTime?      @db.Timestamptz(3)
+  attachmentId String?        @unique @db.Uuid
+
+  @@index([userId, createdAt])
+}

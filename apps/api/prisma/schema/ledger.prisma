@@ -1,0 +1,93 @@
+// Ledger (spec 2.5, D6): double-entry, append-only, hash-chained. Owned by the money engineer
+// after this first version.
+//
+// Database protections (migration 20261102000100_database_protections):
+// - a trigger refuses UPDATE, DELETE and TRUNCATE on both tables for every role;
+// - njangi_app has no UPDATE, DELETE or TRUNCATE privilege on them;
+// - seq must be the group's previous seq + 1 (starting at 1) and prevHash the previous hash
+//   (or SHA-256("njangitrust:" + groupId) for seq 1);
+// - the postings of each transaction must sum to zero when the database transaction commits.
+
+enum LedgerTransactionType {
+  PAYMENT_RECEIVED
+  FINE_ASSESSED
+  BID_ASSESSED
+  AUTO_SETTLEMENT
+  WITHDRAWAL_COMPLETED
+  LOAN_DISBURSED
+  SOLIDARITY_DISBURSED
+  LEAVER_REFUND
+  FUND_DISTRIBUTION
+  /// Bidding mode: moves a round's pot to the winner's payable when the bid closes (R8.3).
+  POT_ASSIGNED
+  REVERSAL
+  /// No postings: governance facts in the hash chain (draw seed, rule set, vote result, ...).
+  EVENT
+}
+
+model LedgerTransaction {
+  /// Part of the hashed content: the ledger service sets it before sealing.
+  id            String                @id @db.Uuid
+  createdAt     DateTime              @default(now()) @db.Timestamptz(3)
+  groupId       String                @db.Uuid
+  group         Group                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  /// Gap-free per group, starting at 1.
+  seq           Int
+  type          LedgerTransactionType
+  occurredAt    DateTime              @db.Timestamptz(3)
+  roundId       String?               @db.Uuid
+  round         Round?                @relation(fields: [roundId], references: [id], onDelete: Restrict)
+  membershipId  String?               @db.Uuid
+  membership    Membership?           @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  refType       String?
+  refId         String?
+  descriptionFr String
+  descriptionEn String
+  /// Canonical-JSON-safe values only (integers, strings, booleans, null).
+  metadata      Json                  @default("{}")
+  prevHash      String
+  hash          String                @unique
+
+  postings LedgerPosting[]
+
+  @@unique([groupId, seq])
+  @@index([groupId, type])
+  @@index([membershipId])
+}
+
+/// Debit positive, credit negative; the postings of a transaction sum to zero.
+model LedgerPosting {
+  id            String            @id @default(uuid()) @db.Uuid
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+  transactionId String            @db.Uuid
+  transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  /// `cash:provider`, `payable:member:<id>`, `receivable:member:<id>`, `fund:general`, ...
+  account       String
+  amount        Int
+
+  @@index([transactionId])
+  @@index([account])
+}
+
+enum ReconciliationStatus {
+  OK
+  WARNING
+  ALERT
+}
+
+/// Spec 2.9 reconciliation, 2.5 invariant 6. ALERT pauses withdrawals (R5.5).
+model ReconciliationRun {
+  id              String               @id @default(uuid()) @db.Uuid
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  ranAt           DateTime             @db.Timestamptz(3)
+  providerAccount String               @default("default")
+  providerBalance Int
+  ledgerCash      Int
+  inFlight        Int
+  difference      Int
+  status          ReconciliationStatus
+  /// Problems found (invariant code and seq), no personal data.
+  details         Json                 @default("{}")
+
+  @@index([providerAccount, ranAt])
+}

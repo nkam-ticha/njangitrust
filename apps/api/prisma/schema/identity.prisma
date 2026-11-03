@@ -1,0 +1,150 @@
+// Identity: users, devices, payment numbers, sessions and PIN resets (spec 2.4, 2.10, R13, D7, D8).
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+  name           String
+  /// E.164 `+2376XXXXXXXX`. Never leaves the server except to its owner (spec 2.11).
+  loginPhone     String    @unique
+  /// argon2id hash of the 6-digit PIN. Never selected outside the auth module.
+  pinHash        String
+  language       Language  @default(fr)
+  consentVersion String
+  consentAt      DateTime  @db.Timestamptz(3)
+  pinChangedAt   DateTime? @db.Timestamptz(3)
+  /// Spec 2.10, R13.5: withdrawals are held for numberChangeHoldHours after a PIN reset.
+  pinResetAt     DateTime? @db.Timestamptz(3)
+  /// Bumped by "log out everywhere", PIN change and PIN reset: every access token issued before
+  /// is refused at once, without waiting for its 15-minute expiry.
+  sessionEpoch   Int       @default(0)
+  /// Part 7: on deletion personal fields are anonymised; financial records stay.
+  deletedAt      DateTime? @db.Timestamptz(3)
+
+  devices           Device[]
+  paymentNumbers    PaymentNumber[]
+  refreshTokens     RefreshToken[]
+  pinResets         PinReset[]
+  memberships       Membership[]
+  createdGroups     Group[]              @relation("GroupCreator")
+  acceptedInvites   Invite[]             @relation("InviteAcceptedBy")
+  notifications     Notification[]
+  notificationPrefs NotificationPrefs?
+  pendingActions    PendingAction[]
+  conversations     AgentConversation[]
+  auditLogs         AuditLog[]
+  uploadTickets     UploadTicket[]
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+}
+
+model Device {
+  id            String         @id @default(uuid()) @db.Uuid
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  userId        String         @db.Uuid
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform      DevicePlatform
+  /// Expo push token. A token belongs to one device; re-registering moves it.
+  expoPushToken String?        @unique
+  lastSeenAt    DateTime       @default(now()) @db.Timestamptz(3)
+  revokedAt     DateTime?      @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+}
+
+/// R13: one active payment number per user (partial unique index on userId WHERE activeTo IS
+/// NULL, in SQL); history kept for audit and visible only to the member (R13.6).
+model PaymentNumber {
+  id         String    @id @default(uuid()) @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// E.164 `+2376XXXXXXXX`.
+  number     String
+  operator   Operator
+  activeFrom DateTime  @db.Timestamptz(3)
+  activeTo   DateTime? @db.Timestamptz(3)
+
+  @@index([userId, activeFrom])
+}
+
+enum RefreshRevokedReason {
+  LOGOUT
+  LOGOUT_ALL
+  REUSE_DETECTED
+  PIN_CHANGED
+  PIN_RESET
+  ACCOUNT_DELETED
+}
+
+/// D7, spec 2.10: rotating refresh tokens, stored as an HMAC. Every rotation stays in the same
+/// family; presenting a used token revokes the whole family (reuse detection).
+model RefreshToken {
+  id                String                @id @default(uuid()) @db.Uuid
+  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
+  userId            String                @db.Uuid
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId          String                @db.Uuid
+  tokenHash         String                @unique
+  client            ClientKind
+  deviceId          String?               @db.Uuid
+  device            Device?               @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  expiresAt         DateTime              @db.Timestamptz(3)
+  usedAt            DateTime?             @db.Timestamptz(3)
+  replacedByTokenId String?               @db.Uuid
+  revokedAt         DateTime?             @db.Timestamptz(3)
+  revokedReason     RefreshRevokedReason?
+
+  @@index([userId, revokedAt])
+  @@index([familyId])
+}
+
+enum PinResetStatus {
+  REQUESTED
+  APPROVED
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+/// Spec 2.10, D7, D8. A member asks; their group's admin confirms they know them (for an admin,
+/// two other active members confirm). Then a one-time link valid 30 minutes is created.
+model PinReset {
+  id                 String            @id @default(uuid()) @db.Uuid
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  userId             String            @db.Uuid
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             PinResetStatus    @default(REQUESTED)
+  /// The request itself expires if nobody confirms it in time.
+  requestExpiresAt   DateTime          @db.Timestamptz(3)
+  /// The group whose confirmations unlocked the link.
+  approvedInGroupId  String?           @db.Uuid
+  approvedAt         DateTime?         @db.Timestamptz(3)
+  /// SHA-256 of the one-time link token, set on approval.
+  tokenHash          String?           @unique
+  linkExpiresAt      DateTime?         @db.Timestamptz(3)
+  completedAt        DateTime?         @db.Timestamptz(3)
+  approvals          PinResetApproval[]
+
+  @@index([userId, status])
+}
+
+/// D8: one row per confirming member. Unique per member so nobody counts twice.
+model PinResetApproval {
+  id           String     @id @default(uuid()) @db.Uuid
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  pinResetId   String     @db.Uuid
+  pinReset     PinReset   @relation(fields: [pinResetId], references: [id], onDelete: Cascade)
+  groupId      String     @db.Uuid
+  membershipId String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@unique([pinResetId, membershipId])
+  @@index([pinResetId, groupId])
+}

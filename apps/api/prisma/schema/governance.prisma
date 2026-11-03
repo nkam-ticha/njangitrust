@@ -1,0 +1,138 @@
+// Governance: proposals, votes and solidarity requests (spec 2.4, R10, R11).
+//
+// Secret ballots (R11.5): a secret vote writes a VoteReceipt (that the member voted) and increments
+// a counter on the Proposal in one database transaction. No Ballot row exists for a secret
+// proposal; a trigger refuses one (migration 20261102000100_database_protections).
+
+enum ProposalType {
+  RULE_CHANGE
+  MEMBER_ADD
+  MEMBER_REMOVE
+  ROTATION_CHANGE
+  ADMIN_CHANGE
+  EARLY_EXIT
+  ADMIN_LOAN
+  SOLIDARITY_PAYOUT
+  FINE_WAIVER
+  LEDGER_CORRECTION
+}
+
+enum ThresholdKind {
+  MAJORITY
+  TWO_THIRDS
+}
+
+enum ProposalStatus {
+  OPEN
+  PASSED
+  REJECTED
+  EXPIRED
+}
+
+model Proposal {
+  id                    String         @id @default(uuid()) @db.Uuid
+  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
+  groupId               String         @db.Uuid
+  group                 Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  type                  ProposalType
+  /// Type-specific, validated by zod. Never holds a phone number: MEMBER_ADD keeps a keyed hash.
+  payload               Json
+  reason                String?
+  proposerMembershipId  String         @db.Uuid
+  proposer              Membership     @relation(fields: [proposerMembershipId], references: [id], onDelete: Restrict)
+  secret                Boolean
+  thresholdKind         ThresholdKind
+  /// 3.1: active members when the proposal is created, minus the exclusions of its type.
+  eligibleMembershipIds String[]       @db.Uuid
+  /// Counters; for secret proposals the only record of the choices (R11.5).
+  yesCount              Int            @default(0)
+  noCount               Int            @default(0)
+  opensAt               DateTime       @db.Timestamptz(3)
+  closesAt              DateTime       @db.Timestamptz(3)
+  status                ProposalStatus @default(OPEN)
+  closedAt              DateTime?      @db.Timestamptz(3)
+  appliedAt             DateTime?      @db.Timestamptz(3)
+  /// What the passed proposal did, in both languages ("Appliqué au tour 5").
+  effect                Json?
+
+  voteReceipts      VoteReceipt[]
+  ballots           Ballot[]
+  invites           Invite[]
+  ruleSets          RuleSet[]
+  loan              Loan?
+  solidarityRequest SolidarityRequest?
+
+  @@index([groupId, status])
+  @@index([status, closesAt])
+}
+
+/// R11.4, R11.5: records that a member voted, never what.
+model VoteReceipt {
+  id           String     @id @default(uuid()) @db.Uuid
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  proposalId   String     @db.Uuid
+  proposal     Proposal   @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  membershipId String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  votedAt      DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@unique([proposalId, membershipId])
+}
+
+enum VoteChoice {
+  YES
+  NO
+}
+
+/// Only for non-secret proposals.
+model Ballot {
+  id           String     @id @default(uuid()) @db.Uuid
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+  proposalId   String     @db.Uuid
+  proposal     Proposal   @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  membershipId String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  choice       VoteChoice
+  castAt       DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@unique([proposalId, membershipId])
+}
+
+enum SolidarityEvent {
+  DEUIL
+  NAISSANCE
+  MALADIE
+  MARIAGE
+  AUTRE
+}
+
+enum SolidarityRequestStatus {
+  VOTING
+  APPROVED
+  REJECTED
+  PAID
+  FAILED
+}
+
+/// R10: a SOLIDARITY_PAYOUT vote; if passed, the money goes to the recipient's number.
+model SolidarityRequest {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  groupId               String                  @db.Uuid
+  group                 Group                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  requesterMembershipId String                  @db.Uuid
+  requester             Membership              @relation("SolidarityRequester", fields: [requesterMembershipId], references: [id], onDelete: Restrict)
+  recipientMembershipId String                  @db.Uuid
+  recipient             Membership              @relation("SolidarityRecipient", fields: [recipientMembershipId], references: [id], onDelete: Restrict)
+  event                 SolidarityEvent
+  amount                Int
+  /// Optional, visible only to the group (R10.2).
+  note                  String?
+  proposalId            String?                 @unique @db.Uuid
+  proposal              Proposal?               @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  status                SolidarityRequestStatus @default(VOTING)
+  disbursementId        String?                 @unique @db.Uuid
+  disbursement          Disbursement?           @relation(fields: [disbursementId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, status])
+}

@@ -1,0 +1,37 @@
+// NjangiTrust database schema (spec 2.4 plus docs/DECISIONS.md D7), one file per domain:
+// base, identity, groups, money, ledger, governance, chat, meetings, notifications, agent, audit.
+//
+// Conventions
+// - Every table has a UUID `id` and `createdAt`. Times are stored in UTC (timestamptz).
+// - Money fields are Int: whole francs CFA, never decimals (CLAUDE.md rule 1).
+// - Rules that a constraint can enforce are enforced here or in hand-written SQL migrations
+//   (partial unique indexes, ledger immutability triggers, grants). See prisma/migrations.
+// - Create migrations with `pnpm db:migrate:create` and review the SQL: Prisma does not know the
+//   hand-written partial indexes and must never be allowed to drop them.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Language {
+  fr
+  en
+}
+
+/// R13.1. UNKNOWN only when the operator could not be detected; the member picks MTN or ORANGE.
+enum Operator {
+  MTN
+  ORANGE
+  UNKNOWN
+}
+
+/// Which client a session or device belongs to (D1: mobile keeps tokens in SecureStore, web in a cookie).
+enum ClientKind {
+  MOBILE
+  WEB
+}

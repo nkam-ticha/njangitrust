@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="288" height="288" viewBox="0 0 288 288" role="img" aria-label="NjangiTrust">
+  <!-- System splash icon (expo-splash-screen / Android 12+ splash API), transparent.
+       Background colour: #1E2A5A in light mode, #141B3D in dark mode.
+       The system splash can only show a centred icon, so the Ndop band and the
+       wordmark belong to the in-app splash that follows it (see splash.svg). -->
+  <circle cx="144" cy="144" r="80" fill="none" stroke="#F5F6FA" stroke-width="2" stroke-opacity="0.32"/>
+  <g fill="#F5F6FA">
+    <circle cx="191.02" cy="79.28" r="10"/>
+    <circle cx="220.08" cy="119.28" r="10"/>
+    <circle cx="220.08" cy="168.72" r="10"/>
+    <circle cx="191.02" cy="208.72" r="10"/>
+    <circle cx="144" cy="224" r="10"/>
+    <circle cx="96.98" cy="208.72" r="10"/>
+    <circle cx="67.92" cy="168.72" r="10"/>
+    <circle cx="67.92" cy="119.28" r="10"/>
+    <circle cx="96.98" cy="79.28" r="10"/>
+  </g>
+  <circle cx="144" cy="64" r="15" fill="#D9A520"/>
+</svg>

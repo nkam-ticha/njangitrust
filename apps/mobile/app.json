@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "NjangiTrust",
+    "slug": "njangitrust",
+    "scheme": "njangitrust",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "icon": "./assets/brand/icon.png",
+    "android": {
+      "package": "cm.njangitrust.app",
+      "softwareKeyboardLayoutMode": "resize",
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/brand/adaptive-foreground.png",
+        "monochromeImage": "./assets/brand/adaptive-monochrome.png",
+        "backgroundColor": "#1E2A5A"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "cm.njangitrust.app",
+      "supportsTablet": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/brand/favicon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brand/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#1E2A5A",
+          "dark": {
+            "image": "./assets/brand/splash-icon.png",
+            "backgroundColor": "#141B3D"
+          }
+        }
+      ]
+    ]
+  }
+}

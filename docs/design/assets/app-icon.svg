@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="NjangiTrust app icon">
+  <!-- Full-bleed icon (store listing, web favicon source, legacy launchers).
+       Ten members sit in a circle; the beneficiary at 12 o'clock is raffia and larger.
+       Launchers apply their own mask, so nothing important sits outside the central 66%. -->
+  <rect width="1024" height="1024" fill="#1E2A5A"/>
+  <circle cx="512" cy="512" r="300" fill="none" stroke="#F5F6FA" stroke-width="6" stroke-opacity="0.32"/>
+  <g fill="#F5F6FA">
+    <circle cx="688.34" cy="269.29" r="38"/>
+    <circle cx="797.32" cy="419.29" r="38"/>
+    <circle cx="797.32" cy="604.71" r="38"/>
+    <circle cx="688.34" cy="754.71" r="38"/>
+    <circle cx="512" cy="812" r="38"/>
+    <circle cx="335.66" cy="754.71" r="38"/>
+    <circle cx="226.68" cy="604.71" r="38"/>
+    <circle cx="226.68" cy="419.29" r="38"/>
+    <circle cx="335.66" cy="269.29" r="38"/>
+  </g>
+  <circle cx="512" cy="212" r="56" fill="#D9A520"/>
+</svg>

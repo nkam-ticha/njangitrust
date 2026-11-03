@@ -1,0 +1,66 @@
+// Meetings, agendas, attendance and minutes (spec 2.4, R15).
+
+enum MeetingStatus {
+  SCHEDULED
+  HELD
+  CANCELLED
+}
+
+model Meeting {
+  id               String        @id @default(uuid()) @db.Uuid
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  groupId          String        @db.Uuid
+  group            Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  scheduledAt      DateTime      @db.Timestamptz(3)
+  /// A place or a link.
+  place            String
+  status           MeetingStatus @default(SCHEDULED)
+  /// Generated 24 hours before (R15.2).
+  agenda           Json?
+  minutesDraft     String?
+  /// R15.4: published minutes are never edited; a correction is a new version with a reason.
+  minutesPublished String?
+  minutesVersion   Int           @default(0)
+  publishedAt      DateTime?     @db.Timestamptz(3)
+
+  agendaItems AgendaItem[]
+  attendances Attendance[]
+
+  @@index([groupId, scheduledAt])
+}
+
+enum AgendaItemSource {
+  AUTO
+  MEMBER
+}
+
+model AgendaItem {
+  id                 String           @id @default(uuid()) @db.Uuid
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  meetingId          String           @db.Uuid
+  meeting            Meeting          @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  authorMembershipId String?          @db.Uuid
+  author             Membership?      @relation(fields: [authorMembershipId], references: [id], onDelete: Restrict)
+  text               String
+  source             AgendaItemSource
+
+  @@index([meetingId])
+}
+
+model Attendance {
+  id                   String     @id @default(uuid()) @db.Uuid
+  createdAt            DateTime   @default(now()) @db.Timestamptz(3)
+  meetingId            String     @db.Uuid
+  meeting              Meeting    @relation(fields: [meetingId], references: [id], onDelete: Restrict)
+  membershipId         String     @db.Uuid
+  membership           Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  present              Boolean    @default(false)
+  /// R15.3, R6.3: an excuse counts only when sent before the start.
+  excused              Boolean    @default(false)
+  excuseReason         String?
+  checkedInAt          DateTime?  @db.Timestamptz(3)
+  /// The admin who marked it, when not a self check-in.
+  markedByMembershipId String?    @db.Uuid
+
+  @@unique([meetingId, membershipId])
+}

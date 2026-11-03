@@ -1,0 +1,66 @@
+// Notifications and preferences (spec 1.8, 2.13, D7 NotificationPrefs).
+
+/// Rappels, Argent, Votes, Groupe, Sécurité. SECURITY can never be turned off and ignores quiet hours.
+enum NotificationCategory {
+  REMINDERS
+  MONEY
+  VOTES
+  GROUP
+  SECURITY
+}
+
+enum PushStatus {
+  /// In-app only (web, no device, category muted or quiet hours).
+  NOT_SENT
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+}
+
+/// Spec 2.13: the in-app notification is always written first, then pushed.
+model Notification {
+  id           String               @id @default(uuid()) @db.Uuid
+  createdAt    DateTime             @default(now()) @db.Timestamptz(3)
+  userId       String               @db.Uuid
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId      String?              @db.Uuid
+  group        Group?               @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  category     NotificationCategory
+  titleFr      String
+  titleEn      String
+  bodyFr       String
+  bodyEn       String
+  /// An app route such as `/caisse` or `/agent?context=pay`; never carries personal data.
+  deepLink     String?
+  readAt       DateTime?            @db.Timestamptz(3)
+  pushTicketId String?
+  pushStatus   PushStatus           @default(NOT_SENT)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+enum MediaAutoDownload {
+  WIFI_ONLY
+  ALWAYS
+  NEVER
+}
+
+/// D7: categories, quiet hours (Africa/Douala, minutes after midnight), chat mute, media setting.
+/// A CHECK constraint in SQL keeps SECURITY out of `mutedCategories`.
+model NotificationPrefs {
+  id                String                 @id @default(uuid()) @db.Uuid
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime               @updatedAt @db.Timestamptz(3)
+  userId            String                 @unique @db.Uuid
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mutedCategories   NotificationCategory[]
+  /// 21:00 by default.
+  quietStartMinute  Int                    @default(1260)
+  /// 07:00 by default.
+  quietEndMinute    Int                    @default(420)
+  /// Groups whose new chat messages don't notify (mentions still do).
+  mutedChatGroupIds String[]               @db.Uuid
+  mediaAutoDownload MediaAutoDownload      @default(WIFI_ONLY)
+}

@@ -1,0 +1,143 @@
+// Groups, memberships, invites and rule sets (spec 2.4, 2.10, R1, R11.7, R12).
+
+enum GroupStatus {
+  /// Before the first cycle: the admin invites founding members directly (R1.6).
+  FORMING
+  /// From the first cycle on: new members join only through a passed MEMBER_ADD (R12.1).
+  ACTIVE
+  CLOSED
+}
+
+model Group {
+  id              String      @id @default(uuid()) @db.Uuid
+  createdAt       DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @db.Timestamptz(3)
+  name            String
+  status          GroupStatus @default(FORMING)
+  createdByUserId String      @db.Uuid
+  createdBy       User        @relation("GroupCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  /// Planned first payout, chosen at creation; the first cycle starts from it (R2.2).
+  firstPayoutAt   DateTime    @db.Timestamptz(3)
+  currentCycleId  String?     @unique @db.Uuid
+  currentCycle    Cycle?      @relation("GroupCurrentCycle", fields: [currentCycleId], references: [id], onDelete: Restrict)
+  /// Which provider account holds this group's money (2.5 invariant 6).
+  providerAccount String      @default("default")
+
+  memberships        Membership[]
+  invites            Invite[]
+  ruleSets           RuleSet[]
+  cycles             Cycle[]             @relation("GroupCycles")
+  rounds             Round[]
+  obligations        Obligation[]
+  paymentIntents     PaymentIntent[]
+  disbursements      Disbursement[]
+  loans              Loan[]
+  ledgerTransactions LedgerTransaction[]
+  proposals          Proposal[]
+  solidarityRequests SolidarityRequest[]
+  meetings           Meeting[]
+  messages           Message[]
+  attachments        Attachment[]
+  notifications      Notification[]
+  pendingActions     PendingAction[]
+  conversations      AgentConversation[]
+  auditLogs          AuditLog[]
+  uploadTickets      UploadTicket[]
+}
+
+enum MembershipRole {
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  /// Joined through an invite after the first cycle: reads the chat and the ledger at once,
+  /// becomes ACTIVE (with obligations) at the start of `activeFromCycle` (R12.1).
+  INVITED
+  ACTIVE
+  /// Announced leaving at the end of the cycle; keeps every obligation and right until then (R12.2).
+  LEAVING
+  LEFT
+  REMOVED
+}
+
+/// One person in one group. R1.1: exactly one admin per group (partial unique index in SQL).
+model Membership {
+  id              String           @id @default(uuid()) @db.Uuid
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  groupId         String           @db.Uuid
+  group           Group            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  userId          String           @db.Uuid
+  user            User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role            MembershipRole   @default(MEMBER)
+  status          MembershipStatus
+  activeFromCycle Int?
+  leftAt          DateTime?        @db.Timestamptz(3)
+  chatLastReadAt  DateTime?        @db.Timestamptz(3)
+
+  invitesCreated        Invite[]            @relation("InviteCreatedBy")
+  obligations           Obligation[]        @relation("ObligationDebtor")
+  credits               Obligation[]        @relation("ObligationCreditor")
+  paymentIntents        PaymentIntent[]
+  disbursements         Disbursement[]
+  loans                 Loan[]
+  bids                  Bid[]
+  beneficiaryRounds     Round[]
+  statements            Statement[]
+  ledgerTransactions    LedgerTransaction[]
+  proposals             Proposal[]
+  voteReceipts          VoteReceipt[]
+  ballots               Ballot[]
+  solidarityRequested   SolidarityRequest[] @relation("SolidarityRequester")
+  solidarityReceived    SolidarityRequest[] @relation("SolidarityRecipient")
+  agendaItems           AgendaItem[]
+  attendances           Attendance[]
+  messages              Message[]
+  attachments           Attachment[]
+  pinResetApprovals     PinResetApproval[]
+
+  @@unique([groupId, userId])
+  @@index([userId, status])
+  @@index([groupId, status])
+}
+
+/// Spec 2.10: single use, 72 hours, tied to the invited phone. The phone is stored only as a keyed
+/// hash (HMAC) and the link token only as SHA-256, so neither can be read back from the database.
+model Invite {
+  id                    String     @id @default(uuid()) @db.Uuid
+  createdAt             DateTime   @default(now()) @db.Timestamptz(3)
+  groupId               String     @db.Uuid
+  group                 Group      @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  /// The passed MEMBER_ADD; null for a founding member invited before the first cycle (R1.6).
+  proposalId            String?    @db.Uuid
+  proposal              Proposal?  @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  inviteeName           String
+  phoneHash             String
+  tokenHash             String     @unique
+  expiresAt             DateTime   @db.Timestamptz(3)
+  usedAt                DateTime?  @db.Timestamptz(3)
+  acceptedByUserId      String?    @db.Uuid
+  acceptedBy            User?      @relation("InviteAcceptedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  revokedAt             DateTime?  @db.Timestamptz(3)
+  createdByMembershipId String     @db.Uuid
+  createdBy             Membership @relation("InviteCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, usedAt])
+  @@index([proposalId])
+}
+
+/// 3.2, R11: versioned rule sets. `params` is validated by @njangi/rules before every write.
+model RuleSet {
+  id                   String    @id @default(uuid()) @db.Uuid
+  createdAt            DateTime  @default(now()) @db.Timestamptz(3)
+  groupId              String    @db.Uuid
+  group                Group     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  version              Int
+  params               Json
+  effectiveFromRoundId String?   @db.Uuid
+  effectiveFromRound   Round?    @relation(fields: [effectiveFromRoundId], references: [id], onDelete: Restrict)
+  createdByProposalId  String?   @db.Uuid
+  createdByProposal    Proposal? @relation(fields: [createdByProposalId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, version])
+}
