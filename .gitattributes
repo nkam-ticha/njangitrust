@@ -1,0 +1,6 @@
+# Keep LF everywhere so Prettier and the ledger hashes behave the same on every machine.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.ttf binary
+*.pdf binary

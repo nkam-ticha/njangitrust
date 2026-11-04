@@ -16,7 +16,7 @@ networkConcurrency: 16
 
 # pnpm 11: packages allowed to run install scripts.
 allowBuilds:
-  "@prisma/engines": true
+  '@prisma/engines': true
   argon2: true
   esbuild: true
   msgpackr-extract: true

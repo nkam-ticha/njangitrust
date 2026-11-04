@@ -40,6 +40,7 @@ export default tseslint.config(
       '**/.expo/**',
       '**/web-build/**',
       'apps/api/prisma/migrations/**',
+      'apps/api/generated/**',
       'docs/design/board/**',
       '**/*.config.js',
     ],
@@ -51,12 +52,21 @@ export default tseslint.config(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-restricted-properties': [
         'error',
-        { property: '$queryRawUnsafe', message: 'Use tagged $queryRaw; never build SQL from strings.' },
-        { property: '$executeRawUnsafe', message: 'Use tagged $executeRaw; never build SQL from strings.' },
+        {
+          property: '$queryRawUnsafe',
+          message: 'Use tagged $queryRaw; never build SQL from strings.',
+        },
+        {
+          property: '$executeRawUnsafe',
+          message: 'Use tagged $executeRaw; never build SQL from strings.',
+        },
       ],
     },
   },
@@ -80,11 +90,27 @@ export default tseslint.config(
     },
   },
   {
+    // Supertest response bodies are untyped; tests assert on them directly.
+    files: ['**/*.test.ts', 'apps/api/test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
     files: ['apps/mobile/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: {
       ...reactHooks.configs.recommended.rules,
       'no-restricted-syntax': ['error', ...noFloatMoney],
     },
+  },
+  {
+    // React Native loads bundled fonts and images with require().
+    files: ['apps/mobile/src/theme/fonts.ts', 'apps/mobile/src/ui/**/assets.ts'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 );

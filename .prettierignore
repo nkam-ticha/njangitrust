@@ -5,3 +5,7 @@ coverage
 pnpm-lock.yaml
 docs/design/board
 apps/api/prisma/migrations
+apps/api/generated
+docs
+.claude
+*.md
