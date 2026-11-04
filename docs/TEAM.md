@@ -6,8 +6,8 @@ Every agent reads this before writing code. It keeps the repository organised an
 
 | Owner | Writes in |
 |---|---|
-| **Lead** | Root config, `scripts/`, `.github/`, `docs/DECISIONS.md`, `docs/TEAM.md`, `packages/shared/src/**` except the folders below, `apps/mobile/app/_layout.tsx`, `apps/mobile/src/{api,i18n,state,lib}/**`, `apps/mobile/src/features/**` (data hooks), mobile config files |
-| **Designer** | `docs/design/**`, `packages/shared/src/i18n/ui.*.ts`, `apps/mobile/src/theme/**`, `apps/mobile/src/ui/**`, `apps/mobile/src/screens/**`, `apps/mobile/app/**` routes (except `_layout.tsx` at the root), `apps/mobile/assets/**` |
+| **Lead** | Root config, `scripts/`, `.github/`, `docs/DECISIONS.md`, `docs/TEAM.md`, `packages/shared/src/**` except the folders below, `apps/mobile/app/_layout.tsx`, `apps/mobile/src/{api,i18n,state,lib}/**` (HTTP client, session, socket, i18n, stores), mobile config files |
+| **Designer** | `docs/design/**`, `packages/shared/src/i18n/ui.*.ts`, `apps/mobile/src/theme/**`, `apps/mobile/src/ui/**`, `apps/mobile/src/screens/**`, `apps/mobile/src/features/**` (data hooks for the screens, built on `@/api`), `apps/mobile/app/**` routes (except `_layout.tsx` at the root), `apps/mobile/assets/**` |
 | **Money engineer** | `packages/rules/**`, `tools/verify-ledger/**`, `apps/api/src/modules/{ledger,providers,payments,withdrawals,payouts,cycles,rounds,obligations,loans,bids,fines,funds,reconciliation,statements}/**`, `apps/api/prisma/schema/{money,ledger}.prisma`, `packages/shared/src/contracts/{money,ledger,loans,bids,rounds,statements}.ts`, `packages/shared/src/i18n/server/{ledger,money}.ts` |
 | **Platform engineer** | Everything else in `apps/api/**` (config, lib, http, permissions, dto, realtime, storage, jobs infrastructure, agent, and the modules auth, me, devices, groups, invites, members, rulesets, proposals, chat, media, notifications, meetings, solidarity, pending-actions, privacy), the other `apps/api/prisma/schema/*.prisma` files and all migrations, the other `packages/shared/src/contracts/*.ts` and `packages/shared/src/i18n/server/*.ts`, `tools/agent-eval/**` |
 

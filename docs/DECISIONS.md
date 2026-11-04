@@ -67,7 +67,40 @@ From `docs/design/DESIGN_SYSTEM.md` section 15:
 - Chat images: the phone also uploads a 320 px thumbnail so Wi-Fi-only placeholders show a real preview.
 - Privacy notice (FR and EN, versioned): legal text supplied by the owner before Phase 9.
 
+## D10. Bidding-mode pot account (2026-11-03)
+
+In BIDDING mode contributions arrive before the beneficiary is known. They are credited to a per-round holding account `pot:round:<roundId>` (a liability, never lendable, counted as reserved in "available for loans"). When bidding closes, one `POT_ASSIGNED` transaction moves the whole pot to the winner's `payable:member:<m>`. This extends the account and transaction tables of spec 2.5.
+
+## D11. 100 FCFA minimum applies to withdrawals only (2026-11-03)
+
+R5.4's minimum of 100 FCFA applies only to withdrawals, as the spec says. Loans and solidarity payouts have no minimum beyond being positive and fitting the available money and fee.
+
+## D12. Ledger technical choices (2026-11-03)
+
+- `createdAt` (set by the database at insert) is not part of a transaction's hashed content; `occurredAt` is, and is set by the ledger service before sealing. `verify-ledger` refuses any transaction field outside the hashed list, so every recorded field is protected.
+- `loanLimitFactor` is stored as `loanLimitFactorPermille` (1000 = 1.0) so no float enters money code; it is shown to members as a factor ("1,5 fois").
+- PAYMENT_RECEIVED keeps one posting per payment part (no merging), with per-part metadata so each posting traces to its obligation.
+
+## D13. Settled from the owner's FSD (2026-11-04)
+
+The owner's Functional Specification Document is transcribed in `docs/FSD.md`. Its acceptance criteria AC-01 to AC-12 are the project's acceptance tests. Where the FSD and the technical spec differ, the FSD wins on **what** the system does.
+
+1. **Rule changes take effect from the next round, for every parameter** (FSD section 6, GOV-04, AC-05). This replaces spec R11.1's "rotation mode and frequency: next cycle" and R8.1. Concretely:
+   - frequency or payout-time changes re-date the remaining rounds of the current cycle from the next round;
+   - FIXED → BIDDING lets the members not yet served bid for the next round;
+   - BIDDING → FIXED runs a verifiable draw (R2.3 method) among the members not yet served for the remaining rounds.
+2. **Monthly rounds keep the first payout's anchor** (Q1 proposal confirmed by default; the FSD only says "Monthly"): a day of the month clamped to the month's last day, the last weekday, or the nth weekday.
+3. **Due debts at payout (CAI-03).** Due debts are deducted before any money becomes available:
+   - whole debts, strictly oldest first (winning bid, fines, due installments);
+   - if the next due debt is larger than what is left, nothing more is taken, and an amount equal to the uncovered due debts stays unavailable for withdrawal until it is covered.
+   
+   No partial obligations (R3.2), and a member never withdraws money they owe.
+4. **Leaving mid-cycle with a loan (LOA-02, MEM-02).** A leaver's whole remaining loan balance becomes due at exit and is deducted from their refund and payable before they can withdraw ("deducted from any payout the borrower receives").
+5. **Payment-number hold covers every payout to the new number** (NUM-02, Flow D): withdrawals, loan disbursements and solidarity payouts all wait `numberChangeHoldHours`. A passed solidarity vote is paid when the hold ends.
+6. **Loan installments are monthly (LOA-02).** Installment k is due at the deadline (`dueAt`) of the first round whose deadline falls on or after the approval date plus k months. For monthly groups this is spec R7.3 exactly.
+7. **The FSD lists the web version as out of scope (2.4).** D1 (web in scope, at the owner's request) still stands; the owner may update the FSD.
+
 ## Open questions (to confirm before the phase that needs them)
 
-- **Q1 (Phase 1):** monthly frequency. R2.2 says `payoutAt(k) = first + (k − 1) × frequency`, but the example payout time is "last Saturday of the month". Proposed default: monthly rounds keep the **same anchor** as the first payout (if the first payout is the last Saturday, every round is the last Saturday; if it is the 28th, every round is the 28th, clamped to the month's last day). Weekly and two-weekly add 7 or 14 days.
+- **Q1 (resolved by D13.2):** monthly frequency. R2.2 says `payoutAt(k) = first + (k − 1) × frequency`, but the example payout time is "last Saturday of the month". Proposed default: monthly rounds keep the **same anchor** as the first payout (if the first payout is the last Saturday, every round is the last Saturday; if it is the 28th, every round is the 28th, clamped to the month's last day). Weekly and two-weekly add 7 or 14 days.
 - **Q2 (Phase 4):** OpenRouter model and API key. The owner puts the key in `apps/api/.env` themselves.
