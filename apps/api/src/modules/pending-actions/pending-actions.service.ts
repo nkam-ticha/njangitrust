@@ -43,7 +43,14 @@ export async function createPendingAction(input: CreateActionInput): Promise<Pen
   if (!handler) throw new Error(`No handler registered for ${input.type}`);
   const args = handler.args.parse(input.args);
   const now = clock.now();
-  const ctx = { userId: input.userId, groupId: input.groupId, lang: input.lang, origin: input.origin, now, db: getPrisma() };
+  const ctx = {
+    userId: input.userId,
+    groupId: input.groupId,
+    lang: input.lang,
+    origin: input.origin,
+    now,
+    db: getPrisma(),
+  };
   const preview = actionPreviewSchema.parse(await handler.prepare(ctx, args));
   const row = await getPrisma().pendingAction.create({
     data: {
@@ -63,9 +70,10 @@ export async function createPendingAction(input: CreateActionInput): Promise<Pen
 
 /** Moves a PENDING row to a final status, redacting confidential content. True if it moved. */
 async function finish(row: PendingAction, status: 'EXPIRED' | 'CANCELLED'): Promise<boolean> {
+  const completedAt = clock.now();
   const moved = await getPrisma().pendingAction.updateMany({
     where: { id: row.id, status: 'PENDING' },
-    data: { status, completedAt: clock.now(), ...redactionForRow(row) },
+    data: { status, completedAt, ...redactionForRow(row, { completedAt }) },
   });
   return moved.count === 1;
 }
@@ -139,10 +147,15 @@ export async function completePendingAction(
           ...(outcome.resultRef !== undefined ? { resultRef: outcome.resultRef } : {}),
           ...(outcome.summary ? { resultSummary: outcome.summary } : {}),
         }
-      : { status: 'FAILED' as const, completedAt: now, failureCode: outcome.failureCode, failureText: outcome.failureText };
+      : {
+          status: 'FAILED' as const,
+          completedAt: now,
+          failureCode: outcome.failureCode,
+          failureText: outcome.failureText,
+        };
   const updated = await db.pendingAction.updateMany({
     where: { id, status: 'CONFIRMED' },
-    data: { ...data, ...redactionForRow(row) },
+    data: { ...data, ...redactionForRow(row, { completedAt: now }) },
   });
   if (updated.count !== 1) return false;
   announce(await reload(id));

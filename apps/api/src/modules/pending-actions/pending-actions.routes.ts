@@ -6,7 +6,7 @@ import { uuidSchema } from '@njangi/shared/contracts/common';
 import { confirmActionRequestSchema } from '@njangi/shared/contracts/pending-actions';
 import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
-import { toPendingAction } from '../../dto';
+import { toActionResultData, toPendingAction } from '../../dto';
 import { confirmPendingAction } from './pending-actions.confirm';
 import { cancelPendingAction, getOwnPendingAction } from './pending-actions.service';
 
@@ -27,7 +27,7 @@ export function pendingActionsRoutes(): Router {
     '/:id/confirm',
     handle({ params, body: confirmActionRequestSchema }, async ({ params: p, body }, req, res) => {
       const { action, data } = await confirmPendingAction(actorOf(req), p.id, { pin: body.pin });
-      res.json({ action: toPendingAction(action), data });
+      res.json({ action: toPendingAction(action), data: toActionResultData(action.type, data) });
     }),
   );
 

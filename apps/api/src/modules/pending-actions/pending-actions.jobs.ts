@@ -7,5 +7,9 @@ export function registerPendingActionJobs(): void {
     name: 'pendingActions.expire',
     process: async () => ({ expired: await expireDuePendingActions() }),
   });
-  registerRepeatable({ id: 'pendingActions.expire.everyMinute', name: 'pendingActions.expire', pattern: '* * * * *' });
+  registerRepeatable({
+    id: 'pendingActions.expire.everyMinute',
+    name: 'pendingActions.expire',
+    pattern: '* * * * *',
+  });
 }

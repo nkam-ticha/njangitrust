@@ -11,7 +11,7 @@ export function registerActionHandler<A>(handler: ActionHandler<A>): void {
   if (existing && existing !== (handler as ActionHandler)) {
     throw new Error(`Action type ${handler.type} is already registered`);
   }
-  handlers.set(handler.type, handler as ActionHandler);
+  handlers.set(handler.type, handler);
 }
 
 export function getActionHandler(type: string): ActionHandler | undefined {

@@ -28,29 +28,49 @@ type Outcome =
   | { kind: 'executed'; result: ExecuteResult };
 
 function samePreview(a: unknown, b: unknown): boolean {
-  return canonicalJSON(actionPreviewSchema.parse(a)) === canonicalJSON(actionPreviewSchema.parse(b));
+  return (
+    canonicalJSON(actionPreviewSchema.parse(a)) === canonicalJSON(actionPreviewSchema.parse(b))
+  );
 }
 
-function failedData(action: PendingAction, error: AppError) {
+/** `confirmedAt`: set when the claim in the same transaction stamped it. */
+function failedData(action: PendingAction, error: AppError, confirmedAt: Date | null) {
+  const completedAt = clock.now();
   return {
     status: 'FAILED' as const,
-    completedAt: clock.now(),
+    completedAt,
     failureCode: error.code,
     failureText: { fr: error.text.fr, en: error.text.en },
-    ...redactionFor(action.type, action.args),
+    ...redactionFor(action.type, action.args, {
+      createdAt: action.createdAt,
+      expiresAt: action.expiresAt,
+      confirmedAt,
+      completedAt,
+    }),
   };
 }
 
 async function markFailed(action: PendingAction, error: AppError): Promise<void> {
   const failed = await getPrisma().pendingAction.updateMany({
     where: { id: action.id, status: { in: ['PENDING', 'CONFIRMED'] } },
-    data: failedData(action, error),
+    data: failedData(action, error, action.confirmedAt),
   });
-  if (failed.count === 1) announce(openAction(await getPrisma().pendingAction.findUniqueOrThrow({ where: { id: action.id } })));
+  if (failed.count === 1)
+    announce(
+      openAction(await getPrisma().pendingAction.findUniqueOrThrow({ where: { id: action.id } })),
+    );
 }
 
-function failWith(tx: Prisma.TransactionClient, action: PendingAction, error: AppError) {
-  return tx.pendingAction.update({ where: { id: action.id }, data: failedData(action, error) });
+function failWith(
+  tx: Prisma.TransactionClient,
+  action: PendingAction,
+  error: AppError,
+  confirmedAt: Date,
+) {
+  return tx.pendingAction.update({
+    where: { id: action.id },
+    data: failedData(action, error, confirmedAt),
+  });
 }
 
 export async function confirmPendingAction(
@@ -84,17 +104,24 @@ export async function confirmPendingAction(
         });
         if (claimed.count !== 1) return { kind: 'lost' };
 
-        const ctx = { userId: actor.userId, groupId: action.groupId, lang: actor.lang, origin: action.origin, now, db: tx };
+        const ctx = {
+          userId: actor.userId,
+          groupId: action.groupId,
+          lang: actor.lang,
+          origin: action.origin,
+          now,
+          db: tx,
+        };
         try {
           const preview = await handler.prepare(ctx, parsedArgs.data);
           if (!samePreview(preview, action.preview)) {
             const changed = actionError('ACTION_CHANGED');
-            await failWith(tx, action, changed);
+            await failWith(tx, action, changed, now);
             return { kind: 'refused', error: changed };
           }
         } catch (error) {
           if (!(error instanceof AppError)) throw error;
-          await failWith(tx, action, error);
+          await failWith(tx, action, error, now);
           return { kind: 'refused', error };
         }
 
@@ -102,14 +129,25 @@ export async function confirmPendingAction(
           { ...ctx, pendingActionId: id, afterCommit: (effect) => effects.add(effect), effects },
           parsedArgs.data,
         );
+        const completedAt = clock.now();
         await tx.pendingAction.update({
           where: { id },
           data: {
             status: result.outcome === 'done' ? 'DONE' : 'CONFIRMED',
-            ...(result.outcome === 'done' ? { completedAt: clock.now() } : {}),
+            ...(result.outcome === 'done' ? { completedAt } : {}),
             resultRef: result.resultRef ?? null,
-            ...(result.outcome === 'done' ? redactionFor(action.type, action.args) : {}),
-            ...(result.summary ? { resultSummary: { fr: result.summary.fr, en: result.summary.en } } : {}),
+            ...(result.summary
+              ? { resultSummary: { fr: result.summary.fr, en: result.summary.en } }
+              : {}),
+            // Last, so a confidential action keeps no choice-bearing text (L1).
+            ...(result.outcome === 'done'
+              ? redactionFor(action.type, action.args, {
+                  createdAt: action.createdAt,
+                  expiresAt: action.expiresAt,
+                  confirmedAt: now,
+                  completedAt,
+                })
+              : {}),
           },
         });
         return { kind: 'executed', result };
@@ -118,7 +156,12 @@ export async function confirmPendingAction(
     );
   } catch (error) {
     const appError = error instanceof AppError ? error : commonError('INTERNAL');
-    if (!(error instanceof AppError)) log.error({ err: error, type: action.type }, 'action execution failed');
+    if (!(error instanceof AppError)) {
+      // L2: a confidential action's error could quote its content; log only the error's name.
+      const confidential = handler.confidential?.(parsedArgs.data) ?? false;
+      const detail = confidential ? { errorName: (error as Error).name } : { err: error };
+      log.error({ ...detail, type: action.type }, 'action execution failed');
+    }
     await markFailed(action, appError);
     throw appError;
   }
