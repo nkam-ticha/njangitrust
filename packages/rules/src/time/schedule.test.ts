@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import {
   monthlyAnchorFromFirstPayout,
   monthlyPayoutDay,
+  MIN_LEAD_BEFORE_FIRST_DUE_HOURS,
   nextCycleFirstPayoutAt,
   roundDates,
+  roundDatesInSegments,
+  rescheduleFromRound,
   roundDueAt,
   roundPayoutAt,
 } from './schedule';
+import { addHours } from './douala';
 
 const utc = (iso: string) => new Date(iso);
 const lastSaturday = { kind: 'LAST_WEEKDAY', weekday: 6 } as const;
@@ -141,6 +145,7 @@ describe('next cycle first payout (R2.2 across cycles)', () => {
     expect(
       nextCycleFirstPayoutAt({
         lastPayoutAt: utc('2026-11-21T17:00:00.000Z'),
+        now: addHours(utc('2026-11-21T17:00:00.000Z'), 1),
         frequency: 'WEEKLY',
         payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 1 } },
       }).toISOString(),
@@ -151,12 +156,18 @@ describe('next cycle first payout (R2.2 across cycles)', () => {
     const payoutTime = { hour: 18, minute: 0, monthlyAnchor: lastSaturday } as const;
     const lastPayoutAt = utc('2026-11-28T17:00:00.000Z');
     expect(
-      nextCycleFirstPayoutAt({ lastPayoutAt, frequency: 'MONTHLY', payoutTime }).toISOString(),
+      nextCycleFirstPayoutAt({
+        lastPayoutAt,
+        frequency: 'MONTHLY',
+        payoutTime,
+        now: addHours(lastPayoutAt, 1),
+      }).toISOString(),
     ).toBe('2026-12-26T17:00:00.000Z');
     // A later time of day never creates a payout two hours after the last one.
     expect(
       nextCycleFirstPayoutAt({
         lastPayoutAt,
+        now: addHours(lastPayoutAt, 1),
         frequency: 'MONTHLY',
         payoutTime: { ...payoutTime, hour: 20 },
       }).toISOString(),
@@ -165,9 +176,95 @@ describe('next cycle first payout (R2.2 across cycles)', () => {
     expect(
       nextCycleFirstPayoutAt({
         lastPayoutAt: utc('2027-02-28T17:00:00.000Z'),
+        now: addHours(utc('2027-02-28T17:00:00.000Z'), 1),
         frequency: 'MONTHLY',
         payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 31 } },
       }).toISOString(),
     ).toBe('2027-03-31T17:00:00.000Z');
+  });
+});
+
+describe('re-dating the remaining rounds after a frequency or payout-time change (D13.1)', () => {
+  const monthly = {
+    firstPayoutAt: new Date('2026-11-28T17:00:00.000Z'),
+    frequency: 'MONTHLY',
+    monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 },
+  } as const;
+
+  it('keeps rounds before the change and continues weekly from the next round', () => {
+    // Change passed during round 2 (payout 26 December): from round 3, weekly at 18:00.
+    const segments = [
+      { fromRound: 1, schedule: monthly },
+      rescheduleFromRound({
+        fromRound: 3,
+        previousPayoutAt: roundPayoutAt(monthly, 2),
+        now: addHours(roundPayoutAt(monthly, 2), 1),
+        frequency: 'WEEKLY',
+        payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 } },
+      }),
+    ];
+    expect(roundDatesInSegments(segments, 2).payoutAt.toISOString()).toBe(
+      '2026-12-26T17:00:00.000Z',
+    );
+    expect(roundDatesInSegments(segments, 3).payoutAt.toISOString()).toBe(
+      '2027-01-02T17:00:00.000Z',
+    );
+    expect(roundDatesInSegments(segments, 4)).toEqual({
+      payoutAt: new Date('2027-01-09T17:00:00.000Z'),
+      dueAt: new Date('2027-01-08T17:00:00.000Z'),
+    });
+  });
+
+  it('moves the payout time of the remaining rounds, keeping the monthly anchor', () => {
+    const segments = [
+      { fromRound: 1, schedule: monthly },
+      rescheduleFromRound({
+        fromRound: 2,
+        previousPayoutAt: roundPayoutAt(monthly, 1),
+        now: addHours(roundPayoutAt(monthly, 1), 1),
+        frequency: 'MONTHLY',
+        payoutTime: { hour: 16, minute: 30, monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 } },
+      }),
+    ];
+    expect(roundDatesInSegments(segments, 2).payoutAt.toISOString()).toBe(
+      '2026-12-26T15:30:00.000Z',
+    );
+    expect(roundDatesInSegments(segments, 3).payoutAt.toISOString()).toBe(
+      '2027-01-30T15:30:00.000Z',
+    );
+  });
+
+  it('refuses a round before the first segment', () => {
+    expect(() => roundDatesInSegments([{ fromRound: 2, schedule: monthly }], 1)).toThrow(
+      RangeError,
+    );
+  });
+
+  it('never puts the new first deadline in the past or before the last payout (H3)', () => {
+    // Changed to the 29th at 08:00 right after a payout on the 28th at 18:00: the 29th at 08:00
+    // would be due on the 28th at 08:00, before that payout. The next occurrence is used instead.
+    const segment = rescheduleFromRound({
+      fromRound: 2,
+      previousPayoutAt: utc('2026-11-28T17:00:00.000Z'),
+      now: utc('2026-11-28T17:30:00.000Z'),
+      frequency: 'MONTHLY',
+      payoutTime: { hour: 8, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 29 } },
+    });
+    expect(segment.schedule.firstPayoutAt.toISOString()).toBe('2026-12-29T07:00:00.000Z');
+  });
+
+  it('leaves members at least 72 hours to pay before the first new deadline (H3)', () => {
+    // Weekly change applied 5 days after the last payout: the 28 November round would be due
+    // on 27 November, less than 72 hours away, so the round moves to 5 December.
+    const first = nextCycleFirstPayoutAt({
+      lastPayoutAt: utc('2026-11-21T17:00:00.000Z'),
+      now: utc('2026-11-26T09:00:00.000Z'),
+      frequency: 'WEEKLY',
+      payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 1 } },
+    });
+    expect(first.toISOString()).toBe('2026-12-05T17:00:00.000Z');
+    expect(
+      roundDueAt(first).getTime() - utc('2026-11-26T09:00:00.000Z').getTime(),
+    ).toBeGreaterThanOrEqual(MIN_LEAD_BEFORE_FIRST_DUE_HOURS * 3_600_000);
   });
 });

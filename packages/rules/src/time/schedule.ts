@@ -123,19 +123,17 @@ export function roundDates(schedule: PayoutSchedule, k: number): { payoutAt: Dat
 }
 
 /**
- * R2.2 across cycles: the next cycle's first payout continues the schedule after the previous
- * cycle's last payout, at the rule set's payout time. Monthly: the next anchor day strictly after
- * the last payout's Douala date.
+ * H3: the first deadline after a change or a new cycle is at least this far from now, so the D-3
+ * reminder (spec 2.9) still goes out and nobody is fined for a deadline they could not see coming.
  */
-export function nextCycleFirstPayoutAt(input: {
-  lastPayoutAt: Date;
-  frequency: Frequency;
-  payoutTime: PayoutTime;
-}): Date {
-  const local = toDoualaLocal(input.lastPayoutAt);
-  const { hour, minute, monthlyAnchor } = input.payoutTime;
-  if (input.frequency !== 'MONTHLY') {
-    const days = input.frequency === 'WEEKLY' ? 7 : 14;
+export const MIN_LEAD_BEFORE_FIRST_DUE_HOURS = 72;
+
+/** The next payout slot after `after`: +7 or +14 days, or the next monthly anchor day after its date. */
+function nextOccurrence(after: Date, frequency: Frequency, payoutTime: PayoutTime): Date {
+  const local = toDoualaLocal(after);
+  const { hour, minute, monthlyAnchor } = payoutTime;
+  if (frequency !== 'MONTHLY') {
+    const days = frequency === 'WEEKLY' ? 7 : 14;
     return fromDoualaLocal({
       year: local.year,
       month: local.month,
@@ -163,4 +161,76 @@ export function nextCycleFirstPayoutAt(input: {
     hour,
     minute,
   });
+}
+
+/**
+ * R2.2 across cycles, D13.1, H3: the first payout after `lastPayoutAt` at the rule set's payout
+ * time (weekly +7 days, two-weekly +14, monthly the next anchor day after the last payout's date).
+ * If that payout's deadline would fall before the last payout, or less than
+ * MIN_LEAD_BEFORE_FIRST_DUE_HOURS after `now`, the following occurrence is used.
+ */
+export function nextCycleFirstPayoutAt(input: {
+  lastPayoutAt: Date;
+  frequency: Frequency;
+  payoutTime: PayoutTime;
+  now: Date;
+}): Date {
+  const last = assertDate(input.lastPayoutAt, 'lastPayoutAt');
+  const earliestDue = assertDate(input.now, 'now') + MIN_LEAD_BEFORE_FIRST_DUE_HOURS * 3_600_000;
+  let candidate = nextOccurrence(input.lastPayoutAt, input.frequency, input.payoutTime);
+  for (;;) {
+    const due = roundDueAt(candidate).getTime();
+    if (due > last && due >= earliestDue) return candidate;
+    candidate = nextOccurrence(candidate, input.frequency, input.payoutTime);
+  }
+}
+
+/** D13.1: the schedule that applies from `fromRound` on (the first segment starts at round 1). */
+export interface ScheduleSegment {
+  fromRound: number;
+  schedule: PayoutSchedule;
+}
+
+/**
+ * D13.1: a frequency or payout-time change applies from the next round. The remaining rounds are
+ * re-dated from the round after `previousPayoutAt` (the current round's payout), continuing as
+ * nextCycleFirstPayoutAt does across cycles, never with a deadline in the past (H3).
+ */
+export function rescheduleFromRound(input: {
+  fromRound: number;
+  previousPayoutAt: Date;
+  frequency: Frequency;
+  payoutTime: PayoutTime;
+  now: Date;
+}): ScheduleSegment {
+  if (!Number.isSafeInteger(input.fromRound) || input.fromRound < 2) {
+    throw new RangeError('a change applies from round 2 or later');
+  }
+  const firstPayoutAt = nextCycleFirstPayoutAt({
+    lastPayoutAt: input.previousPayoutAt,
+    frequency: input.frequency,
+    payoutTime: input.payoutTime,
+    now: input.now,
+  });
+  return {
+    fromRound: input.fromRound,
+    schedule: {
+      firstPayoutAt,
+      frequency: input.frequency,
+      monthlyAnchor: input.payoutTime.monthlyAnchor,
+    },
+  };
+}
+
+/** R2.2, D13.1: dates of round k in a cycle whose schedule changed one or more times. */
+export function roundDatesInSegments(
+  segments: readonly ScheduleSegment[],
+  k: number,
+): { payoutAt: Date; dueAt: Date } {
+  const segment = [...segments]
+    .sort((a, b) => a.fromRound - b.fromRound)
+    .filter((s) => s.fromRound <= k)
+    .at(-1);
+  if (!segment) throw new RangeError(`no schedule covers round ${k}`);
+  return roundDates(segment.schedule, k - segment.fromRound + 1);
 }

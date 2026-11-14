@@ -82,3 +82,21 @@ export function daysInMonth(year: number, month: number): number {
 export function weekdayOf(year: number, month: number, day: number): Weekday {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay() as Weekday;
 }
+
+/** D16.3: the same Douala local time k calendar months later, the day clamped to the month's end. */
+export function addCalendarMonths(at: Date, months: number): Date {
+  if (!Number.isSafeInteger(months)) throw new RangeError('months must be an integer');
+  const local = toDoualaLocal(at);
+  const index = local.year * 12 + (local.month - 1) + months;
+  const year = Math.floor(index / 12);
+  const month = (index % 12) + 1;
+  return fromDoualaLocal({
+    year,
+    month,
+    day: Math.min(local.day, daysInMonth(year, month)),
+    hour: local.hour,
+    minute: local.minute,
+    second: local.second,
+    millisecond: local.millisecond,
+  });
+}

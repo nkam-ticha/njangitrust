@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { addHours, fromDoualaLocal, toDoualaLocal } from './douala';
+import { addCalendarMonths, addHours, fromDoualaLocal, toDoualaLocal } from './douala';
 
 describe('Africa/Douala calendar (3.3, CLAUDE.md rule 9)', () => {
   it('is UTC+01:00 in January and in July (no daylight saving)', () => {
@@ -46,5 +46,22 @@ describe('Africa/Douala calendar (3.3, CLAUDE.md rule 9)', () => {
     );
     expect(() => addHours(new Date('2026-11-02T08:00:00.000Z'), 1.5)).toThrow(RangeError);
     expect(() => addHours(new Date(Number.NaN), 1)).toThrow(RangeError);
+  });
+});
+
+describe('adding calendar months in Douala (D16.3)', () => {
+  it('keeps the local time and clamps the day to the end of the month', () => {
+    expect(addCalendarMonths(new Date('2027-01-10T09:00:00.000Z'), 1).toISOString()).toBe(
+      '2027-02-10T09:00:00.000Z',
+    );
+    expect(addCalendarMonths(new Date('2027-01-31T09:00:00.000Z'), 1).toISOString()).toBe(
+      '2027-02-28T09:00:00.000Z',
+    );
+    expect(addCalendarMonths(new Date('2026-11-30T23:30:00.000Z'), 2).toISOString()).toBe(
+      '2027-01-31T23:30:00.000Z',
+    ); // 00:30 on 1 December in Douala, plus two months: 00:30 on 1 February
+    expect(addCalendarMonths(new Date('2026-12-15T12:00:00.000Z'), 3).toISOString()).toBe(
+      '2027-03-15T12:00:00.000Z',
+    );
   });
 });
