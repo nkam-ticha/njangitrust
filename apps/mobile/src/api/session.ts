@@ -1,8 +1,12 @@
-import { refreshResponseSchema, type AuthResponse, type SessionDto } from '@njangi/shared/contracts/auth';
+import {
+  refreshResponseSchema,
+  type AuthResponse,
+  type SessionDto,
+} from '@njangi/shared/contracts/auth';
 import { selfSchema } from '@njangi/shared/contracts/me';
 import { z } from 'zod';
 import { useSession } from '@/state/session';
-import { accessTokenStore, api, setRefreshHandler } from './client';
+import { accessTokenStore, api, refreshAccessToken, setRefreshHandler } from './client';
 import { queryClient } from './queryClient';
 import { refreshStore } from './refreshStore';
 import { connectSocket, disconnectSocket } from './socket';
@@ -50,7 +54,7 @@ setRefreshHandler(refreshSession);
 
 /** At launch: resume the previous session if the server still accepts it. */
 export async function restoreSession(): Promise<void> {
-  if (await refreshSession()) {
+  if (await refreshAccessToken()) {
     try {
       const { user } = await api.get('/v1/me', { schema: meResponseSchema });
       useSession.getState().setSignedIn(user);
@@ -76,7 +80,10 @@ export async function signIn(response: AuthResponse): Promise<void> {
 export async function signOut(options: { everywhere?: boolean } = {}): Promise<void> {
   const refreshToken = refreshStore.holdsToken ? await refreshStore.get() : undefined;
   try {
-    await api.post(options.everywhere ? '/v1/auth/logout-all' : '/v1/auth/logout', refreshToken ? { refreshToken } : {});
+    await api.post(
+      options.everywhere ? '/v1/auth/logout-all' : '/v1/auth/logout',
+      refreshToken ? { refreshToken } : {},
+    );
   } catch {
     // Signing out locally must work even when the server can't be reached.
   }

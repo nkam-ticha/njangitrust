@@ -21,7 +21,11 @@ class MinimalPluralRules {
   }
 
   resolvedOptions() {
-    return { locale: this.locale, pluralCategories: ['one', 'other'] as Category[], type: 'cardinal' };
+    return {
+      locale: this.locale,
+      pluralCategories: ['one', 'other'] as Category[],
+      type: 'cardinal',
+    };
   }
 
   static supportedLocalesOf(locales: string | string[]): string[] {

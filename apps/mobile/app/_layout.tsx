@@ -35,10 +35,11 @@ export default function RootLayout() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Protected guard={signedIn}>
+            {/* Signed out, "/" redirects to /welcome: both groups would otherwise claim "/". */}
+            <Stack.Protected guard={signedIn} redirectTo="/welcome">
               <Stack.Screen name="(app)" />
             </Stack.Protected>
-            <Stack.Protected guard={!signedIn}>
+            <Stack.Protected guard={!signedIn} redirectTo="/">
               <Stack.Screen name="(auth)" />
             </Stack.Protected>
             {/* The component gallery exists only in development builds. */}

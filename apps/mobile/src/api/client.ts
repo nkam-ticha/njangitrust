@@ -13,6 +13,8 @@ export class ApiError extends Error {
     readonly code: string,
     readonly messageFr?: string,
     readonly messageEn?: string,
+    /** Extra fields the server sends with some errors, e.g. `attemptsLeft`, `retryAfterSeconds`. */
+    readonly details: Readonly<Record<string, unknown>> = {},
   ) {
     super(code);
     this.name = 'ApiError';
@@ -49,6 +51,14 @@ function refreshOnce(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * The only way to refresh the session. The API treats two refreshes with the same
+ * token as token theft and revokes the session, so every caller shares one refresh.
+ */
+export function refreshAccessToken(): Promise<boolean> {
+  return refreshOnce();
+}
+
 export interface RequestOptions<T> {
   body?: unknown;
   /** Validates the response; use the shared contract schema. */
@@ -60,8 +70,27 @@ export interface RequestOptions<T> {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-async function send(method: Method, path: string, options: RequestOptions<unknown>): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...CLIENT_HEADER };
+/** A UUID v4 for `X-Request-Id`, the only request id format the API accepts (privacy L7). */
+function requestId(): string {
+  const cryptoApi = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+  // Correlation only, not security: a pseudo-random v4 is enough where randomUUID is missing.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    return (c === 'x' ? r : (r % 4) + 8).toString(16);
+  });
+}
+
+async function send(
+  method: Method,
+  path: string,
+  options: RequestOptions<unknown>,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'X-Request-Id': requestId(),
+    ...CLIENT_HEADER,
+  };
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`;
   try {
@@ -84,14 +113,32 @@ async function send(method: Method, path: string, options: RequestOptions<unknow
 
 async function toApiError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as Partial<Record<'code' | 'messageFr' | 'messageEn', string>>;
-    return new ApiError(response.status, body.code ?? `HTTP_${response.status}`, body.messageFr, body.messageEn);
+    const body = (await response.json()) as Partial<
+      Record<'code' | 'messageFr' | 'messageEn', string>
+    > & {
+      details?: unknown;
+    };
+    const details =
+      body.details && typeof body.details === 'object' && !Array.isArray(body.details)
+        ? (body.details as Record<string, unknown>)
+        : {};
+    return new ApiError(
+      response.status,
+      body.code ?? `HTTP_${response.status}`,
+      body.messageFr,
+      body.messageEn,
+      details,
+    );
   } catch {
     return new ApiError(response.status, `HTTP_${response.status}`);
   }
 }
 
-export async function request<T>(method: Method, path: string, options: RequestOptions<T> = {}): Promise<T> {
+export async function request<T>(
+  method: Method,
+  path: string,
+  options: RequestOptions<T> = {},
+): Promise<T> {
   let response = await send(method, path, options);
   if (response.status === 401 && options.auth !== false && (await refreshOnce())) {
     response = await send(method, path, options);
