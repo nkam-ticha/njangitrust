@@ -49,10 +49,44 @@ export function detectOperator(e164: string): Operator {
   return 'UNKNOWN';
 }
 
-/** Every phone number found in a text, normalised to E.164. */
+const DECIMAL_DIGIT = /\p{Nd}/u;
+
+/** The value of any Unicode decimal digit: each script's digits are a run of ten from its zero. */
+function digitValue(digit: string): number {
+  const cp = digit.codePointAt(0) ?? 0;
+  let start = cp;
+  while (cp - start < 60 && DECIMAL_DIGIT.test(String.fromCodePoint(start - 1))) start--;
+  return (cp - start) % 10;
+}
+
+/**
+ * The text with full-width and other-script digits folded to ASCII (NFKC, then digit values),
+ * and for each folded UTF-16 unit the span of the original text it came from. Lets the
+ * phone scanner see "６７７…" or "٦٧٧…" while masking only the original characters.
+ */
+function foldDigits(text: string): { folded: string; starts: number[]; ends: number[] } {
+  let folded = '';
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let i = 0; i < text.length;) {
+    const char = String.fromCodePoint(text.codePointAt(i) ?? 0);
+    const unit = char
+      .normalize('NFKC')
+      .replace(/\p{Nd}/gu, (digit) => (/[0-9]/.test(digit) ? digit : String(digitValue(digit))));
+    for (let k = 0; k < unit.length; k++) {
+      starts.push(i);
+      ends.push(i + char.length);
+    }
+    folded += unit;
+    i += char.length;
+  }
+  return { folded, starts, ends };
+}
+
+/** Every phone number found in a text, normalised to E.164, whatever digits it is written in. */
 export function findPhoneNumbers(text: string): string[] {
   const found: string[] = [];
-  for (const match of text.matchAll(PHONE_PATTERN)) {
+  for (const match of foldDigits(text).folded.matchAll(PHONE_PATTERN)) {
     const normalized = normalizeCameroonPhone(match[0]);
     if (normalized) found.push(normalized);
   }
@@ -63,8 +97,35 @@ const FULLY_MASKED = '6•• •• •• ••';
 
 /** Masks every phone number in a text except the allowed ones (the member's own). */
 export function maskPhonesInText(text: string, allowedE164: readonly string[]): string {
-  return text.replace(PHONE_PATTERN, (match) => {
-    const normalized = normalizeCameroonPhone(match);
-    return normalized && allowedE164.includes(normalized) ? match : FULLY_MASKED;
-  });
+  const { folded, starts, ends } = foldDigits(text);
+  let out = '';
+  let copiedTo = 0;
+  for (const match of folded.matchAll(PHONE_PATTERN)) {
+    const normalized = normalizeCameroonPhone(match[0]);
+    if (normalized && allowedE164.includes(normalized)) continue;
+    const from = starts[match.index] ?? 0;
+    const to = ends[match.index + match[0].length - 1] ?? from;
+    out += text.slice(copiedTo, from) + FULLY_MASKED;
+    copiedTo = to;
+  }
+  return out + text.slice(copiedTo);
+}
+
+/** Up to three characters that are neither letters nor digits, between two digits. */
+const DIGIT_SEPARATORS = /(?<=\d)[^\p{L}\p{N}]{1,3}(?=\d)/gu;
+const NATIONAL_MOBILE = /6\d{8}/;
+
+/**
+ * Strict check for member-visible text (names, reasons, notes, corrections; spec 2.11): true when
+ * the text carries a Cameroon mobile number in any disguise. Digits of any script are folded,
+ * invisible format characters (zero-width spaces, soft hyphens, joiners, bidi marks) are dropped,
+ * and digit groups split by up to three non-letters (dashes of any kind, slashes, underscores,
+ * dots, brackets, spaces) are joined before looking for `6XXXXXXXX` (also inside `2376XXXXXXXX`).
+ * Unlike `findPhoneNumbers` it does not say which number, and it errs on the side of refusing.
+ */
+export function looksLikePhoneNumber(text: string): boolean {
+  const joined = foldDigits(text)
+    .folded.replace(/\p{Cf}/gu, '')
+    .replace(DIGIT_SEPARATORS, '');
+  return NATIONAL_MOBILE.test(joined);
 }
