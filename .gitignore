@@ -42,3 +42,9 @@ Thumbs.db
 
 # Generated code
 apps/api/generated/
+
+# Local session handoffs (never committed)
+.handoff/
+
+# Local QA browser profiles and scratch folders (hold signed-in sessions; never committed)
+.tmp-*/
