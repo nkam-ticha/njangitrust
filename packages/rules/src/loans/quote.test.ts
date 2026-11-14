@@ -1,18 +1,27 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { MOCK_FEE_SCHEDULE } from '../fees';
+import { roundDates } from '../time';
 import { loanQuote, loanTerms } from './quote';
 
-const round4Due = new Date('2026-11-27T17:00:00.000Z');
-const round5Due = new Date('2026-12-25T17:00:00.000Z');
-const round6Due = new Date('2027-01-29T17:00:00.000Z');
+// Monthly rounds on the last Saturday; the loan is quoted during round 3 (payout 30 January 2027).
+const schedule = {
+  firstPayoutAt: new Date('2026-11-28T17:00:00.000Z'),
+  frequency: 'MONTHLY',
+  monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 },
+} as const;
+const rounds = Array.from({ length: 8 }, (_, i) => roundDates(schedule, i + 1));
+const round4Due = rounds[3]!.dueAt;
+const round5Due = rounds[4]!.dueAt;
 
 const base = {
   loanRatePermille: 50,
   loanMaxMonths: 3,
   feeSchedule: MOCK_FEE_SCHEDULE,
   limit: 30_000,
-  installmentDueAts: [round4Due, round5Due, round6Due],
+  approvedAt: new Date('2027-01-10T09:00:00.000Z'),
+  frequency: 'MONTHLY' as const,
+  rounds,
 };
 
 describe('loan terms (R7.3)', () => {
@@ -25,8 +34,8 @@ describe('loan terms (R7.3)', () => {
       feeEstimate: 500,
       totalDue: 33_500,
       installments: [
-        { number: 1, amount: 16_750, dueAt: round4Due },
-        { number: 2, amount: 16_750, dueAt: round5Due },
+        { number: 1, amount: 16_750, due: { status: 'DATED', dueAt: round4Due } },
+        { number: 2, amount: 16_750, due: { status: 'DATED', dueAt: round5Due } },
       ],
     });
   });
@@ -46,7 +55,7 @@ describe('loan terms (R7.3)', () => {
     ).toBe(501);
   });
 
-  it('refuses amounts above the limit, months outside 1 to loanMaxMonths and too-small amounts', () => {
+  it('refuses amounts above the limit, months outside 1 to loanMaxMonths and non-positive amounts', () => {
     expect(loanQuote({ ...base, principal: 50_000, months: 3 })).toEqual({
       ok: false,
       code: 'LOAN_ABOVE_LIMIT',
@@ -61,18 +70,28 @@ describe('loan terms (R7.3)', () => {
     expect(loanQuote({ ...base, principal: 10_000, months: 0 })).toMatchObject({
       code: 'LOAN_MONTHS_OUT_OF_RANGE',
     });
-    expect(loanQuote({ ...base, principal: 99, months: 1 })).toEqual({
+    // D11: no minimum beyond a positive amount; small loans are allowed.
+    expect(loanQuote({ ...base, principal: 1, months: 1 })).toMatchObject({
+      ok: true,
+      principal: 1,
+    });
+    expect(loanQuote({ ...base, principal: 0, months: 1 })).toEqual({
       ok: false,
-      code: 'LOAN_BELOW_MINIMUM',
-      minimum: 100,
+      code: 'INVALID_AMOUNT',
     });
     expect(loanQuote({ ...base, principal: 1.5, months: 1 })).toEqual({
       ok: false,
       code: 'INVALID_AMOUNT',
     });
-    expect(() =>
-      loanQuote({ ...base, principal: 10_000, months: 3, installmentDueAts: [round4Due] }),
-    ).toThrow(RangeError);
+  });
+
+  it('quotes installments beyond the cycle as due at a round of the next cycle (D18.2)', () => {
+    const quote = loanQuote({ ...base, principal: 10_000, months: 3, rounds: rounds.slice(0, 4) });
+    expect(quote.ok && quote.installments.map((i) => i.due)).toEqual([
+      { status: 'DATED', dueAt: round4Due },
+      { status: 'NEXT_CYCLE', nthRound: 1, onOrAfter: null },
+      { status: 'NEXT_CYCLE', nthRound: 2, onOrAfter: null },
+    ]);
   });
 
   it('installments always add up to the total due (property)', () => {

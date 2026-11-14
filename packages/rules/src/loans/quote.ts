@@ -3,9 +3,8 @@
 import { scheduleFee, type FeeSchedule } from '../fees';
 import { assertNonNegativeFcfa, floorDiv, roundHalfUpDiv, type Fcfa } from '../money';
 import type { Refusal } from '../result';
-
-/** Smallest principal, the same floor as a withdrawal (R5.4), so every disbursement is meaningful. */
-export const MIN_LOAN_PRINCIPAL = 100;
+import type { Frequency } from '../time';
+import { installmentDueDates, type InstallmentDue } from './installments';
 
 /**
  * R7.3: interest I = round half up (P × loanRatePermille / 1000 × T); total due = P + I + estimated
@@ -39,12 +38,13 @@ export function loanTerms(input: {
 export interface LoanInstallment {
   number: number;
   amount: Fcfa;
-  dueAt: Date;
+  /** D18.2: a round deadline of this cycle, or "due at a round of the next cycle". */
+  due: InstallmentDue;
 }
 
 /**
- * R7.2, R7.3: checks a loan request and returns its full quote. `installmentDueAts` are the dueAt of
- * the next rounds after the current one (at least `months` of them, from roundDates).
+ * R7.2, R7.3, D16.3, D18.2: checks a loan request and returns its full quote, its installment dates
+ * computed from the approval (or quote) time and the current cycle's rounds (installmentDueDates).
  */
 export function loanQuote(input: {
   principal: Fcfa;
@@ -54,7 +54,11 @@ export function loanQuote(input: {
   feeSchedule: FeeSchedule;
   /** From loanLimit (R7.2). */
   limit: Fcfa;
-  installmentDueAts: readonly Date[];
+  /** When the loan is approved (or quoted). */
+  approvedAt: Date;
+  frequency: Frequency;
+  /** The current cycle's round dates (roundDates), the round in progress included. */
+  rounds: readonly { dueAt: Date; payoutAt: Date }[];
 }):
   | {
       ok: true;
@@ -66,14 +70,10 @@ export function loanQuote(input: {
       installments: LoanInstallment[];
     }
   | Refusal<'INVALID_AMOUNT'>
-  | Refusal<'LOAN_BELOW_MINIMUM', { minimum: Fcfa }>
   | Refusal<'LOAN_MONTHS_OUT_OF_RANGE', { min: number; max: number }>
   | Refusal<'LOAN_ABOVE_LIMIT', { limit: Fcfa }> {
   if (!Number.isSafeInteger(input.principal) || input.principal <= 0)
     return { ok: false, code: 'INVALID_AMOUNT' };
-  if (input.principal < MIN_LOAN_PRINCIPAL) {
-    return { ok: false, code: 'LOAN_BELOW_MINIMUM', minimum: MIN_LOAN_PRINCIPAL };
-  }
   if (
     !Number.isSafeInteger(input.months) ||
     input.months < 1 ||
@@ -83,9 +83,12 @@ export function loanQuote(input: {
   }
   if (input.principal > input.limit)
     return { ok: false, code: 'LOAN_ABOVE_LIMIT', limit: input.limit };
-  if (input.installmentDueAts.length < input.months) {
-    throw new RangeError('one due date is needed per installment');
-  }
+  const dueAts = installmentDueDates({
+    approvedAt: input.approvedAt,
+    months: input.months,
+    frequency: input.frequency,
+    rounds: input.rounds,
+  });
   const feeEstimate = scheduleFee(input.feeSchedule, 'DISBURSEMENT', input.principal);
   const terms = loanTerms({
     principal: input.principal,
@@ -103,7 +106,7 @@ export function loanQuote(input: {
     installments: terms.installmentAmounts.map((amount, i) => ({
       number: i + 1,
       amount,
-      dueAt: input.installmentDueAts[i]!,
+      due: dueAts[i]!,
     })),
   };
 }

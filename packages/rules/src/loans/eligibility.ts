@@ -8,7 +8,7 @@ import { assertDate } from '../time';
 
 /** An unpaid debt to the general fund (3.1 "Receivable"). */
 export interface UnpaidDebt {
-  kind: 'FINE' | 'BID' | 'LOAN_INSTALLMENT';
+  kind: 'FINE' | 'BID' | 'CORRECTION' | 'LOAN_INSTALLMENT';
   amount: Fcfa;
   dueAt: Date;
 }
