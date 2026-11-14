@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { biddingDrawSeed, drawRotation, drawSeed, verifiableShuffle } from './draw';
+import {
+  biddingDrawSeed,
+  drawRotation,
+  drawSeed,
+  remainingRotationDraw,
+  verifiableShuffle,
+} from './draw';
 
 const GROUP = '9b2e0c4e-1111-4a5b-8c9d-000000000001';
 // SHA-256("njangitrust:" + GROUP), the latest ledger hash of a group with no transactions yet.
@@ -64,5 +70,24 @@ describe('verifiable draw (R2.3)', () => {
     expect(biddingDrawSeed(GROUP, 1, 5, GENESIS)).toBe(
       '03df01557a30afdf87293f6443420f629add058bcd8d107e30d461effd854d36',
     );
+  });
+});
+
+describe('switching from bidding to a fixed order mid-cycle (D13.1)', () => {
+  it('draws the remaining order among members not yet served, with a seed of its own', () => {
+    const notYetServed = ['m09', 'm04', 'm01', 'm07'];
+    const result = remainingRotationDraw({
+      groupId: GROUP,
+      cycleNumber: 1,
+      fromRound: 5,
+      latestLedgerHash: GENESIS,
+      notYetServedMembershipIds: notYetServed,
+    });
+    // L4: its own prefix, so it can never equal the no-bid draw seed of the same round.
+    expect(result.seed).toBe(
+      createHash('sha256').update(`redraw|${GROUP}|1|5|${GENESIS}`, 'utf8').digest('hex'),
+    );
+    expect(result.seed).not.toBe(biddingDrawSeed(GROUP, 1, 5, GENESIS));
+    expect(result.order).toEqual(referenceShuffle(notYetServed, result.seed));
   });
 });

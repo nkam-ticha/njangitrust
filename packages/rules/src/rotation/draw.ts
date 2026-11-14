@@ -46,3 +46,33 @@ export function drawRotation(input: {
   const seed = drawSeed(input.groupId, input.cycleNumber, input.latestLedgerHash);
   return { seed, order: verifiableShuffle(input.activeMembershipIds, seed) };
 }
+
+/** D13.1, L4: seed of the BIDDING → FIXED redraw, SHA-256("redraw|" + groupId | cycle | fromRound | hash). */
+export function redrawSeed(
+  groupId: string,
+  cycleNumber: number,
+  fromRound: number,
+  latestLedgerHash: string,
+): string {
+  return sha256Hex(`redraw|${groupId}|${cycleNumber}|${fromRound}|${latestLedgerHash}`);
+}
+
+/**
+ * D13.1: when a cycle switches from BIDDING to FIXED, the members not yet served are put in order by
+ * a verifiable draw (R2.3 method) for the remaining rounds, seeded with redrawSeed.
+ */
+export function remainingRotationDraw(input: {
+  groupId: string;
+  cycleNumber: number;
+  fromRound: number;
+  latestLedgerHash: string;
+  notYetServedMembershipIds: readonly string[];
+}): { seed: string; order: string[] } {
+  const seed = redrawSeed(
+    input.groupId,
+    input.cycleNumber,
+    input.fromRound,
+    input.latestLedgerHash,
+  );
+  return { seed, order: verifiableShuffle(input.notYetServedMembershipIds, seed) };
+}
