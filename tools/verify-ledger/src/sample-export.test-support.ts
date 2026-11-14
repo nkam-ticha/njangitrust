@@ -4,13 +4,18 @@ import {
   computeBalances,
   cycleStartedEvent,
   DEFAULT_RULE_SET,
+  disbursementCompletedPostings,
+  disbursementRefundedPostings,
   fineAssessedPostings,
   genesisHash,
   LEDGER_EXPORT_FORMAT,
   LEDGER_EXPORT_VERSION,
+  loanSentPostings,
   paymentReceivedPostings,
+  planReversalCorrections,
+  reversalPostings,
   sealTransaction,
-  withdrawalCompletedPostings,
+  withdrawalSentPostings,
   type LedgerEntry,
   type LedgerExport,
   type LedgerTransaction,
@@ -24,26 +29,57 @@ const MEMBERS = ['M1', 'M2', 'M3', 'M4'];
 function entry(
   n: number,
   type: TransactionType,
-  postings: Posting[],
-  metadata: LedgerEntry['metadata'] = {},
+  lines: Posting[] | { postings: Posting[]; metadata: object },
+  membershipId: string | null = null,
 ): LedgerEntry {
+  const { postings, metadata } = Array.isArray(lines) ? { postings: lines, metadata: {} } : lines;
   return {
     id: `tx-${n}`,
     type,
     occurredAt: new Date(Date.UTC(2026, 10, 2, 8, n)).toISOString(),
     roundId: type === 'EVENT' ? null : 'c1r1',
-    membershipId: null,
+    membershipId,
     refType: null,
     refId: null,
     descriptionFr: `Écriture ${n}`,
     descriptionEn: `Entry ${n}`,
-    metadata,
+    metadata: metadata as LedgerEntry['metadata'],
     postings,
   };
 }
 
-/** Cycle 1 drawn, round 1 paid by all four members, one fine, and the payout withdrawn. */
-export function sampleExport(): LedgerExport {
+/** D18.1: a withdrawal sent (in flight) and, unless `inFlight`, completed. */
+function withdrawal(n: number, member: string, amount: number, inFlight = false): LedgerEntry[] {
+  const operationId = `w${n}`;
+  const sent = entry(
+    n,
+    'DISBURSEMENT_SENT',
+    withdrawalSentPostings({ operationId, membershipId: member, amount, feeEstimated: 500 }),
+    member,
+  );
+  if (inFlight) return [sent];
+  const done = disbursementCompletedPostings({
+    operationId,
+    amount,
+    feeEstimated: 500,
+    feeActual: 500,
+    feeSource: 'PROVIDER',
+  });
+  return [sent, entry(n + 1, 'WITHDRAWAL_COMPLETED', done, member)];
+}
+
+function seal(entries: LedgerEntry[]): LedgerTransaction[] {
+  const transactions: LedgerTransaction[] = [];
+  for (const e of entries) {
+    transactions.push(
+      sealTransaction({ groupId: GROUP_ID, previous: transactions.at(-1) ?? null, entry: e }),
+    );
+  }
+  return transactions;
+}
+
+/** Cycle 1 drawn, round 1 paid by all four members, and one fine. */
+function round1(): { draw: ReturnType<typeof cycleStartedEvent>; entries: LedgerEntry[] } {
   const draw = cycleStartedEvent({
     groupId: GROUP_ID,
     cycleNumber: 1,
@@ -52,7 +88,7 @@ export function sampleExport(): LedgerExport {
     activeMembershipIds: MEMBERS,
   });
   const beneficiary = draw.order[0]!;
-  const entries: LedgerEntry[] = [entry(1, 'EVENT', [], draw)];
+  const entries: LedgerEntry[] = [entry(1, 'EVENT', { postings: [], metadata: draw })];
   MEMBERS.forEach((m, i) =>
     entries.push(
       entry(
@@ -61,35 +97,99 @@ export function sampleExport(): LedgerExport {
         paymentReceivedPostings({
           payerMembershipId: m,
           fee: 100,
+          feeSource: 'SCHEDULE',
           parts: [
-            { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: beneficiary },
+            {
+              kind: 'CONTRIBUTION',
+              amount: 10_000,
+              creditorMembershipId: beneficiary,
+              tieOrder: 1,
+            },
             { kind: 'SOLIDARITY', amount: 1_000 },
           ],
-        }).postings,
+        }),
+        m, // L3: every payment names its payer
       ),
     ),
   );
   entries.push(
     entry(6, 'FINE_ASSESSED', fineAssessedPostings({ membershipId: 'M3', amount: 1_000 })),
   );
-  entries.push(
-    entry(
-      7,
-      'WITHDRAWAL_COMPLETED',
-      withdrawalCompletedPostings({
-        membershipId: beneficiary,
-        amount: 39_136,
-        feeEstimated: 500,
-        feeActual: 500,
-      }),
-    ),
+  return { draw, entries };
+}
+
+/** Cycle 1 drawn, round 1 paid by all four members, one fine, and the payout withdrawn. */
+export function sampleExport(): LedgerExport {
+  const { draw, entries } = round1();
+  return exportOf(draw, seal([...entries, ...withdrawal(7, draw.order[0]!, 39_136)]));
+}
+
+/**
+ * L6, H1: the beneficiary withdrew 30 000 and has 3 000 more in flight when member 1's payment is
+ * reversed: a CLAWBACK makes them owe what they no longer hold; cash stays below what is reserved
+ * until they pay (a warning, not a problem).
+ */
+export function correctionsExport(): LedgerExport {
+  const { draw, entries: base } = round1();
+  const entries = [
+    ...base,
+    ...withdrawal(7, draw.order[0]!, 30_000),
+    ...withdrawal(9, draw.order[0]!, 3_000, true),
+  ];
+  const before = seal(entries);
+  const target = before[1]!;
+  const corrections = planReversalCorrections({ original: target, ledger: before }).map((c, i) => ({
+    ...entry(10 + i, c.type, { postings: c.postings, metadata: c.metadata }, c.membershipId),
+  }));
+  const reversal = {
+    ...entry(10 + corrections.length, 'REVERSAL', reversalPostings(target.postings)),
+    refType: 'LEDGER_TRANSACTION',
+    refId: target.id,
+    metadata: { reversesSeq: target.seq },
+  };
+  return exportOf(draw, seal([...entries, ...corrections, reversal]));
+}
+
+/** D22.1: the payout withdrawn, then reversed by the operator and refunded in full. */
+export function refundExport(): LedgerExport {
+  const { draw, entries } = round1();
+  const paid = withdrawal(7, draw.order[0]!, 39_136);
+  const refund = disbursementRefundedPostings({
+    sent: paid[0]!,
+    completed: paid[1]!,
+    completedSeq: 8,
+    feeKept: 0,
+  });
+  return exportOf(
+    draw,
+    seal([...entries, ...paid, entry(9, 'DISBURSEMENT_REFUNDED', refund, paid[0]!.membershipId)]),
   );
-  const transactions: LedgerTransaction[] = [];
-  for (const e of entries) {
-    transactions.push(
-      sealTransaction({ groupId: GROUP_ID, previous: transactions.at(-1) ?? null, entry: e }),
-    );
-  }
+}
+
+/** H1: a loan sent while nothing is available for loans (everything is reserved). */
+export function lendingExport(): LedgerExport {
+  const { draw, entries } = round1();
+  const loan = loanSentPostings({
+    operationId: 'l9',
+    membershipId: 'M2',
+    principal: 1_000,
+    interest: 100,
+    feeEstimated: 500,
+  });
+  return exportOf(
+    draw,
+    seal([
+      ...entries,
+      ...withdrawal(7, draw.order[0]!, 39_136),
+      entry(9, 'DISBURSEMENT_SENT', loan, 'M2'),
+    ]),
+  );
+}
+
+function exportOf(
+  draw: ReturnType<typeof cycleStartedEvent>,
+  transactions: LedgerTransaction[],
+): LedgerExport {
   const last = transactions.at(-1)!;
   return {
     format: LEDGER_EXPORT_FORMAT,

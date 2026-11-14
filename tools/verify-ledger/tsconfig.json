@@ -6,5 +6,5 @@
       "@njangi/rules": ["../../packages/rules/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "vitest.config.ts"]
 }
