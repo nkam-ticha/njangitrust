@@ -27,7 +27,7 @@ export interface ProposalRule {
   excluded: 'NONE' | 'TARGET' | 'REQUESTER' | 'ADMIN' | 'FINED_MEMBER';
   /** ROTATION_CHANGE: every member whose position changes must also vote yes. */
   movedMembersMustApprove: boolean;
-  takesEffect: 'NEXT_ROUND' | 'NEXT_ROUND_OR_CYCLE' | 'NEXT_CYCLE' | 'IMMEDIATELY' | 'SETTLEMENT';
+  takesEffect: 'NEXT_ROUND' | 'NEXT_CYCLE' | 'IMMEDIATELY' | 'SETTLEMENT';
   window: 'STANDARD' | 'SOLIDARITY';
 }
 
@@ -44,8 +44,8 @@ const rule = (
 
 /** R11.1: the proposal table. */
 export const PROPOSAL_RULES: Readonly<Record<ProposalType, ProposalRule>> = {
-  // Next round; rotation mode, frequency and payout time from the next cycle (ruleChangeTakesEffect).
-  RULE_CHANGE: rule({ threshold: 'TWO_THIRDS', takesEffect: 'NEXT_ROUND_OR_CYCLE' }),
+  // D13.1: every parameter from the next round, rotation mode and frequency included.
+  RULE_CHANGE: rule({ threshold: 'TWO_THIRDS', takesEffect: 'NEXT_ROUND' }),
   // The invite is created at once; the new member is active from the next cycle (R12.1).
   MEMBER_ADD: rule({ threshold: 'MAJORITY', takesEffect: 'NEXT_CYCLE' }),
   MEMBER_REMOVE: rule({
