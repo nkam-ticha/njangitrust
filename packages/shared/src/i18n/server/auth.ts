@@ -74,6 +74,14 @@ export const authErrorTexts = {
     fr: 'Tu ne peux pas confirmer cette demande. Seul l’admin du groupe le peut, ou, pour l’admin, deux autres membres actifs.',
     en: 'You cannot confirm this request. Only the group admin can, or, for the admin, two other active members.',
   },
+  PIN_RESET_LINK_NOT_YET: {
+    fr: 'Par sécurité, ce lien ne marche qu’à partir du {{date}}. Reviens à ce moment-là.',
+    en: 'For security, this link only works from {{date}}. Come back then.',
+  },
+  PIN_RESET_NONE_PENDING: {
+    fr: 'Aucune demande de nouveau code PIN n’est en cours pour ton compte.',
+    en: 'There is no new PIN request in progress for your account.',
+  },
   PIN_RESET_ALREADY_CONFIRMED: {
     fr: 'Tu as déjà confirmé cette demande. Il faut maintenant la confirmation d’un autre membre.',
     en: 'You already confirmed this request. Another member must now confirm it too.',
@@ -104,10 +112,30 @@ export const authTexts = {
     fr: 'Ton code PIN a été réinitialisé. Par sécurité, tes retraits sont suspendus pendant le délai de sécurité de chaque groupe.',
     en: 'Your PIN was reset. For security, your withdrawals are paused for each group’s security delay.',
   },
-  pinResetDeclinedTitle: { fr: 'Demande de nouveau code PIN refusée', en: 'New PIN request declined' },
+  pinResetOwnerRequestedTitle: { fr: 'Demande de nouveau code PIN', en: 'New PIN request' },
+  pinResetOwnerRequestedBody: {
+    fr: 'Quelqu’un a demandé un nouveau code PIN pour ton compte. Si ce n’est pas toi, annule la demande tout de suite.',
+    en: 'Someone asked for a new PIN for your account. If it wasn’t you, cancel the request right away.',
+  },
+  pinResetOwnerApprovedTitle: { fr: 'Nouveau code PIN confirmé', en: 'New PIN confirmed' },
+  pinResetOwnerApprovedBody: {
+    fr: 'La demande de nouveau code PIN pour ton compte a été confirmée. Le lien marchera à partir du {{date}}. Si ce n’est pas toi, annule la demande.',
+    en: 'The new PIN request for your account was confirmed. The link will work from {{date}}. If it wasn’t you, cancel the request.',
+  },
+  pinResetAutoCancelledTitle: {
+    fr: 'Demande de nouveau code PIN annulée',
+    en: 'New PIN request cancelled',
+  },
+  pinResetAutoCancelledBody: {
+    fr: 'Ton code PIN actuel vient d’être utilisé, donc la demande de nouveau code PIN pour ton compte est annulée. Si ce n’était pas toi, change ton code PIN tout de suite.',
+    en: 'Your current PIN was just used, so the request for a new PIN for your account is cancelled. If it wasn’t you, change your PIN right away.',
+  },
+  pinResetDeclinedTitle: {
+    fr: 'Demande de nouveau code PIN refusée',
+    en: 'New PIN request declined',
+  },
   pinResetDeclinedBody: {
     fr: 'Un membre de ton groupe n’a pas reconnu ta demande de nouveau code PIN. Si c’était bien toi, parle-lui puis fais une nouvelle demande.',
     en: 'A member of your group did not recognise your request for a new PIN. If it was you, talk to them, then ask again.',
   },
 } as const satisfies Record<string, Bilingual>;
-

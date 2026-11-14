@@ -86,6 +86,14 @@ export const groupErrorTexts = {
     fr: 'Ce lien d’invitation est lié à un autre numéro. Utilise le numéro que l’admin a invité.',
     en: 'This invite link is tied to another number. Use the number the admin invited.',
   },
+  CYCLE_START_UNAVAILABLE: {
+    fr: 'Le démarrage du cycle n’est pas encore disponible. Réessaie après la prochaine mise à jour.',
+    en: 'Starting the cycle is not available yet. Try again after the next update.',
+  },
+  CYCLE_ALREADY_STARTED: {
+    fr: 'Le premier cycle a déjà commencé.',
+    en: 'The first cycle has already started.',
+  },
   ALREADY_MEMBER: {
     fr: 'Tu fais déjà partie de ce groupe.',
     en: 'You are already a member of this group.',

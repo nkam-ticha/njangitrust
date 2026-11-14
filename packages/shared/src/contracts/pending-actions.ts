@@ -25,6 +25,8 @@ export const actionPreviewSchema = z.strictObject({
   lines: z.array(previewLineSchema),
   /** Bold total line; null when the action moves no money. */
   total: fcfaSchema.nullable(),
+  /** Label of the total line ("Pris sur ton solde", copy key confirmation.lines.fromBalance); null or absent: "Total". */
+  totalLabel: bilingualSchema.nullable().optional(),
   notes: z.array(bilingualSchema),
   /** Repeats the verb and amount: "Payer 11 000 FCFA". */
   confirmLabel: bilingualSchema,
@@ -43,10 +45,17 @@ export const pendingActionSchema = z.strictObject({
   requiresPin: z.boolean(),
   expiresAt: instantSchema,
   createdAt: instantSchema,
-  result: z.strictObject({ ref: z.string().nullable(), summary: bilingualSchema.nullable() }).nullable(),
+  result: z
+    .strictObject({ ref: z.string().nullable(), summary: bilingualSchema.nullable() })
+    .nullable(),
   /** `key` names the designer's card: confirmation.failed.<key> (`generic` when none fits). */
   failure: z
-    .strictObject({ code: z.string(), key: z.string(), messageFr: z.string(), messageEn: z.string() })
+    .strictObject({
+      code: z.string(),
+      key: z.string(),
+      messageFr: z.string(),
+      messageEn: z.string(),
+    })
     .nullable(),
 });
 export type PendingActionDto = z.infer<typeof pendingActionSchema>;
@@ -57,9 +66,33 @@ export const confirmActionRequestSchema = z.strictObject({ pin: pinSchema.option
 export type ConfirmActionRequest = z.infer<typeof confirmActionRequestSchema>;
 
 /** `data` is the action's one-time result (an invite link, ...), never stored by the server. */
+/**
+ * One-time result data of a confirmed action, by action type. Each shape is an allowlist built by
+ * the API's mapper (privacy-guard M4); a type without one returns null.
+ */
+export const actionResultDataSchema = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('INVITE_CREATE'),
+    inviteId: uuidSchema,
+    /** The one-time link to share; returned once, never stored. */
+    link: z.string(),
+    expiresAt: instantSchema,
+  }),
+  z.strictObject({
+    type: z.literal('PIN_RESET_APPROVE'),
+    approved: z.boolean(),
+    link: z.string().optional(),
+    /** D14: the link works only from this time (24 hours after approval)… */
+    linkUsableFrom: instantSchema.optional(),
+    /** …and for 30 minutes after that. */
+    linkExpiresAt: instantSchema.optional(),
+  }),
+]);
+export type ActionResultData = z.infer<typeof actionResultDataSchema>;
+
 export const confirmActionResponseSchema = z.strictObject({
   action: pendingActionSchema,
-  data: z.record(z.string(), z.unknown()).nullable(),
+  data: actionResultDataSchema.nullable(),
 });
 
 /** What creating an action returns to a screen or to an agent tool. */

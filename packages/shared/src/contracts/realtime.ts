@@ -34,7 +34,8 @@ export interface ServerToClientEvents {
 }
 
 /** Acknowledgement of a room request: joined, or a stable refusal code. */
-export type RoomAck = { ok: true } | { ok: false; code: 'GROUP_NOT_FOUND' | 'MEMBERSHIP_ENDED' | 'INVALID' };
+export type RoomAck =
+  { ok: true } | { ok: false; code: 'GROUP_NOT_FOUND' | 'MEMBERSHIP_ENDED' | 'INVALID' };
 
 export interface ClientToServerEvents {
   'group.join': (groupId: string, ack: (result: RoomAck) => void) => void;

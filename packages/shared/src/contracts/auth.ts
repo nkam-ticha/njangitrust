@@ -1,7 +1,14 @@
 // Authentication (spec 2.10, D1, D8). Mobile clients receive the refresh token in the body; web
 // clients get it as an httpOnly cookie scoped to /v1/auth and keep the access token in memory.
 import { z } from 'zod';
-import { instantSchema, languageSchema, nameSchema, phoneSchema, pinSchema, uuidSchema } from './common';
+import {
+  instantSchema,
+  languageSchema,
+  nameSchema,
+  phoneSchema,
+  pinSchema,
+  uuidSchema,
+} from './common';
 import { payableOperatorSchema, selfSchema } from './me';
 
 /** Version of the privacy notice a member accepts at sign-up (Part 7). */
@@ -38,7 +45,10 @@ export type PinChangeRequest = z.infer<typeof pinChangeRequestSchema>;
 export const pinResetRequestSchema = z.strictObject({ phone: phoneSchema });
 
 /** Completing a reset from the one-time link: the account's login phone and the new PIN. */
-export const pinResetCompleteRequestSchema = z.strictObject({ phone: phoneSchema, newPin: pinSchema });
+export const pinResetCompleteRequestSchema = z.strictObject({
+  phone: phoneSchema,
+  newPin: pinSchema,
+});
 export type PinResetCompleteRequest = z.infer<typeof pinResetCompleteRequestSchema>;
 
 export const sessionSchema = z.strictObject({
@@ -83,5 +93,7 @@ export const pinResetRequestListSchema = z.strictObject({
 export const pinResetApprovalResultSchema = z.strictObject({
   approved: z.boolean(),
   link: z.string().optional(),
+  /** D14: usable only from this time, 24 hours after approval. */
+  linkUsableFrom: instantSchema.optional(),
   linkExpiresAt: instantSchema.optional(),
 });

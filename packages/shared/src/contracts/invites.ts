@@ -1,6 +1,13 @@
 // Invitations (spec 2.10, R1.5, R1.6, R12.1): single use, 72 hours, tied to the invited phone.
 import { z } from 'zod';
-import { instantSchema, languageSchema, nameSchema, phoneSchema, pinSchema, uuidSchema } from './common';
+import {
+  instantSchema,
+  languageSchema,
+  nameSchema,
+  phoneSchema,
+  pinSchema,
+  uuidSchema,
+} from './common';
 import { payableOperatorSchema, selfSchema } from './me';
 import { groupSchema, myMembershipSchema, ruleSetSchema } from './groups';
 import { sessionSchema } from './auth';
