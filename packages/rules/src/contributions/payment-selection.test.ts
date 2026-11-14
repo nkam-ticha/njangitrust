@@ -86,41 +86,29 @@ describe('one payment for several obligations (R3.2, R3.6, spec 2.6)', () => {
         {
           kind: 'CONTRIBUTION',
           amount: 10_000,
-          creditorMembershipId: 'M7',
-          potRoundId: null,
-          tieOrder: 4,
+          roundId: 'r4',
+          creditorMembershipId: null,
           ref: 'c4',
         },
-        {
-          kind: 'SOLIDARITY',
-          amount: 1_000,
-          creditorMembershipId: null,
-          potRoundId: null,
-          tieOrder: 4,
-          ref: 's4',
-        },
-        {
-          kind: 'DEBT',
-          amount: 1_000,
-          creditorMembershipId: null,
-          potRoundId: null,
-          tieOrder: 4,
-          ref: 'f4',
-        },
+        { kind: 'SOLIDARITY', amount: 1_000, roundId: null, creditorMembershipId: null, ref: 's4' },
+        { kind: 'DEBT', amount: 1_000, roundId: null, creditorMembershipId: null, ref: 'f4' },
       ],
     });
   });
 
-  it('sends a bidding round’s contribution to its pot until the beneficiary is known', () => {
+  it('leaves the contribution’s creditor to be resolved when the payment is posted (R3.4)', () => {
     const open = ob('c5', 'CONTRIBUTION', 10_000, '2026-12-24T17:00:00.000Z', {
       roundId: 'r5',
       roundNumber: 5,
+      creditorMembershipId: 'M9',
     });
     const result = preparePayment({ payerMembershipId: 'M5', obligations: [open] });
-    expect(result.ok && result.parts[0]).toMatchObject({
+    expect(result.ok && result.parts[0]).toEqual({
       kind: 'CONTRIBUTION',
-      potRoundId: 'r5',
+      amount: 10_000,
+      roundId: 'r5',
       creditorMembershipId: null,
+      ref: 'c5',
     });
   });
 

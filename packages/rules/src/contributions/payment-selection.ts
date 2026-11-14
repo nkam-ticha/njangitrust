@@ -1,6 +1,12 @@
 // Choosing what to pay (R3.3) and turning obligations into one payment (R3.2, R3.6, spec 2.6).
 
-import type { PaymentPart, PaymentPartKind } from '../fees';
+import {
+  collectionFeeShares,
+  scheduleFee,
+  type FeeSchedule,
+  type PaymentPart,
+  type PaymentPartKind,
+} from '../fees';
 import { sumFcfa, type Fcfa } from '../money';
 import type { Refusal } from '../result';
 import { assertDate } from '../time';
@@ -19,11 +25,17 @@ export interface OpenObligation {
   status: ObligationStatus;
   /** Spec 2.6 rule 3: true while a PENDING PaymentIntent already covers it. */
   inPendingPayment: boolean;
+  /**
+   * L2: a LOAN_INSTALLMENT of a loan whose disbursement is still in flight (sent, not confirmed). It
+   * cannot be paid yet: if the send failed, the returned loan would leave the receivable below zero.
+   */
+  loanInFlight?: boolean;
 }
 
 const DEBT_KINDS: readonly ObligationKind[] = [
   'FINE',
   'BID',
+  'CORRECTION',
   'LOAN_INSTALLMENT',
   'SHORTFALL_SHARE',
 ];
@@ -33,10 +45,12 @@ const KIND_ORDER: readonly ObligationKind[] = [
   'SHORTFALL_SHARE',
   'BID',
   'FINE',
+  'CORRECTION',
   'LOAN_INSTALLMENT',
 ];
 
-const payable = (o: OpenObligation) => o.status === 'DUE' && !o.inPendingPayment;
+const payable = (o: OpenObligation) =>
+  o.status === 'DUE' && !o.inPendingPayment && o.loanInFlight !== true;
 
 function oldestFirst(a: OpenObligation, b: OpenObligation): number {
   const byDate = a.dueAt.getTime() - b.dueAt.getTime();
@@ -46,7 +60,8 @@ function oldestFirst(a: OpenObligation, b: OpenObligation): number {
 /**
  * R3.3, R3.6: the round the confirmation card proposes first, the oldest one the member still owes,
  * with its contribution and solidarity; optionally with the member's due debts (never an
- * installment not yet due). Null when nothing is owed. The member can change the choice.
+ * installment not yet due, nor one of a loan still in flight, L2). Null when nothing is owed. The
+ * member can change the choice.
  */
 export function proposeRoundToPay(
   obligations: readonly OpenObligation[],
@@ -89,19 +104,57 @@ function partKind(kind: ObligationKind): PaymentPartKind {
   }
 }
 
+/** Most rounds of the D22.2 surcharge search before giving up (a sane fee schedule needs 2 or 3). */
+const MAX_SURCHARGE_ROUNDS = 64;
+
+/**
+ * D22.2: the fee each correction part's payer adds so that, at the schedule's fee for the whole card,
+ * the part's R4.2 share is covered: start at 0, raise each surcharge to its share of the fee on the
+ * card that includes the surcharges, until no share is above what is charged.
+ */
+function correctionSurcharges(parts: PaymentPart[], corrections: number[], schedule: FeeSchedule) {
+  const charged = parts.map(() => 0);
+  for (let round = 0; round < MAX_SURCHARGE_ROUNDS; round++) {
+    const amounts = parts.map((p, i) => ({ ...p, amount: p.amount + charged[i]! }));
+    const total = sumFcfa(amounts.map((p) => p.amount));
+    const fee = scheduleFee(schedule, 'COLLECTION', total);
+    if (fee > total) {
+      // A tiny debt below the fee: the card must at least carry the fee itself.
+      const first = corrections[0]!;
+      charged[first] = charged[first]! + fee - total;
+      continue;
+    }
+    const shares = collectionFeeShares(amounts, fee);
+    let raised = false;
+    for (const i of corrections) {
+      if (shares[i]! > charged[i]!) {
+        charged[i] = shares[i]!;
+        raised = true;
+      }
+    }
+    if (!raised) return charged;
+  }
+  throw new RangeError('the fee schedule gives no stable fee for this payment');
+}
+
 /**
  * R3.2, R3.6, spec 2.6 rule 3: checks the obligations a member wants to pay in one Mobile Money
  * request and returns the exact total and the payment parts (for the fee split and the ledger).
- * A bidding round's contribution goes to the round pot while its beneficiary is unknown.
+ * A contribution keeps only its round: its beneficiary or pot is resolved when the payment is
+ * posted (resolvePaymentParts, R3.4). D22.2: a CORRECTION debt's payer bears its collection fee: its
+ * part is the debt plus its share of the schedule fee (`feeCharged`), so `feeSchedule` is required
+ * then; other debts keep R4.2. L2: an installment of a loan still in flight is refused.
  */
 export function preparePayment(input: {
   payerMembershipId: string;
   obligations: readonly OpenObligation[];
+  /** D22.2: the collection fee schedule, needed to price a CORRECTION debt. */
+  feeSchedule?: FeeSchedule;
 }):
   | { ok: true; total: Fcfa; parts: PaymentPart[] }
   | Refusal<'NOTHING_TO_PAY'>
   | Refusal<
-      'DUPLICATE_OBLIGATION' | 'NOT_YOUR_OBLIGATION' | 'PAYMENT_ALREADY_PENDING',
+      'DUPLICATE_OBLIGATION' | 'NOT_YOUR_OBLIGATION' | 'PAYMENT_ALREADY_PENDING' | 'LOAN_IN_FLIGHT',
       { obligationId: string }
     >
   | Refusal<'OBLIGATION_NOT_DUE', { obligationId: string; status: ObligationStatus }> {
@@ -117,17 +170,31 @@ export function preparePayment(input: {
       return { ok: false, code: 'OBLIGATION_NOT_DUE', obligationId: o.id, status: o.status };
     if (o.inPendingPayment)
       return { ok: false, code: 'PAYMENT_ALREADY_PENDING', obligationId: o.id };
+    if (o.loanInFlight === true) return { ok: false, code: 'LOAN_IN_FLIGHT', obligationId: o.id };
   }
   const parts: PaymentPart[] = input.obligations.map((o) => {
-    const toPot = o.kind === 'CONTRIBUTION' && !o.creditorMembershipId;
+    const kind = partKind(o.kind);
     return {
-      kind: partKind(o.kind),
+      kind,
       amount: o.amount,
-      creditorMembershipId: toPot ? null : o.creditorMembershipId,
-      potRoundId: toPot ? o.roundId : null,
-      tieOrder: o.roundNumber ?? 0,
+      roundId: kind === 'CONTRIBUTION' ? o.roundId : null,
+      creditorMembershipId: kind === 'SHORTFALL' ? o.creditorMembershipId : null,
       ref: o.id,
     };
   });
+  const corrections = input.obligations.flatMap((o, i) => (o.kind === 'CORRECTION' ? [i] : []));
+  if (corrections.length > 0) {
+    if (!input.feeSchedule)
+      throw new RangeError('a correction debt needs the fee schedule (D22.2)');
+    const charged = correctionSurcharges(parts, corrections, input.feeSchedule);
+    for (const i of corrections) {
+      if (charged[i]! > 0)
+        parts[i] = {
+          ...parts[i]!,
+          amount: parts[i]!.amount + charged[i]!,
+          feeCharged: charged[i]!,
+        };
+    }
+  }
   return { ok: true, total: sumFcfa(parts.map((p) => p.amount)), parts };
 }

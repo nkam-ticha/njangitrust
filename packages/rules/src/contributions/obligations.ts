@@ -5,7 +5,14 @@ import { assertDate } from '../time';
 
 /** Spec 2.4 Obligation.kind. */
 export type ObligationKind =
-  'CONTRIBUTION' | 'SOLIDARITY' | 'FINE' | 'LOAN_INSTALLMENT' | 'BID' | 'SHORTFALL_SHARE';
+  | 'CONTRIBUTION'
+  | 'SOLIDARITY'
+  | 'FINE'
+  | 'LOAN_INSTALLMENT'
+  | 'BID'
+  | 'SHORTFALL_SHARE'
+  /** D15: what a bid winner owes after a pot payment was reversed (POT_CORRECTION). */
+  | 'CORRECTION';
 
 /** Spec 2.4 Obligation.status. */
 export type ObligationStatus = 'DUE' | 'PAID' | 'SETTLED' | 'CANCELLED';
