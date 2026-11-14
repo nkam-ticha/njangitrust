@@ -28,18 +28,29 @@ export function Chip({ label, onPress, selected = false, kind = 'context', disab
       radius={radius.full}
       accessibilityRole={kind === 'filter' ? 'checkbox' : 'button'}
       accessibilityLabel={kind === 'context' ? t('agent.chips.a11yLabel', { label }) : label}
-      accessibilityState={kind === 'filter' ? { checked: on, disabled: !!disabled } : { disabled: !!disabled }}
+      accessibilityState={
+        kind === 'filter' ? { checked: on, disabled: !!disabled } : { disabled: !!disabled }
+      }
       hitSlop={4}
       style={styles.touch}
     >
       <View
         style={[
           styles.chip,
-          { borderColor: on ? colors.primary : colors.outline, backgroundColor: on ? colors.primary : 'transparent' },
+          {
+            borderColor: on ? colors.primary : colors.outline,
+            backgroundColor: on ? colors.primary : 'transparent',
+          },
         ]}
       >
         {on ? <Check size={16} color={colors.textOnPrimary} strokeWidth={2} /> : null}
-        <Txt variant="secondaryStrong" style={{ color: on ? colors.textOnPrimary : disabled ? colors.textSecondary : colors.textLink }} numberOfLines={1}>
+        <Txt
+          variant="secondaryStrong"
+          style={{
+            color: on ? colors.textOnPrimary : disabled ? colors.textSecondary : colors.textLink,
+          }}
+          numberOfLines={1}
+        >
           {label}
         </Txt>
       </View>
@@ -78,5 +89,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  row: { paddingHorizontal: space.s4, paddingVertical: space.s1, gap: space.s2, alignItems: 'center' },
+  row: {
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s1,
+    gap: space.s2,
+    alignItems: 'center',
+  },
 });

@@ -14,24 +14,58 @@ interface PickerFieldProps {
   onPress: () => void;
 }
 
-export function PickerField({ label, value, placeholder, helper, error, onPress }: PickerFieldProps) {
+export function PickerField({
+  label,
+  value,
+  placeholder,
+  helper,
+  error,
+  onPress,
+}: PickerFieldProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.wrap}>
       <Txt variant="secondaryStrong">{label}</Txt>
-      <Touchable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}, ${value ?? placeholder ?? ''}`} accessibilityHint={error ?? helper}>
-        <View style={[styles.field, { borderColor: error ? colors.statusLate : colors.outline, borderWidth: error ? 2 : 1 }]}>
-          <Txt color={value ? 'textPrimary' : 'textSecondary'} style={styles.flex}>{value ?? placeholder}</Txt>
+      <Touchable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}, ${value ?? placeholder ?? ''}`}
+        accessibilityHint={error ?? helper}
+      >
+        <View
+          style={[
+            styles.field,
+            { borderColor: error ? colors.statusLate : colors.outline, borderWidth: error ? 2 : 1 },
+          ]}
+        >
+          <Txt color={value ? 'textPrimary' : 'textSecondary'} style={styles.flex}>
+            {value ?? placeholder}
+          </Txt>
           <ChevronDown size={20} color={colors.iconSecondary} strokeWidth={2} />
         </View>
       </Touchable>
-      {error ? <Txt variant="secondary" color="textDanger">{error}</Txt> : helper ? <Txt variant="secondary" color="textSecondary">{helper}</Txt> : null}
+      {error ? (
+        <Txt variant="secondary" color="textDanger">
+          {error}
+        </Txt>
+      ) : helper ? (
+        <Txt variant="secondary" color="textSecondary">
+          {helper}
+        </Txt>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { gap: space.s2 },
-  field: { minHeight: 56, borderRadius: radius.group, paddingHorizontal: space.s4, flexDirection: 'row', alignItems: 'center', gap: space.s3 },
+  field: {
+    minHeight: 56,
+    borderRadius: radius.group,
+    paddingHorizontal: space.s4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s3,
+  },
   flex: { flex: 1 },
 });

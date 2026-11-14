@@ -18,7 +18,11 @@ interface TimeFieldProps {
   helper?: string;
 }
 
-const TIMES = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
+const TIMES = Array.from(
+  { length: 96 },
+  (_, i) =>
+    `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`,
+);
 const asInstant = (hhmm: string) => `2026-01-01T${hhmm}:00+01:00`;
 
 export function TimeField({ label, value, onChange, helper }: TimeFieldProps) {
@@ -27,7 +31,12 @@ export function TimeField({ label, value, onChange, helper }: TimeFieldProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <PickerField label={label} value={value ? formatClock(asInstant(value), lang) : null} helper={helper} onPress={() => setOpen(true)} />
+      <PickerField
+        label={label}
+        value={value ? formatClock(asInstant(value), lang) : null}
+        helper={helper}
+        onPress={() => setOpen(true)}
+      />
       <BottomSheet visible={open} onClose={() => setOpen(false)} title={label} dialogWidth={400}>
         {TIMES.map((time) => {
           const on = time === value;
@@ -42,7 +51,9 @@ export function TimeField({ label, value, onChange, helper }: TimeFieldProps) {
               accessibilityState={{ selected: on }}
             >
               <View style={[styles.row, on && { backgroundColor: colors.selectedTint }]}>
-                <Txt variant={on ? 'bodyStrong' : 'body'} style={styles.flex}>{formatClock(asInstant(time), lang)}</Txt>
+                <Txt variant={on ? 'bodyStrong' : 'body'} style={styles.flex}>
+                  {formatClock(asInstant(time), lang)}
+                </Txt>
                 {on ? <Check size={20} color={colors.iconActive} strokeWidth={2} /> : null}
               </View>
             </Touchable>
@@ -54,6 +65,12 @@ export function TimeField({ label, value, onChange, helper }: TimeFieldProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: size.touch, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.s3, borderRadius: 12 },
+  row: {
+    minHeight: size.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.s3,
+    borderRadius: 12,
+  },
   flex: { flex: 1 },
 });

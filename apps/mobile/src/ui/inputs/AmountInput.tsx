@@ -49,7 +49,10 @@ export function AmountInput({ label, value, onChange, min, max, helper, quick }:
         large
         value={value === null ? '' : figure(value)}
         onChangeText={(text) => {
-          const digits = text.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
+          const digits = text
+            .replace(/\D/g, '')
+            .replace(/^0+(?=\d)/, '')
+            .slice(0, 9);
           onChange(digits ? Number(digits) : null);
         }}
         keyboardType="number-pad"
@@ -57,12 +60,22 @@ export function AmountInput({ label, value, onChange, min, max, helper, quick }:
         placeholder="0"
         error={error}
         helper={helper}
-        suffix={<Txt variant="groupTitle" color="textSecondary">FCFA</Txt>}
+        suffix={
+          <Txt variant="groupTitle" color="textSecondary">
+            FCFA
+          </Txt>
+        }
       />
       {quick?.length ? (
         <ChipRow>
           {quick.map((q) => (
-            <Chip key={q.label} kind="filter" label={q.label} selected={value === q.amount} onPress={() => onChange(q.amount)} />
+            <Chip
+              key={q.label}
+              kind="filter"
+              label={q.label}
+              selected={value === q.amount}
+              onPress={() => onChange(q.amount)}
+            />
           ))}
         </ChipRow>
       ) : null}

@@ -25,7 +25,11 @@ export function NdopBand({ height = 32 }: NdopBandProps) {
   const s = height / 32;
   const id = `ndop-${height}`;
   return (
-    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ height, alignSelf: 'stretch' }}>
+    <View
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+      style={{ height, alignSelf: 'stretch' }}
+    >
       <Svg width="100%" height={height}>
         <Defs>
           <Pattern id={id} width={64 * s} height={height} patternUnits="userSpaceOnUse">
@@ -43,7 +47,12 @@ export function NdopBand({ height = 32 }: NdopBandProps) {
                   <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={1.3} />
                 ))}
               </G>
-              <Path d="M16 9.25 22.75 16 16 22.75 9.25 16Z" fill="none" stroke={colors.brandMotif} strokeWidth={1.5} />
+              <Path
+                d="M16 9.25 22.75 16 16 22.75 9.25 16Z"
+                fill="none"
+                stroke={colors.brandMotif}
+                strokeWidth={1.5}
+              />
               <Circle cx={48} cy={9.5} r={1.9} fill={colors.accentRaffia} />
             </G>
           </Pattern>

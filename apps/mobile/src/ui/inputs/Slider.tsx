@@ -1,7 +1,7 @@
 // Slider for the loan amount, built in-house with PanResponder (D4; DESIGN_SYSTEM.md 5.2).
 // Always paired with an AmountInput, so it is never the only way to set the value.
 // Screen readers: role adjustable, increment / decrement actions, value as words.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View, type AccessibilityActionEvent } from 'react-native';
 import { radius, useTheme } from '@/theme';
 import { amountLabel } from '../money/AmountText';
@@ -28,8 +28,12 @@ export function Slider({ value, min, max, step, onChange, accessibilityLabel }: 
 
   const startRatio = useRef(0);
   const latest = useRef({ width, min, max, onChange, snap });
-  latest.current = { width, min, max, onChange, snap };
-  const pan = useRef(
+  useEffect(() => {
+    latest.current = { width, min, max, onChange, snap };
+  });
+  // The PanResponder is created once; its callbacks read the refs on gestures, never during render.
+  /* eslint-disable react-hooks/refs */
+  const [pan] = useState(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: (e) => {
@@ -46,7 +50,8 @@ export function Slider({ value, min, max, step, onChange, accessibilityLabel }: 
         set(snapTo(lo + r * (hi - lo)));
       },
     }),
-  ).current;
+  );
+  /* eslint-enable react-hooks/refs */
 
   const onAction = (e: AccessibilityActionEvent) => {
     if (e.nativeEvent.actionName === 'increment') onChange(snap(value + stepFor(value)));
@@ -66,11 +71,20 @@ export function Slider({ value, min, max, step, onChange, accessibilityLabel }: 
       {...pan.panHandlers}
     >
       <View pointerEvents="none" style={[styles.track, { backgroundColor: colors.outline }]}>
-        <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.primary }]} />
+        <View
+          style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: colors.primary }]}
+        />
       </View>
       <View
         pointerEvents="none"
-        style={[styles.thumb, { left: Math.max(0, ratio * width - 12), backgroundColor: colors.primary, borderColor: colors.canvas }]}
+        style={[
+          styles.thumb,
+          {
+            left: Math.max(0, ratio * width - 12),
+            backgroundColor: colors.primary,
+            borderColor: colors.canvas,
+          },
+        ]}
       />
     </View>
   );
@@ -80,5 +94,12 @@ const styles = StyleSheet.create({
   hit: { height: 48, justifyContent: 'center', cursor: 'pointer' },
   track: { height: 4, borderRadius: radius.full, overflow: 'hidden' },
   fill: { height: 4 },
-  thumb: { position: 'absolute', width: 24, height: 24, borderRadius: radius.full, borderWidth: 2, top: 12 },
+  thumb: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderRadius: radius.full,
+    borderWidth: 2,
+    top: 12,
+  },
 });

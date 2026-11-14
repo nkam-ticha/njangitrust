@@ -19,19 +19,35 @@ interface DailyCheckStripProps {
   onPress: () => void;
 }
 
-export function DailyCheckStrip({ status, time = '06:00', lastDate = '', onPress }: DailyCheckStripProps) {
+export function DailyCheckStrip({
+  status,
+  time = '06:00',
+  lastDate = '',
+  onPress,
+}: DailyCheckStripProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
 
   if (status === 'ALERT') {
-    const [first, ...rest] = [t('caisse.dailyCheck.alert', { time }), t('caisse.dailyCheck.sheet.alertBody')];
+    const [first, ...rest] = [
+      t('caisse.dailyCheck.alert', { time }),
+      t('caisse.dailyCheck.sheet.alertBody'),
+    ];
     return (
-      <View accessibilityRole="alert" style={[styles.alert, { backgroundColor: colors.dangerTint }]}>
+      <View
+        accessibilityRole="alert"
+        style={[styles.alert, { backgroundColor: colors.dangerTint }]}
+      >
         <ShieldAlert size={24} color={colors.statusLate} strokeWidth={2} />
         <View style={styles.flex}>
           <Txt variant="bodyStrong">{first}</Txt>
           <Txt variant="secondary">{rest.join(' ')}</Txt>
-          <Button variant="text" label={t('caisse.dailyCheck.details')} onPress={onPress} style={styles.alertBtn} />
+          <Button
+            variant="text"
+            label={t('caisse.dailyCheck.details')}
+            onPress={onPress}
+            style={styles.alertBtn}
+          />
         </View>
       </View>
     );
@@ -46,13 +62,32 @@ export function DailyCheckStrip({ status, time = '06:00', lastDate = '', onPress
           ? t('caisse.dailyCheck.stale', { date: lastDate })
           : t('caisse.dailyCheck.notYet');
   const icon =
-    status === 'OK' ? <ShieldCheck size={20} color={colors.statusPaid} strokeWidth={2} /> : <Clock size={20} color={status === 'WARNING' ? colors.statusPending : colors.iconSecondary} strokeWidth={2} />;
+    status === 'OK' ? (
+      <ShieldCheck size={20} color={colors.statusPaid} strokeWidth={2} />
+    ) : (
+      <Clock
+        size={20}
+        color={status === 'WARNING' ? colors.statusPending : colors.iconSecondary}
+        strokeWidth={2}
+      />
+    );
 
   return (
-    <Touchable onPress={onPress} radius={0} accessibilityRole="button" accessibilityLabel={status === 'OK' ? t('caisse.dailyCheck.a11yOk', { time }) : text}>
+    <Touchable
+      onPress={onPress}
+      radius={0}
+      accessibilityRole="button"
+      accessibilityLabel={status === 'OK' ? t('caisse.dailyCheck.a11yOk', { time }) : text}
+    >
       <View style={styles.row}>
         {icon}
-        <Txt variant="secondary" color={status === 'WARNING' ? 'textPrimary' : 'textSecondary'} style={styles.flex}>{text}</Txt>
+        <Txt
+          variant="secondary"
+          color={status === 'WARNING' ? 'textPrimary' : 'textSecondary'}
+          style={styles.flex}
+        >
+          {text}
+        </Txt>
         <ChevronRight size={20} color={colors.iconSecondary} strokeWidth={2} />
       </View>
     </Touchable>
@@ -60,8 +95,21 @@ export function DailyCheckStrip({ status, time = '06:00', lastDate = '', onPress
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: size.touch, flexDirection: 'row', alignItems: 'center', gap: space.s2, paddingHorizontal: space.s4, paddingVertical: space.s2 },
-  alert: { borderRadius: radius.group, marginHorizontal: space.s4, padding: space.s4, flexDirection: 'row', gap: space.s3 },
+  row: {
+    minHeight: size.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s2,
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s2,
+  },
+  alert: {
+    borderRadius: radius.group,
+    marginHorizontal: space.s4,
+    padding: space.s4,
+    flexDirection: 'row',
+    gap: space.s3,
+  },
   alertBtn: { marginLeft: -space.s3 },
   flex: { flex: 1 },
 });

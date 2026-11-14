@@ -3,8 +3,16 @@
 // - hover (web, pointer): a lighter layer;
 // - keyboard focus-visible: a 2 px focus ring with a 2 px gap, following the radius;
 // - cursor: pointer when enabled.
-import { useRef, useState, type ReactNode } from 'react';
-import { Animated, Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import {
+  Animated,
+  Pressable,
+  StyleSheet,
+  View,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { duration, useTheme } from '@/theme';
 import { isKeyboardModality } from './focusVisible';
 
@@ -42,7 +50,7 @@ export function Touchable({
   const [pressed, setPressed] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const layer = useRef(new Animated.Value(0)).current;
+  const layer = useState(() => new Animated.Value(0))[0];
   const pressColor = pressedLayer === undefined ? colors.selectedTint : pressedLayer;
   const hoverColor = hoverLayer === undefined ? colors.hoverLayer : hoverLayer;
 
@@ -58,7 +66,11 @@ export function Touchable({
       }}
       onPressOut={(e) => {
         setPressed(false);
-        Animated.timing(layer, { toValue: 0, duration: duration.pressOut, useNativeDriver: true }).start();
+        Animated.timing(layer, {
+          toValue: 0,
+          duration: duration.pressOut,
+          useNativeDriver: true,
+        }).start();
         onPressOut?.(e);
       }}
       onHoverIn={(e) => {
@@ -81,12 +93,18 @@ export function Touchable({
     >
       {typeof children === 'function' ? children({ pressed, hovered }) : children}
       {hovered && !disabled && hoverColor ? (
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, backgroundColor: hoverColor }]} />
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { borderRadius: radius, backgroundColor: hoverColor }]}
+        />
       ) : null}
       {pressColor ? (
         <Animated.View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { borderRadius: radius, backgroundColor: pressColor, opacity: layer }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { borderRadius: radius, backgroundColor: pressColor, opacity: layer },
+          ]}
         />
       ) : null}
       {focused ? (

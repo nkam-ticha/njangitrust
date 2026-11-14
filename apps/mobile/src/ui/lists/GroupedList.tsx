@@ -21,5 +21,10 @@ export function GroupedList({ children, style }: GroupedListProps) {
 }
 
 const styles = StyleSheet.create({
-  box: { borderWidth: 1, borderRadius: radius.group, overflow: 'hidden', marginHorizontal: space.s4 },
+  box: {
+    borderWidth: 1,
+    borderRadius: radius.group,
+    overflow: 'hidden',
+    marginHorizontal: space.s4,
+  },
 });

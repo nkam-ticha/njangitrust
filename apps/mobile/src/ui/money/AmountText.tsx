@@ -37,12 +37,24 @@ export interface AmountTextProps {
 }
 
 /** Spoken form with an explicit sign for signed amounts. */
-export function amountLabel(amount: number, lang: 'fr' | 'en', sign: 'auto' | 'always' = 'auto'): string {
+export function amountLabel(
+  amount: number,
+  lang: 'fr' | 'en',
+  sign: 'auto' | 'always' = 'auto',
+): string {
   const words = amountToWords(amount, lang);
   return sign === 'always' && amount > 0 ? `plus ${words}` : words;
 }
 
-export function AmountText({ amount, size = 'body', sign = 'auto', currency = 'suffix', tone = 'primary', align = 'right', style }: AmountTextProps) {
+export function AmountText({
+  amount,
+  size = 'body',
+  sign = 'auto',
+  currency = 'suffix',
+  tone = 'primary',
+  align = 'right',
+  style,
+}: AmountTextProps) {
   const { colors } = useTheme();
   const lang = useLang();
   const full = formatXAF(amount, lang, { sign });
@@ -54,11 +66,23 @@ export function AmountText({ amount, size = 'body', sign = 'auto', currency = 's
       accessible
       accessibilityLabel={amountLabel(amount, lang, sign)}
       numberOfLines={1}
-      style={[figureStyle, { color: tone === 'secondary' ? colors.textSecondary : colors.textPrimary, textAlign: align }, style]}
+      style={[
+        figureStyle,
+        {
+          color: tone === 'secondary' ? colors.textSecondary : colors.textPrimary,
+          textAlign: align,
+        },
+        style,
+      ]}
     >
       {figure}
       {currency === 'suffix' ? (
-        <Text style={[{ fontFamily: figureStyle.fontFamily, color: colors.textSecondary }, SUFFIX_SIZE[size]]}>
+        <Text
+          style={[
+            { fontFamily: figureStyle.fontFamily, color: colors.textSecondary },
+            SUFFIX_SIZE[size],
+          ]}
+        >
           {full.slice(cut)}
         </Text>
       ) : null}

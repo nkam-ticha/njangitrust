@@ -30,8 +30,16 @@ export function CountBadge({ count, style }: CountBadgeProps) {
   const { colors } = useTheme();
   if (count <= 0) return null;
   return (
-    <View importantForAccessibility="no" accessibilityElementsHidden style={[styles.count, { backgroundColor: colors.primary }, style]}>
-      <Txt variant="captionStrong" style={{ color: colors.textOnPrimary }} maxFontSizeMultiplier={1.5}>
+    <View
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+      style={[styles.count, { backgroundColor: colors.primary }, style]}
+    >
+      <Txt
+        variant="captionStrong"
+        style={{ color: colors.textOnPrimary }}
+        maxFontSizeMultiplier={1.5}
+      >
         {count > 99 ? '99+' : String(count)}
       </Txt>
     </View>
@@ -40,7 +48,12 @@ export function CountBadge({ count, style }: CountBadgeProps) {
 
 export function DotBadge({ style }: { style?: StyleProp<ViewStyle> }) {
   const { colors } = useTheme();
-  return <View importantForAccessibility="no" style={[styles.dot, { backgroundColor: colors.primary }, style]} />;
+  return (
+    <View
+      importantForAccessibility="no"
+      style={[styles.dot, { backgroundColor: colors.primary }, style]}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

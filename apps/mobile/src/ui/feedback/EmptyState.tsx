@@ -18,14 +18,29 @@ export function EmptyState({ icon: Glyph, title, body, actionLabel, onAction }: 
   return (
     <View style={styles.wrap}>
       <Glyph size={32} color={colors.iconSecondary} strokeWidth={2} />
-      <Txt variant="sectionTitle" align="center">{title}</Txt>
-      {body ? <Txt color="textSecondary" align="center">{body}</Txt> : null}
-      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} style={styles.btn} /> : null}
+      <Txt variant="sectionTitle" align="center">
+        {title}
+      </Txt>
+      {body ? (
+        <Txt color="textSecondary" align="center">
+          {body}
+        </Txt>
+      ) : null}
+      {actionLabel && onAction ? (
+        <Button label={actionLabel} onPress={onAction} style={styles.btn} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', gap: space.s2, paddingHorizontal: space.s6, paddingTop: space.s10, maxWidth: 320 + space.s12, alignSelf: 'center' },
+  wrap: {
+    alignItems: 'center',
+    gap: space.s2,
+    paddingHorizontal: space.s6,
+    paddingTop: space.s10,
+    maxWidth: 320 + space.s12,
+    alignSelf: 'center',
+  },
   btn: { alignSelf: 'center', marginTop: space.s2 },
 });

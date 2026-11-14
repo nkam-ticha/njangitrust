@@ -67,12 +67,27 @@ export interface LedgerRowProps {
   divider?: boolean;
 }
 
-export function LedgerRow({ seq, type, description, when, cashAmount, amount = null, operatorRef, onPress, selected, divider }: LedgerRowProps) {
+export function LedgerRow({
+  seq,
+  type,
+  description,
+  when,
+  cashAmount,
+  amount = null,
+  operatorRef,
+  onPress,
+  selected,
+  divider,
+}: LedgerRowProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const lang = useLang();
   const Glyph = ICONS[type];
-  const ref = operatorRef ? (operatorRef.length > 10 ? `${operatorRef.slice(0, 10)}…` : operatorRef) : null;
+  const ref = operatorRef
+    ? operatorRef.length > 10
+      ? `${operatorRef.slice(0, 10)}…`
+      : operatorRef
+    : null;
   const subtitle = [when, t('caisse.ledger.shortRef', { seq }), ref].filter(Boolean).join(' · ');
   const shown = cashAmount ?? amount;
   const label = t('caisse.ledger.rowA11y', {
@@ -83,7 +98,14 @@ export function LedgerRow({ seq, type, description, when, cashAmount, amount = n
   });
 
   return (
-    <Touchable onPress={onPress} disabled={!onPress} radius={0} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: !!selected }}>
+    <Touchable
+      onPress={onPress}
+      disabled={!onPress}
+      radius={0}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!selected }}
+    >
       <View style={[styles.row, selected && { backgroundColor: colors.selectedTint }]}>
         {divider ? <View style={[styles.divider, { backgroundColor: colors.divider }]} /> : null}
         <View style={[styles.icon, { backgroundColor: colors.surfaceTint }]}>
@@ -91,17 +113,42 @@ export function LedgerRow({ seq, type, description, when, cashAmount, amount = n
         </View>
         <View style={styles.text}>
           <Txt numberOfLines={2}>{description}</Txt>
-          <Txt variant="secondary" color="textSecondary">{subtitle}</Txt>
+          <Txt variant="secondary" color="textSecondary">
+            {subtitle}
+          </Txt>
         </View>
-        {cashAmount !== null ? <AmountText amount={cashAmount} sign="always" /> : amount !== null ? <AmountText amount={amount} tone="secondary" /> : null}
+        {cashAmount !== null ? (
+          <AmountText amount={cashAmount} sign="always" />
+        ) : amount !== null ? (
+          <AmountText amount={amount} tone="secondary" />
+        ) : null}
       </View>
     </Touchable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: size.rowTwoLine, flexDirection: 'row', alignItems: 'flex-start', gap: space.s3, paddingHorizontal: space.s4, paddingVertical: space.s3 },
-  divider: { position: 'absolute', top: 0, right: 0, left: space.s4 + size.avatar + space.s3, height: 1 },
-  icon: { width: size.avatar, height: size.avatar, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
+  row: {
+    minHeight: size.rowTwoLine,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: space.s3,
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s3,
+  },
+  divider: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    left: space.s4 + size.avatar + space.s3,
+    height: 1,
+  },
+  icon: {
+    width: size.avatar,
+    height: size.avatar,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   text: { flex: 1, minWidth: 0 },
 });

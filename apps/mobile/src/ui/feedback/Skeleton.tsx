@@ -27,10 +27,22 @@ export function SkeletonRows({ rows = 5, delayMs = 300 }: SkeletonRowsProps) {
         <View key={i} style={styles.row}>
           <View style={[styles.circle, { backgroundColor: colors.surfaceTint }]} />
           <View style={styles.lines}>
-            <View style={[styles.bar, { width: '62%', height: 12, backgroundColor: colors.surfaceTint }]} />
-            <View style={[styles.bar, { width: '38%', height: 10, backgroundColor: colors.surfaceTint }]} />
+            <View
+              style={[
+                styles.bar,
+                { width: '62%', height: 12, backgroundColor: colors.surfaceTint },
+              ]}
+            />
+            <View
+              style={[
+                styles.bar,
+                { width: '38%', height: 10, backgroundColor: colors.surfaceTint },
+              ]}
+            />
           </View>
-          <View style={[styles.bar, { width: 64, height: 12, backgroundColor: colors.surfaceTint }]} />
+          <View
+            style={[styles.bar, { width: 64, height: 12, backgroundColor: colors.surfaceTint }]}
+          />
         </View>
       ))}
     </View>
@@ -38,7 +50,13 @@ export function SkeletonRows({ rows = 5, delayMs = 300 }: SkeletonRowsProps) {
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: size.rowMin, flexDirection: 'row', alignItems: 'center', gap: space.s3, paddingHorizontal: space.s4 },
+  row: {
+    minHeight: size.rowMin,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s3,
+    paddingHorizontal: space.s4,
+  },
   circle: { width: size.avatar, height: size.avatar, borderRadius: radius.full },
   lines: { flex: 1, gap: space.s2 },
   bar: { borderRadius: radius.full },

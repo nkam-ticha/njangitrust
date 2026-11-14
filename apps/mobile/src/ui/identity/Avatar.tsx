@@ -28,7 +28,12 @@ export function initials(name: string): string {
 
 export function Avatar({ name = '', size = 40, agent, beneficiary }: AvatarProps) {
   const { colors } = useTheme();
-  const text = size === 56 ? typography.groupTitle : size === 40 ? typography.bodyStrong : typography.captionStrong;
+  const text =
+    size === 56
+      ? typography.groupTitle
+      : size === 40
+        ? typography.bodyStrong
+        : typography.captionStrong;
   return (
     <View
       importantForAccessibility="no-hide-descendants"
@@ -39,13 +44,32 @@ export function Avatar({ name = '', size = 40, agent, beneficiary }: AvatarProps
         beneficiary && { borderWidth: 2, borderColor: colors.raffiaKeyline },
       ]}
     >
-      {agent ? <RingMark size={size === 32 ? 18 : 24} color={colors.iconActive} /> : <Txt style={[text, { color: colors.textLink }]}>{initials(name)}</Txt>}
-      {beneficiary ? <View style={[styles.dot, { backgroundColor: colors.accentRaffia, borderColor: colors.raffiaKeyline }]} /> : null}
+      {agent ? (
+        <RingMark size={size === 32 ? 18 : 24} color={colors.iconActive} />
+      ) : (
+        <Txt style={[text, { color: colors.textLink }]}>{initials(name)}</Txt>
+      )}
+      {beneficiary ? (
+        <View
+          style={[
+            styles.dot,
+            { backgroundColor: colors.accentRaffia, borderColor: colors.raffiaKeyline },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   base: { borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
-  dot: { position: 'absolute', top: -2, right: -2, width: 12, height: 12, borderRadius: radius.full, borderWidth: 1.5 },
+  dot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+  },
 });

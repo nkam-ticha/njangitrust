@@ -68,7 +68,11 @@ export function PinPad({ value, onChange, onComplete, error, disabled }: PinPadP
 
   return (
     <View style={styles.wrap}>
-      <View accessible accessibilityLabel={t('pinSheet.digitsA11y', { count: value.length })} style={styles.dots}>
+      <View
+        accessible
+        accessibilityLabel={t('pinSheet.digitsA11y', { count: value.length })}
+        style={styles.dots}
+      >
         {Array.from({ length: PIN_LENGTH }, (_, i) => {
           const filled = i < value.length;
           return (
@@ -76,7 +80,9 @@ export function PinPad({ value, onChange, onComplete, error, disabled }: PinPadP
               key={i}
               style={[
                 styles.dot,
-                { borderColor: error ? colors.statusLate : filled ? colors.primary : colors.outline },
+                {
+                  borderColor: error ? colors.statusLate : filled ? colors.primary : colors.outline,
+                },
                 filled && !error && { backgroundColor: colors.primary },
               ]}
             />
@@ -97,11 +103,18 @@ export function PinPad({ value, onChange, onComplete, error, disabled }: PinPadP
               accessibilityLabel={key === 'del' ? t('pinSheet.delete') : key}
               style={styles.key}
             >
-              <View style={[styles.keyInner, flash === key && { backgroundColor: colors.selectedTint }]}>
+              <View
+                style={[styles.keyInner, flash === key && { backgroundColor: colors.selectedTint }]}
+              >
                 {key === 'del' ? (
                   <Delete size={24} color={colors.iconPrimary} strokeWidth={2} />
                 ) : (
-                  <Txt style={[typography.bodyStrong, styles.digit]} maxFontSizeMultiplier={fontScaleCaps.pinDigit}>{key}</Txt>
+                  <Txt
+                    style={[typography.bodyStrong, styles.digit]}
+                    maxFontSizeMultiplier={fontScaleCaps.pinDigit}
+                  >
+                    {key}
+                  </Txt>
                 )}
               </View>
             </Touchable>
@@ -118,6 +131,12 @@ const styles = StyleSheet.create({
   dot: { width: 14, height: 14, borderRadius: radius.full, borderWidth: 1.5 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%', maxWidth: 288 },
   key: { width: '33.33%', height: 64, alignItems: 'center', justifyContent: 'center' },
-  keyInner: { width: 64, height: 64, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
+  keyInner: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   digit: { fontSize: 24, lineHeight: 30 },
 });

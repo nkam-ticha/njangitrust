@@ -25,7 +25,13 @@ export function AppHeader(props: AppHeaderProps) {
   if (props.kind === 'pushed') {
     return (
       <View style={[styles.bar, styles.pushed]}>
-        <Touchable onPress={props.onBack} radius={24} accessibilityRole="button" accessibilityLabel={t('nav.back')} style={styles.iconBtn}>
+        <Touchable
+          onPress={props.onBack}
+          radius={24}
+          accessibilityRole="button"
+          accessibilityLabel={t('nav.back')}
+          style={styles.iconBtn}
+        >
           <ArrowLeft size={24} color={colors.iconPrimary} strokeWidth={2} />
         </Touchable>
         <Txt variant="screenTitle" numberOfLines={2} accessibilityRole="header" style={styles.flex}>
@@ -35,7 +41,10 @@ export function AppHeader(props: AppHeaderProps) {
     );
   }
 
-  const bellLabel = props.unreadNotifications > 0 ? t('nav.bell.labelUnread', { count: props.unreadNotifications }) : t('nav.bell.label');
+  const bellLabel =
+    props.unreadNotifications > 0
+      ? t('nav.bell.labelUnread', { count: props.unreadNotifications })
+      : t('nav.bell.label');
   return (
     <View style={[styles.bar, styles.tab]}>
       <Touchable
@@ -45,11 +54,19 @@ export function AppHeader(props: AppHeaderProps) {
         style={styles.flexShrink}
       >
         <View style={styles.switcher}>
-          <Txt variant="groupTitle" numberOfLines={2} style={styles.flexShrink}>{props.groupName}</Txt>
+          <Txt variant="groupTitle" numberOfLines={2} style={styles.flexShrink}>
+            {props.groupName}
+          </Txt>
           <ChevronDown size={20} color={colors.iconSecondary} strokeWidth={2} />
         </View>
       </Touchable>
-      <Touchable onPress={props.onOpenNotifications} radius={24} accessibilityRole="button" accessibilityLabel={bellLabel} style={styles.iconBtn}>
+      <Touchable
+        onPress={props.onOpenNotifications}
+        radius={24}
+        accessibilityRole="button"
+        accessibilityLabel={bellLabel}
+        style={styles.iconBtn}
+      >
         <Bell size={24} color={colors.iconPrimary} strokeWidth={2} />
         <CountBadge count={props.unreadNotifications} style={styles.badge} />
       </Touchable>
@@ -59,10 +76,20 @@ export function AppHeader(props: AppHeaderProps) {
 
 const styles = StyleSheet.create({
   bar: { minHeight: size.header, flexDirection: 'row', alignItems: 'center' },
-  tab: { justifyContent: 'space-between', paddingLeft: space.s4, paddingRight: space.s1, gap: space.s2 },
+  tab: {
+    justifyContent: 'space-between',
+    paddingLeft: space.s4,
+    paddingRight: space.s1,
+    gap: space.s2,
+  },
   pushed: { paddingHorizontal: space.s1, gap: space.s1 },
   switcher: { minHeight: size.touch, flexDirection: 'row', alignItems: 'center', gap: space.s1 },
-  iconBtn: { width: size.touch, height: size.touch, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: {
+    width: size.touch,
+    height: size.touch,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badge: { position: 'absolute', top: 6, right: 4 },
   flex: { flex: 1 },
   flexShrink: { flexShrink: 1 },

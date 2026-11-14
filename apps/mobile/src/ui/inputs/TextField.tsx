@@ -18,7 +18,19 @@ export interface TextFieldProps extends Omit<TextInputProps, 'style' | 'placehol
   large?: boolean;
 }
 
-export function TextField({ label, helper, error, prefix, suffix, large, multiline, onFocus, onBlur, editable = true, ...rest }: TextFieldProps) {
+export function TextField({
+  label,
+  helper,
+  error,
+  prefix,
+  suffix,
+  large,
+  multiline,
+  onFocus,
+  onBlur,
+  editable = true,
+  ...rest
+}: TextFieldProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const border = error ? colors.statusLate : focused ? colors.primary : colors.outline;
@@ -29,7 +41,12 @@ export function TextField({ label, helper, error, prefix, suffix, large, multili
       <View
         style={[
           styles.field,
-          { borderColor: border, borderWidth: width, padding: space.s4 - width, backgroundColor: editable ? 'transparent' : colors.disabledFill },
+          {
+            borderColor: border,
+            borderWidth: width,
+            padding: space.s4 - width,
+            backgroundColor: editable ? 'transparent' : colors.disabledFill,
+          },
           multiline && styles.multi,
         ]}
       >
@@ -49,17 +66,26 @@ export function TextField({ label, helper, error, prefix, suffix, large, multili
             setFocused(false);
             onBlur?.(e);
           }}
-          style={[large ? typography.amountDisplay : typography.body, styles.input, { color: colors.textPrimary }, large && styles.right]}
+          style={[
+            large ? typography.amountDisplay : typography.body,
+            styles.input,
+            { color: colors.textPrimary },
+            large && styles.right,
+          ]}
         />
         {suffix}
       </View>
       {error ? (
         <View style={styles.msg} accessibilityLiveRegion="polite">
           <CircleAlert size={16} color={colors.statusLate} strokeWidth={2} />
-          <Txt variant="secondary" color="textDanger" style={styles.flex}>{error}</Txt>
+          <Txt variant="secondary" color="textDanger" style={styles.flex}>
+            {error}
+          </Txt>
         </View>
       ) : helper ? (
-        <Txt variant="secondary" color="textSecondary">{helper}</Txt>
+        <Txt variant="secondary" color="textSecondary">
+          {helper}
+        </Txt>
       ) : null}
     </View>
   );
@@ -67,7 +93,13 @@ export function TextField({ label, helper, error, prefix, suffix, large, multili
 
 const styles = StyleSheet.create({
   wrap: { gap: space.s2 },
-  field: { minHeight: 56, borderRadius: radius.group, flexDirection: 'row', alignItems: 'center', gap: space.s3 },
+  field: {
+    minHeight: 56,
+    borderRadius: radius.group,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s3,
+  },
   multi: { alignItems: 'flex-start', minHeight: 96 },
   input: { flex: 1, minWidth: 0, padding: 0, outlineWidth: 0 },
   right: { textAlign: 'right' },

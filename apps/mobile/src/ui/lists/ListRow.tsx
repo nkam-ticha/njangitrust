@@ -28,25 +28,44 @@ export interface ListRowProps {
   accessibilityLabel?: string;
 }
 
-export function ListRow({ title, titleWeight = 'strong', subtitle, leading, trailing, trailingNote, chevron, onPress, selected, divider, accessibilityLabel }: ListRowProps) {
+export function ListRow({
+  title,
+  titleWeight = 'strong',
+  subtitle,
+  leading,
+  trailing,
+  trailingNote,
+  chevron,
+  onPress,
+  selected,
+  divider,
+  accessibilityLabel,
+}: ListRowProps) {
   const { colors } = useTheme();
   const stacked = PixelRatio.getFontScale() >= fontScaleCaps.rowStack;
   const inset = leading ? space.s4 + size.avatar + space.s3 : space.s4;
 
-  const trailBlock = trailing || trailingNote ? (
-    <View style={[styles.trailing, stacked && styles.trailingStacked]}>
-      {trailing}
-      {trailingNote}
-    </View>
-  ) : null;
+  const trailBlock =
+    trailing || trailingNote ? (
+      <View style={[styles.trailing, stacked && styles.trailingStacked]}>
+        {trailing}
+        {trailingNote}
+      </View>
+    ) : null;
 
   const body = (
     <View style={[styles.row, selected && { backgroundColor: colors.selectedTint }]}>
-      {divider ? <View style={[styles.divider, { left: inset, backgroundColor: colors.divider }]} /> : null}
+      {divider ? (
+        <View style={[styles.divider, { left: inset, backgroundColor: colors.divider }]} />
+      ) : null}
       {leading ? <View style={styles.leading}>{leading}</View> : null}
       <View style={styles.text}>
         <Txt variant={titleWeight === 'strong' ? 'bodyStrong' : 'body'}>{title}</Txt>
-        {subtitle ? <Txt variant="secondary" color="textSecondary">{subtitle}</Txt> : null}
+        {subtitle ? (
+          <Txt variant="secondary" color="textSecondary">
+            {subtitle}
+          </Txt>
+        ) : null}
         {stacked ? trailBlock : null}
       </View>
       {stacked ? null : trailBlock}
@@ -62,7 +81,13 @@ export function ListRow({ title, titleWeight = 'strong', subtitle, leading, trai
     );
   }
   return (
-    <Touchable onPress={onPress} radius={0} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? title} accessibilityState={{ selected: !!selected }}>
+    <Touchable
+      onPress={onPress}
+      radius={0}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityState={{ selected: !!selected }}
+    >
       {body}
     </Touchable>
   );

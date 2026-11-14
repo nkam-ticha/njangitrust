@@ -54,11 +54,15 @@ export function InfoCard({ icon: Glyph, title, value, lines = [], actions }: Inf
     <View style={[styles.card, { borderColor: colors.divider }]}>
       <View style={styles.head}>
         <Glyph size={24} color={colors.iconPrimary} strokeWidth={2} />
-        <Txt variant="bodyStrong" style={styles.flex}>{title}</Txt>
+        <Txt variant="bodyStrong" style={styles.flex}>
+          {title}
+        </Txt>
       </View>
       {value}
       {lines.map((line, i) => (
-        <Txt key={i} variant="secondary" color="textSecondary">{line}</Txt>
+        <Txt key={i} variant="secondary" color="textSecondary">
+          {line}
+        </Txt>
       ))}
       <View style={styles.actions}>
         {actions.map((a) => (
@@ -70,7 +74,14 @@ export function InfoCard({ icon: Glyph, title, value, lines = [], actions }: Inf
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: radius.group, padding: space.s4, gap: space.s2, maxWidth: 440, width: '100%' },
+  card: {
+    borderWidth: 1,
+    borderRadius: radius.group,
+    padding: space.s4,
+    gap: space.s2,
+    maxWidth: 440,
+    width: '100%',
+  },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.s3 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s2, marginTop: space.s1 },
   flex: { flex: 1 },

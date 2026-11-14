@@ -18,7 +18,12 @@ interface BannerProps {
   icon?: IconComponent;
 }
 
-const ICONS: Record<BannerKind, IconComponent> = { offline: WifiOff, error: CircleAlert, info: Info, summary: ListChecks };
+const ICONS: Record<BannerKind, IconComponent> = {
+  offline: WifiOff,
+  error: CircleAlert,
+  info: Info,
+  summary: ListChecks,
+};
 
 export function Banner({ kind, text, actionLabel, onAction, icon }: BannerProps) {
   const { colors } = useTheme();
@@ -27,16 +32,34 @@ export function Banner({ kind, text, actionLabel, onAction, icon }: BannerProps)
     <View
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
-      style={[styles.bar, { backgroundColor: kind === 'error' ? colors.dangerTint : colors.surfaceTint }]}
+      style={[
+        styles.bar,
+        { backgroundColor: kind === 'error' ? colors.dangerTint : colors.surfaceTint },
+      ]}
     >
-      <Glyph size={20} color={kind === 'error' ? colors.statusLate : colors.iconPrimary} strokeWidth={2} />
-      <Txt variant="secondary" style={styles.flex}>{text}</Txt>
-      {actionLabel && onAction ? <Button variant="text" label={actionLabel} onPress={onAction} /> : null}
+      <Glyph
+        size={20}
+        color={kind === 'error' ? colors.statusLate : colors.iconPrimary}
+        strokeWidth={2}
+      />
+      <Txt variant="secondary" style={styles.flex}>
+        {text}
+      </Txt>
+      {actionLabel && onAction ? (
+        <Button variant="text" label={actionLabel} onPress={onAction} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: space.s2, paddingHorizontal: space.s4, paddingVertical: space.s1 },
+  bar: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s2,
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s1,
+  },
   flex: { flex: 1 },
 });

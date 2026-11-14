@@ -24,7 +24,18 @@ export interface ButtonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export function Button({ label, onPress, variant = 'primary', icon: Glyph, loading, disabled, offline, fullWidth, accessibilityHint, style }: ButtonProps) {
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  icon: Glyph,
+  loading,
+  disabled,
+  offline,
+  fullWidth,
+  accessibilityHint,
+  style,
+}: ButtonProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const inactive = !!disabled || !!offline;
@@ -38,7 +49,12 @@ export function Button({ label, onPress, variant = 'primary', icon: Glyph, loadi
       : variant === 'destructive'
         ? colors.danger
         : 'transparent';
-  const pressedFill = variant === 'primary' ? colors.primaryPressed : variant === 'destructive' ? colors.dangerPressed : null;
+  const pressedFill =
+    variant === 'primary'
+      ? colors.primaryPressed
+      : variant === 'destructive'
+        ? colors.dangerPressed
+        : null;
   const labelColor = inactive
     ? colors.textSecondary
     : variant === 'primary' || variant === 'destructive'
@@ -65,7 +81,8 @@ export function Button({ label, onPress, variant = 'primary', icon: Glyph, loadi
             styles.box,
             variant === 'text' ? styles.textPad : styles.pad,
             {
-              backgroundColor: !inactive && filled && (pressed || hovered) && pressedFill ? pressedFill : fill,
+              backgroundColor:
+                !inactive && filled && (pressed || hovered) && pressedFill ? pressedFill : fill,
               borderColor: variant === 'secondary' && !inactive ? colors.primary : 'transparent',
               borderWidth: variant === 'secondary' ? 1.5 : 0,
             },
@@ -75,8 +92,18 @@ export function Button({ label, onPress, variant = 'primary', icon: Glyph, loadi
             <ActivityIndicator size="small" color={labelColor} />
           ) : (
             <>
-              {shownIcon ? (() => { const I = shownIcon; return <I size={20} color={labelColor} strokeWidth={2} />; })() : null}
-              <Txt variant="bodyStrong" style={{ color: labelColor }} numberOfLines={2} align="center">
+              {shownIcon
+                ? (() => {
+                    const I = shownIcon;
+                    return <I size={20} color={labelColor} strokeWidth={2} />;
+                  })()
+                : null}
+              <Txt
+                variant="bodyStrong"
+                style={{ color: labelColor }}
+                numberOfLines={2}
+                align="center"
+              >
                 {shownLabel}
               </Txt>
             </>

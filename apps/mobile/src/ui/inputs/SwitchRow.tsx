@@ -18,7 +18,11 @@ export function SwitchRow({ label, helper, value, onChange, disabled }: SwitchRo
     <View style={styles.row}>
       <View style={styles.text}>
         <Txt>{label}</Txt>
-        {helper ? <Txt variant="secondary" color="textSecondary">{helper}</Txt> : null}
+        {helper ? (
+          <Txt variant="secondary" color="textSecondary">
+            {helper}
+          </Txt>
+        ) : null}
       </View>
       <Switch
         value={value}

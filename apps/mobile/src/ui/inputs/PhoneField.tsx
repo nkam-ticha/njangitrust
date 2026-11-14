@@ -24,11 +24,21 @@ function group(d: string): string {
   return [d.slice(0, 3), d.slice(3, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(' ');
 }
 
-export function PhoneField({ label, helper, error, initialDigits = '', editable = true, onChange }: PhoneFieldProps) {
+export function PhoneField({
+  label,
+  helper,
+  error,
+  initialDigits = '',
+  editable = true,
+  onChange,
+}: PhoneFieldProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const [digits, setDigits] = useState(initialDigits);
-  const operator: Operator | null = digits.length >= 3 && digits.startsWith('6') ? detectOperator(`+237${digits.padEnd(9, '0')}`) : null;
+  const operator: Operator | null =
+    digits.length >= 3 && digits.startsWith('6')
+      ? detectOperator(`+237${digits.padEnd(9, '0')}`)
+      : null;
 
   const handle = (text: string) => {
     const pasted = normalizeCameroonPhone(text);
@@ -58,7 +68,13 @@ export function PhoneField({ label, helper, error, initialDigits = '', editable 
       }
       suffix={
         operator ? (
-          <LabelBadge label={operator === 'UNKNOWN' ? t('common.operators.UNKNOWN') : t(`common.operators.${operator}`)} />
+          <LabelBadge
+            label={
+              operator === 'UNKNOWN'
+                ? t('common.operators.UNKNOWN')
+                : t(`common.operators.${operator}`)
+            }
+          />
         ) : null
       }
     />

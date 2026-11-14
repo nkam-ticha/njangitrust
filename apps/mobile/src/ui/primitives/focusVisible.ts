@@ -5,12 +5,20 @@ import { Platform } from 'react-native';
 let keyboardModality = false;
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
-  document.addEventListener('keydown', (e) => {
-    if (!e.metaKey && !e.altKey && !e.ctrlKey) keyboardModality = true;
-  }, true);
-  document.addEventListener('pointerdown', () => {
-    keyboardModality = false;
-  }, true);
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (!e.metaKey && !e.altKey && !e.ctrlKey) keyboardModality = true;
+    },
+    true,
+  );
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      keyboardModality = false;
+    },
+    true,
+  );
 }
 
 export function isKeyboardModality(): boolean {

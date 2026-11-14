@@ -31,7 +31,15 @@ export function navigationLayoutFor(bp: Breakpoint): NavigationProps['layout'] {
 
 const ORDER: TabKey[] = ['njangi', 'groupe', 'caisse', 'votes', 'moi'];
 
-export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting, agentWaiting, memberName }: NavigationProps) {
+export function Navigation({
+  active,
+  onSelect,
+  layout,
+  unreadChat,
+  votesWaiting,
+  agentWaiting,
+  memberName,
+}: NavigationProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -52,18 +60,31 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
   };
   const a11y = (key: TabKey): string => {
     if (key === 'groupe' && unreadChat > 0) return t('nav.tabsA11y.groupe', { count: unreadChat });
-    if (key === 'votes' && votesWaiting > 0) return t('nav.tabsA11y.votes', { count: votesWaiting });
-    return key === 'groupe' ? t('nav.tabs.groupe') : key === 'votes' ? t('nav.tabs.votes') : t(`nav.tabsA11y.${key}`);
+    if (key === 'votes' && votesWaiting > 0)
+      return t('nav.tabsA11y.votes', { count: votesWaiting });
+    return key === 'groupe'
+      ? t('nav.tabs.groupe')
+      : key === 'votes'
+        ? t('nav.tabs.votes')
+        : t(`nav.tabsA11y.${key}`);
   };
   const badge = (key: TabKey): ReactNode =>
-    key === 'groupe' ? <CountBadge count={unreadChat} /> : key === 'votes' ? <CountBadge count={votesWaiting} /> : key === 'njangi' && agentWaiting ? <DotBadge /> : null;
+    key === 'groupe' ? (
+      <CountBadge count={unreadChat} />
+    ) : key === 'votes' ? (
+      <CountBadge count={votesWaiting} />
+    ) : key === 'njangi' && agentWaiting ? (
+      <DotBadge />
+    ) : null;
 
   const item = (key: TabKey) => {
     const on = key === active;
     const color = on ? colors.iconActive : colors.iconSecondary;
     const label = (
       <Txt
-        variant={layout === 'sidebar' ? (on ? 'bodyStrong' : 'body') : on ? 'captionStrong' : 'caption'}
+        variant={
+          layout === 'sidebar' ? (on ? 'bodyStrong' : 'body') : on ? 'captionStrong' : 'caption'
+        }
         maxFontSizeMultiplier={fontScaleCaps.tabLabel}
         numberOfLines={1}
         style={{ color: on ? colors.textLink : colors.textSecondary }}
@@ -72,7 +93,6 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
       </Txt>
     );
     const common = {
-      key,
       onPress: () => onSelect(key),
       accessibilityRole: 'tab' as const,
       accessibilityState: { selected: on },
@@ -80,7 +100,12 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
     };
     if (layout === 'sidebar') {
       return (
-        <Touchable {...common} style={styles.sideItem} pressedLayer={on ? null : undefined}>
+        <Touchable
+          key={key}
+          {...common}
+          style={styles.sideItem}
+          pressedLayer={on ? null : undefined}
+        >
           <View style={[styles.sideRow, on && { backgroundColor: colors.selectedTint }]}>
             {glyph(key, color)}
             <View style={styles.flex}>{label}</View>
@@ -90,7 +115,13 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
       );
     }
     return (
-      <Touchable {...common} style={layout === 'tabs' ? styles.tabItem : styles.railItem} radius={radius.group} pressedLayer={null}>
+      <Touchable
+        key={key}
+        {...common}
+        style={layout === 'tabs' ? styles.tabItem : styles.railItem}
+        radius={radius.group}
+        pressedLayer={null}
+      >
         <View style={styles.tabInner}>
           <View style={[styles.pill, on && { backgroundColor: colors.selectedTint }]}>
             {glyph(key, color)}
@@ -104,20 +135,45 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
 
   if (layout === 'tabs') {
     return (
-      <View accessibilityRole="tablist" accessibilityLabel={t('nav.navigationLabel')} style={[styles.tabs, { borderTopColor: colors.divider, backgroundColor: colors.canvas, paddingBottom: insets.bottom }]}>
+      <View
+        accessibilityRole="tablist"
+        accessibilityLabel={t('nav.navigationLabel')}
+        style={[
+          styles.tabs,
+          {
+            borderTopColor: colors.divider,
+            backgroundColor: colors.canvas,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
         {ORDER.map(item)}
       </View>
     );
   }
   if (layout === 'rail') {
     return (
-      <View accessibilityRole="tablist" accessibilityLabel={t('nav.navigationLabel')} style={[styles.rail, { borderRightColor: colors.divider, paddingTop: insets.top + space.s4 }]}>
+      <View
+        accessibilityRole="tablist"
+        accessibilityLabel={t('nav.navigationLabel')}
+        style={[
+          styles.rail,
+          { borderRightColor: colors.divider, paddingTop: insets.top + space.s4 },
+        ]}
+      >
         {ORDER.map(item)}
       </View>
     );
   }
   return (
-    <View accessibilityRole="tablist" accessibilityLabel={t('nav.navigationLabel')} style={[styles.sidebar, { borderRightColor: colors.divider, paddingTop: insets.top + space.s5 }]}>
+    <View
+      accessibilityRole="tablist"
+      accessibilityLabel={t('nav.navigationLabel')}
+      style={[
+        styles.sidebar,
+        { borderRightColor: colors.divider, paddingTop: insets.top + space.s5 },
+      ]}
+    >
       <View style={styles.brand}>
         <RingMark size={24} color={colors.iconActive} />
         <Txt variant="groupTitle">{t('common.appName')}</Txt>
@@ -125,7 +181,9 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
       {ORDER.map(item)}
       {memberName ? (
         <View style={[styles.me, { borderTopColor: colors.divider }]}>
-          <Txt variant="secondaryStrong" numberOfLines={1}>{memberName}</Txt>
+          <Txt variant="secondaryStrong" numberOfLines={1}>
+            {memberName}
+          </Txt>
         </View>
       ) : null}
     </View>
@@ -135,15 +193,40 @@ export function Navigation({ active, onSelect, layout, unreadChat, votesWaiting,
 const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', borderTopWidth: 1, minHeight: size.tabBar },
   tabItem: { flex: 1, minHeight: size.tabBar },
-  tabInner: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: space.s1 },
-  pill: { width: 56, height: 32, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center' },
+  tabInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: space.s1,
+  },
+  pill: {
+    width: 56,
+    height: 32,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badgeSpot: { position: 'absolute', top: -4, right: 2 },
   rail: { width: 80, borderRightWidth: 1, alignItems: 'center', gap: space.s2 },
   railItem: { width: 72, minHeight: 64 },
   sidebar: { width: 256, borderRightWidth: 1, paddingHorizontal: space.s3, gap: space.s1 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: space.s2, paddingHorizontal: space.s3, paddingBottom: space.s5 },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s2,
+    paddingHorizontal: space.s3,
+    paddingBottom: space.s5,
+  },
   sideItem: { alignSelf: 'stretch' },
-  sideRow: { minHeight: size.touch, borderRadius: radius.group, flexDirection: 'row', alignItems: 'center', gap: space.s3, paddingHorizontal: space.s3 },
+  sideRow: {
+    minHeight: size.touch,
+    borderRadius: radius.group,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s3,
+    paddingHorizontal: space.s3,
+  },
   me: { marginTop: 'auto', borderTopWidth: 1, padding: space.s3 },
   flex: { flex: 1 },
 });

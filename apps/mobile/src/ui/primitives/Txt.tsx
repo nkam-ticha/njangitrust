@@ -10,5 +10,15 @@ export interface TxtProps extends TextProps {
 
 export function Txt({ variant = 'body', color = 'textPrimary', align, style, ...rest }: TxtProps) {
   const { colors } = useTheme();
-  return <Text {...rest} style={[typography[variant], { color: colors[color] }, align ? { textAlign: align } : null, style]} />;
+  return (
+    <Text
+      {...rest}
+      style={[
+        typography[variant],
+        { color: colors[color] },
+        align ? { textAlign: align } : null,
+        style,
+      ]}
+    />
+  );
 }

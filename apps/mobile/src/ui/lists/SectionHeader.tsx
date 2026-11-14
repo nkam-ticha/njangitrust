@@ -13,8 +13,12 @@ interface SectionHeaderProps {
 export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderProps) {
   return (
     <View style={styles.row}>
-      <Txt variant="sectionTitle" accessibilityRole="header" style={styles.title}>{title}</Txt>
-      {actionLabel && onAction ? <Button variant="text" label={actionLabel} onPress={onAction} /> : null}
+      <Txt variant="sectionTitle" accessibilityRole="header" style={styles.title}>
+        {title}
+      </Txt>
+      {actionLabel && onAction ? (
+        <Button variant="text" label={actionLabel} onPress={onAction} />
+      ) : null}
     </View>
   );
 }

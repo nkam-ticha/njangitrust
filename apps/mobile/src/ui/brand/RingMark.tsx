@@ -20,7 +20,15 @@ const SEEDS: Array<[number, number]> = [
 
 export function RingMark({ size = 24, color, strokeWidth = 2 }: RingMarkProps) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+    >
       <Circle cx={12} cy={4} r={2} />
       {SEEDS.map(([cx, cy]) => (
         <Circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={1} />

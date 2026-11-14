@@ -18,7 +18,12 @@ interface SegmentedControlProps<K extends string> {
   accessibilityLabel?: string;
 }
 
-export function SegmentedControl<K extends string>({ segments, value, onChange, accessibilityLabel }: SegmentedControlProps<K>) {
+export function SegmentedControl<K extends string>({
+  segments,
+  value,
+  onChange,
+  accessibilityLabel,
+}: SegmentedControlProps<K>) {
   const { colors } = useTheme();
   const [overflow, setOverflow] = useState(false);
   const [boxWidth, setBoxWidth] = useState(0);
@@ -60,7 +65,11 @@ export function SegmentedControl<K extends string>({ segments, value, onChange, 
       style={[styles.box, { backgroundColor: colors.surfaceTint }]}
     >
       {overflow ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+        >
           {items}
         </ScrollView>
       ) : (
@@ -71,9 +80,21 @@ export function SegmentedControl<K extends string>({ segments, value, onChange, 
 }
 
 const styles = StyleSheet.create({
-  box: { minHeight: 48, borderRadius: radius.full, padding: 4, flexDirection: 'row', marginHorizontal: space.s4 },
+  box: {
+    minHeight: 48,
+    borderRadius: radius.full,
+    padding: 4,
+    flexDirection: 'row',
+    marginHorizontal: space.s4,
+  },
   item: { flex: 1 },
   itemScroll: {},
   scroll: { gap: 2 },
-  seg: { minHeight: 40, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.s3 },
+  seg: {
+    minHeight: 40,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.s3,
+  },
 });
