@@ -88,8 +88,8 @@ export const RULES_R6_R10: readonly RuleText[] = [
   entry(
     'R7.3',
     R7,
-    'Terms: principal P for T months (1 to loanMaxMonths). Interest I = round half up (P × loanRatePermille / 1000 × T). The estimated disbursement fee is added. Total due = P + I + fee. It is repaid in T installments of floor(total / T), the last one taking the remainder, due at the dueAt of the next T rounds.',
-    "Conditions : un capital P sur T mois (de 1 à loanMaxMonths). Intérêts I = arrondi, la moitié vers le haut, de (P × loanRatePermille / 1000 × T). Les frais d'envoi estimés s'ajoutent. Total dû = P + I + frais. Il est remboursé en T échéances de l'entier inférieur de (total / T), la dernière prenant le reste, dues à la date limite des T tours suivants.",
+    'Terms: principal P for T months (1 to loanMaxMonths). Interest I = round half up (P × loanRatePermille / 1000 × T). The estimated disbursement fee is added. Total due = P + I + fee. It is repaid in T installments of floor(total / T), the last one taking the remainder, due at the dueAt of the next T rounds in a monthly group; in a weekly or two-weekly group, installment k is due at the first round dueAt on or after the approval date plus k months. An installment that falls after the end of the cycle is due at a round of the next cycle: it gets its date when that cycle starts.',
+    "Conditions : un capital P sur T mois (de 1 à loanMaxMonths). Intérêts I = arrondi, la moitié vers le haut, de (P × loanRatePermille / 1000 × T). Les frais d'envoi estimés s'ajoutent. Total dû = P + I + frais. Il est remboursé en T échéances de l'entier inférieur de (total / T), la dernière prenant le reste, dues à la date limite des T tours suivants dans un groupe mensuel ; dans un groupe hebdomadaire ou à quinzaine, l'échéance k est due à la première date limite de tour qui tombe au plus tôt à la date d'approbation plus k mois. Une échéance qui tombe après la fin du cycle est due à un tour du cycle suivant : elle reçoit sa date quand ce cycle commence.",
     [
       'pret',
       'loan',
@@ -166,8 +166,8 @@ export const RULES_R6_R10: readonly RuleText[] = [
   entry(
     'R8.1',
     R8,
-    'BIDDING mode is turned on or off by RULE_CHANGE and applies from the next cycle.',
-    "Le mode enchère s'active ou se désactive par un vote RULE_CHANGE et s'applique à partir du cycle suivant.",
+    'BIDDING mode is turned on or off by RULE_CHANGE and applies from the next round: the members not yet served bid for it. Turning it off draws the remaining order among the members not yet served (R2.3 method).',
+    "Le mode enchère s'active ou se désactive par un vote RULE_CHANGE et s'applique à partir du tour suivant : les membres pas encore servis misent pour ce tour. Le désactiver tire au sort l'ordre restant parmi les membres pas encore servis (méthode de R2.3).",
     ['enchere', 'bidding', 'mode', 'activer', 'enable'],
   ),
   entry(
@@ -272,8 +272,8 @@ export const RULES_R6_R10: readonly RuleText[] = [
   entry(
     'R10.3',
     R10,
-    "Requests go to a SOLIDARITY_PAYOUT vote (majority, solidarityVoteWindowHours). If passed, the money is sent to the recipient's payment number; the recipient bears the fee.",
-    "Les demandes passent par un vote SOLIDARITY_PAYOUT (majorité, solidarityVoteWindowHours). Si le vote passe, l'argent est envoyé au numéro de paiement du bénéficiaire du soutien, qui supporte les frais.",
+    "Requests go to a SOLIDARITY_PAYOUT vote (majority, solidarityVoteWindowHours). If passed, the money is sent to the recipient's payment number; the recipient bears the fee. If a payment that fed the fund is later reversed by the operator after the money was paid out, the most recent recipient owes the missing amount, never more than the payout they received; any rest is owed by the previous recipient, and so on; if none remains, by the member whose payment was reversed.",
+    "Les demandes passent par un vote SOLIDARITY_PAYOUT (majorité, solidarityVoteWindowHours). Si le vote passe, l'argent est envoyé au numéro de paiement du bénéficiaire du soutien, qui supporte les frais. Si un paiement qui a alimenté la caisse est ensuite annulé par l'opérateur alors que l'argent a déjà été versé, le dernier bénéficiaire doit la somme manquante, jamais plus que le soutien reçu ; le reste est dû par le bénéficiaire précédent, et ainsi de suite ; s'il n'en reste aucun, par le membre dont le paiement a été annulé.",
     ['caisse de secours', 'solidarity', 'vote', 'versement', 'payout', 'frais', 'fees'],
   ),
   entry(

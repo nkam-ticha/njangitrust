@@ -35,6 +35,15 @@ describe('rules registry (spec 4.9 "Explaining rules")', () => {
     }
   });
 
+  it('carries the D18 behaviour: payouts in flight, next-cycle installments, capped solidarity debts', () => {
+    expect(getRule('R5.4')?.text.en).toContain('money on its way');
+    expect(getRule('R4.3')?.text.fr).toContain("dès l'envoi");
+    expect(getRule('R7.3')?.text.en).toContain('due at a round of the next cycle');
+    expect(getRule('R7.3')?.text.fr).toContain('cycle suivant');
+    expect(getRule('R10.3')?.text.en).toContain('never more than the payout they received');
+    expect(getRule('R5.5')?.text.fr).toContain('de nouveau couvert');
+  });
+
   it('returns a rule by its id, whatever the spelling', () => {
     expect(getRule('R7.3')?.text.en).toContain('round half up');
     expect(getRule('r7.3')?.id).toBe('R7.3');
