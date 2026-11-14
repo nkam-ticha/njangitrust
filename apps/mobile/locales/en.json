@@ -1,0 +1,6 @@
+{
+  "NSFaceIDUsageDescription": "NjangiTrust uses Face ID to unlock the app. Your PIN is still required for sensitive actions.",
+  "NSCameraUsageDescription": "To take a photo to share in the group.",
+  "NSPhotoLibraryUsageDescription": "To choose a photo or video to share in the group.",
+  "NSMicrophoneUsageDescription": "To record voice notes in the group."
+}
