@@ -2,7 +2,7 @@
 // beneficiary, served badges, the closed raffia ring. Motions are layered on top by NjangiRing.
 import { Circle, G, Path } from 'react-native-svg';
 import type { ThemeColors } from '@/theme';
-import { angleFor, arcPath, polar, type RingLayout } from './ringGeometry';
+import { angleFor, arcPath, polar, r2, type RingLayout } from './ringGeometry';
 
 export type RingDotState = 'paid' | 'unpaid' | 'late' | 'pending';
 
@@ -26,23 +26,53 @@ interface RingDrawingProps {
   colors: ThemeColors;
 }
 
-export function RingDrawing({ layout, members, positions, closed, emptySeat, colors }: RingDrawingProps) {
+export function RingDrawing({
+  layout,
+  members,
+  positions,
+  closed,
+  emptySeat,
+  colors,
+}: RingDrawingProps) {
   const { spec, r, segments } = layout;
   const c = spec.S / 2;
   const span = (0.7 * 360) / positions;
   const strokeFor = (state: RingDotState) =>
-    state === 'late' ? colors.statusLate : state === 'pending' ? colors.statusPending : colors.outline;
+    state === 'late'
+      ? colors.statusLate
+      : state === 'pending'
+        ? colors.statusPending
+        : colors.outline;
 
   return (
     <G>
       {!segments ? (
-        <Circle cx={c} cy={c} r={spec.R} fill="none" stroke={closed ? colors.accentRaffia : colors.divider} strokeWidth={closed ? spec.track + 1 : spec.track} />
+        <Circle
+          cx={c}
+          cy={c}
+          r={spec.R}
+          fill="none"
+          stroke={closed ? colors.accentRaffia : colors.divider}
+          strokeWidth={closed ? spec.track + 1 : spec.track}
+        />
       ) : null}
       {emptySeat ? (
         segments ? (
-          <Path d={arcPath(c, spec.R, -90, span)} fill="none" stroke={colors.raffiaKeyline} strokeWidth={1.5} />
+          <Path
+            d={arcPath(c, spec.R, -90, span)}
+            fill="none"
+            stroke={colors.raffiaKeyline}
+            strokeWidth={1.5}
+          />
         ) : (
-          <Circle cx={c} cy={c - spec.R} r={r * spec.beneficiaryScale - 0.75} fill={colors.canvas} stroke={colors.raffiaKeyline} strokeWidth={1.5} />
+          <Circle
+            cx={c}
+            cy={c - spec.R}
+            r={r * spec.beneficiaryScale - 0.75}
+            fill={colors.canvas}
+            stroke={colors.raffiaKeyline}
+            strokeWidth={1.5}
+          />
         )
       ) : null}
       {members.map((m) => {
@@ -52,18 +82,45 @@ export function RingDrawing({ layout, members, positions, closed, emptySeat, col
           if (m.isBeneficiary) {
             return (
               <G key={m.key}>
-                <Path d={d} fill="none" stroke={colors.raffiaKeyline} strokeWidth={spec.segmentWidth + 1.5} />
-                <Path d={d} fill="none" stroke={colors.accentRaffia} strokeWidth={spec.segmentWidth} />
+                <Path
+                  d={d}
+                  fill="none"
+                  stroke={colors.raffiaKeyline}
+                  strokeWidth={spec.segmentWidth + 1.5}
+                />
+                <Path
+                  d={d}
+                  fill="none"
+                  stroke={colors.accentRaffia}
+                  strokeWidth={spec.segmentWidth}
+                />
               </G>
             );
           }
           const width = m.state === 'paid' ? spec.segmentWidth : m.state === 'late' ? 1.5 : 1;
-          return <Path key={m.key} d={d} fill="none" stroke={m.state === 'paid' ? colors.primary : strokeFor(m.state)} strokeWidth={width} />;
+          return (
+            <Path
+              key={m.key}
+              d={d}
+              fill="none"
+              stroke={m.state === 'paid' ? colors.primary : strokeFor(m.state)}
+              strokeWidth={width}
+            />
+          );
         }
         const p = polar(c, spec.R, deg);
         let dot;
         if (m.isBeneficiary) {
-          dot = <Circle cx={p.x} cy={p.y} r={r * spec.beneficiaryScale - spec.keyline / 2} fill={colors.accentRaffia} stroke={colors.raffiaKeyline} strokeWidth={spec.keyline} />;
+          dot = (
+            <Circle
+              cx={p.x}
+              cy={p.y}
+              r={r * spec.beneficiaryScale - spec.keyline / 2}
+              fill={colors.accentRaffia}
+              stroke={colors.raffiaKeyline}
+              strokeWidth={spec.keyline}
+            />
+          );
         } else if (m.state === 'paid') {
           dot = <Circle cx={p.x} cy={p.y} r={r} fill={colors.primary} />;
         } else {
@@ -78,7 +135,7 @@ export function RingDrawing({ layout, members, positions, closed, emptySeat, col
               fill={colors.canvas}
               stroke={strokeFor(m.state)}
               strokeWidth={w}
-              strokeDasharray={dashed ? `${((Math.PI * 2 * rr) / 12).toFixed(2)}` : undefined}
+              strokeDasharray={dashed ? `${r2((Math.PI * 2 * rr) / 12)}` : undefined}
             />
           );
         }
@@ -88,7 +145,14 @@ export function RingDrawing({ layout, members, positions, closed, emptySeat, col
           const b = polar(c, spec.R + r + 1.5 + rs, deg);
           badge = (
             <G>
-              <Circle cx={b.x} cy={b.y} r={rs - 0.5} fill={colors.accentRaffia} stroke={colors.raffiaKeyline} strokeWidth={1} />
+              <Circle
+                cx={b.x}
+                cy={b.y}
+                r={rs - 0.5}
+                fill={colors.accentRaffia}
+                stroke={colors.raffiaKeyline}
+                strokeWidth={1}
+              />
               <Path
                 d={`M${b.x - 0.5 * rs} ${b.y} L${b.x - 0.1 * rs} ${b.y + 0.4 * rs} L${b.x + 0.55 * rs} ${b.y - 0.4 * rs}`}
                 fill="none"
