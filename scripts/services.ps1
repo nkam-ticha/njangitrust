@@ -33,6 +33,13 @@ switch ($Action) {
   'start' {
     if (Test-Redis) { Write-Host 'Redis already running.' }
     else {
+      # After a reboot, a redis-server can be left listed in WSL but not answering: kill it first.
+      wsl.exe -d $distro -u root -- pgrep -x redis-server | Out-Null
+      if ($LASTEXITCODE -eq 0) {
+        Write-Host 'Redis is listed in WSL but not answering: restarting it.'
+        wsl.exe -d $distro -u root -- pkill -9 redis-server | Out-Null
+        Start-Sleep -Seconds 1
+      }
       # A hidden wsl.exe keeps the distro alive while Redis runs in the foreground.
       Start-Process -WindowStyle Hidden -FilePath 'wsl.exe' -ArgumentList @(
         '-d', $distro, '-u', 'root', '--', 'redis-server',

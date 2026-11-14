@@ -43,6 +43,8 @@ export default tseslint.config(
       'apps/api/generated/**',
       'docs/design/board/**',
       '**/*.config.js',
+      // Plain Node helper scripts that run outside any TypeScript project.
+      'scripts/**/*.cjs',
     ],
   },
   js.configs.recommended,

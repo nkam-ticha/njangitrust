@@ -20,6 +20,9 @@
     "test:rules": "pnpm --filter @njangi/rules test",
     "db:migrate": "pnpm --filter @njangi/api db:migrate",
     "db:seed": "pnpm --filter @njangi/api db:seed",
+    "demo": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demo.ps1 start",
+    "demo:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demo.ps1 stop",
+    "demo:seed": "tsx tools/demo-seed/src/index.ts",
     "agent:eval": "pnpm --filter @njangi/agent-eval eval",
     "verify-ledger": "pnpm --filter @njangi/verify-ledger verify"
   },
