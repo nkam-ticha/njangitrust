@@ -22,8 +22,12 @@ const SENSITIVE_SUFFIXES = [
   'paymentnumber',
   'signature',
   'link',
+  'phonenumber',
+  'mobile',
 ];
-const SENSITIVE_EXACT = new Set(['number', 'sig', 'msisdn']);
+const SENSITIVE_EXACT = new Set(['number', 'sig', 'msisdn', 'tel']);
+/** A phone number stored as a number, e.g. 237677123456. */
+const PHONE_LIKE_NUMBER = /^(237)?6\d{8}$/;
 
 function isSensitiveKey(key: string): boolean {
   const k = key.toLowerCase().replace(/[-_]/g, '');
@@ -40,7 +44,10 @@ const OPAQUE_TOKEN = /[A-Za-z0-9_-]{40,}/g;
 export function redactText(text: string): string {
   if (UUID.test(text)) return text;
   return maskPhonesInText(
-    text.replace(JWT, '[jwt]').replace(BEARER, 'Bearer [redacted]').replace(OPAQUE_TOKEN, '[token]'),
+    text
+      .replace(JWT, '[jwt]')
+      .replace(BEARER, 'Bearer [redacted]')
+      .replace(OPAQUE_TOKEN, '[token]'),
     [],
   );
 }
@@ -50,6 +57,7 @@ const MAX_ITEMS = 100;
 
 function redactValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
   if (typeof value === 'string') return redactText(value);
+  if (typeof value === 'number' && PHONE_LIKE_NUMBER.test(String(value))) return REDACTED;
   if (value === null || typeof value !== 'object') return value;
   if (value instanceof Date) return value;
   if (seen.has(value)) return '[circular]';

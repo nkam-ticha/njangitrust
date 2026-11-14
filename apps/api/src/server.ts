@@ -1,10 +1,11 @@
 // Entry point: validates the environment, then starts HTTP, Socket.IO and the job workers.
 import { createServer } from 'node:http';
 import { createApp } from './app';
-import { EnvError, getEnv } from './config/env';
+import { EnvError, getEnv, listenHost } from './config/env';
 import { registerHealthCheck } from './http/health';
 import { useRedisForRateLimits } from './http/rate-limit';
-import { startJobs, stopJobs } from './jobs/queues';
+import { useJobScheduler } from './jobs/dispatch';
+import { scheduleAt, startJobs, stopJobs } from './jobs/queues';
 import { logger } from './lib/logger';
 import { disconnectPrisma } from './lib/prisma';
 import { closeRedis, getRedis } from './lib/redis';
@@ -22,9 +23,19 @@ async function main(): Promise<void> {
 
   registerJobs();
   await startJobs();
+  useJobScheduler(scheduleAt);
 
-  httpServer.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV, provider: env.PAYMENT_PROVIDER }, 'NjangiTrust API listening');
+  const host = listenHost(env);
+  httpServer.listen({ port: env.PORT, host }, () => {
+    logger.info(
+      {
+        port: env.PORT,
+        host: host ?? 'all interfaces',
+        env: env.NODE_ENV,
+        provider: env.PAYMENT_PROVIDER,
+      },
+      'NjangiTrust API listening',
+    );
   });
 
   const shutdown = async (signal: string) => {

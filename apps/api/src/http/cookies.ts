@@ -14,7 +14,8 @@ export function parseCookies(header: string | undefined): Record<string, string>
     const name = part.slice(0, eq).trim();
     if (!COOKIE_NAME.test(name) || name in cookies) continue;
     let value = part.slice(eq + 1).trim();
-    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"'))
+      value = value.slice(1, -1);
     try {
       cookies[name] = decodeURIComponent(value);
     } catch {
@@ -44,7 +45,11 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   if (!COOKIE_NAME.test(name)) throw new Error('invalid cookie name');
   const encoded = encodeURIComponent(value);
   if (!COOKIE_VALUE.test(encoded)) throw new Error('invalid cookie value');
-  const parts = [`${name}=${encoded}`, `Path=${options.path}`, `Max-Age=${Math.floor(options.maxAge)}`];
+  const parts = [
+    `${name}=${encoded}`,
+    `Path=${options.path}`,
+    `Max-Age=${Math.floor(options.maxAge)}`,
+  ];
   if (options.maxAge === 0) parts.push('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
   if (options.httpOnly) parts.push('HttpOnly');
   if (options.secure) parts.push('Secure');

@@ -1,6 +1,7 @@
 // Per-request context carried across async calls, so every log line and audit entry knows its
 // request id without passing it through every function (spec 2.15).
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 
 export interface RequestContext {
   requestId: string;
@@ -24,4 +25,12 @@ export function setContextUser(userId: string, deviceId?: string): void {
   if (!context) return;
   context.userId = userId;
   if (deviceId) context.deviceId = deviceId;
+}
+
+/**
+ * Runs `fn` as the system, detached from any member's request: no request id, user or device of
+ * the caller can reach logs or audit entries written inside (privacy-guard H1).
+ */
+export function runAsSystem<T>(fn: () => T): T {
+  return storage.run({ requestId: randomUUID() }, fn);
 }

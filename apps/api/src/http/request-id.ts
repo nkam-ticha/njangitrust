@@ -5,7 +5,7 @@ import type { RequestHandler } from 'express';
 import { CLIENT_HEADER } from '@njangi/shared/contracts/common';
 import { runWithContext } from '../lib/request-context';
 
-const VALID_ID = /^[A-Za-z0-9-]{8,64}$/;
+const VALID_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function requestId(): RequestHandler {
   return (req, res, next) => {

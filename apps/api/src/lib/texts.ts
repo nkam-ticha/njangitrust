@@ -11,5 +11,5 @@ export type TextParams = Record<string, string | number | Bilingual>;
 
 /** A sentence of the designer's copy in both languages: `ui((c) => c.confirmation.notes.voteFinal)`. */
 export function ui(select: (copy: UiCopyShape) => string, params: TextParams = {}): Bilingual {
-  return bilingual({ fr: select(uiFr as UiCopyShape), en: select(uiEn) }, params);
+  return bilingual({ fr: select(uiFr), en: select(uiEn) }, params);
 }

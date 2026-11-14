@@ -76,14 +76,21 @@ export function retryAfterSeconds(res: RateLimiterRes): number {
 }
 
 /** Consumes one point for `key`, or throws RATE_LIMITED with a Retry-After. */
-export async function consumeOrThrow(limiter: LazyLimiter, key: string, res?: Response): Promise<void> {
+export async function consumeOrThrow(
+  limiter: LazyLimiter,
+  key: string,
+  res?: Response,
+): Promise<void> {
   try {
     await limiter.get().consume(key);
   } catch (error) {
     if (error instanceof RateLimiterRes) {
       const seconds = retryAfterSeconds(error);
       res?.setHeader('Retry-After', String(seconds));
-      throw commonError('RATE_LIMITED', { params: { seconds }, details: { retryAfterSeconds: seconds } });
+      throw commonError('RATE_LIMITED', {
+        params: { seconds },
+        details: { retryAfterSeconds: seconds },
+      });
     }
     if (error instanceof AppError) throw error;
     throw commonError('SERVICE_UNAVAILABLE');

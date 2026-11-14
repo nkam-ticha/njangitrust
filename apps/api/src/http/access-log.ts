@@ -10,7 +10,8 @@ export function accessLog(): RequestHandler {
   return (req, res, next) => {
     const started = clock.nowMs();
     res.on('finish', () => {
-      const route = req.route?.path ? `${req.baseUrl}${String(req.route.path)}` : '(unmatched)';
+      const pattern = (req.route as { path?: unknown } | undefined)?.path;
+      const route = typeof pattern === 'string' ? `${req.baseUrl}${pattern}` : '(unmatched)';
       const entry = {
         method: req.method,
         route,

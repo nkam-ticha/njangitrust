@@ -31,7 +31,13 @@ function setRefreshCookie(res: Response, token: string): void {
 export function clearRefreshCookie(res: Response): void {
   res.append(
     'Set-Cookie',
-    serializeCookie(REFRESH_COOKIE, '', { path: COOKIE_PATH, maxAge: 0, httpOnly: true, secure: true, sameSite: 'Strict' }),
+    serializeCookie(REFRESH_COOKIE, '', {
+      path: COOKIE_PATH,
+      maxAge: 0,
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+    }),
   );
 }
 
@@ -42,7 +48,8 @@ export function deliverSession(req: Request, res: Response, tokens: SessionToken
     accessTokenExpiresAt: iso(tokens.accessTokenExpiresAt),
     refreshTokenExpiresAt: iso(tokens.refreshTokenExpiresAt),
   };
-  if (req.clientKind === 'web') {
+  // L3: the session's own client type, stored with its refresh token, not this request's header.
+  if (tokens.client === 'web') {
     setRefreshCookie(res, tokens.refreshToken);
     return base;
   }
@@ -62,7 +69,7 @@ export function assertCookieRequestAllowed(req: Request): void {
  */
 export function refreshTokenOf(req: Request, bodyToken: string | undefined): string | undefined {
   if (bodyToken) return bodyToken;
-  const cookie = req.cookies[REFRESH_COOKIE];
+  const cookie = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
   if (!cookie) return undefined;
   assertCookieRequestAllowed(req);
   return cookie;

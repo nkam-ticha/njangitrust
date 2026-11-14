@@ -70,6 +70,19 @@ export function hashLinkToken(token: string): string {
 }
 
 const SEAL_VERSION = 'v1';
+/**
+ * Every plaintext is padded to this one size (privacy-guard L-1): a confidential card is a few
+ * hundred bytes, so all of them seal to the same length whatever the choice and title. Anything
+ * longer takes whole multiples of it.
+ */
+const SEAL_SIZE = 4_096;
+
+/** JSON plus trailing spaces (still valid JSON) up to the sealed size. */
+function padded(json: string): Buffer {
+  const bytes = Buffer.from(json, 'utf8');
+  const size = Math.max(SEAL_SIZE, Math.ceil(bytes.length / SEAL_SIZE) * SEAL_SIZE);
+  return Buffer.concat([bytes, Buffer.alloc(size - bytes.length, 0x20)]);
+}
 
 function sealKey(): Buffer {
   const env = getEnv();
@@ -83,15 +96,24 @@ function sealKey(): Buffer {
 export function sealJson(value: unknown): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', sealKey(), iv);
-  const body = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
-  return [SEAL_VERSION, iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join('.');
+  const body = Buffer.concat([cipher.update(padded(JSON.stringify(value))), cipher.final()]);
+  return [
+    SEAL_VERSION,
+    iv.toString('base64url'),
+    cipher.getAuthTag().toString('base64url'),
+    body.toString('base64url'),
+  ].join('.');
 }
 
 export function openJson(sealed: string): unknown {
   const [version, iv, tag, body] = sealed.split('.');
-  if (version !== SEAL_VERSION || !iv || !tag || body === undefined) throw new Error('Malformed sealed value');
+  if (version !== SEAL_VERSION || !iv || !tag || body === undefined)
+    throw new Error('Malformed sealed value');
   const decipher = createDecipheriv('aes-256-gcm', sealKey(), Buffer.from(iv, 'base64url'));
   decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-  const text = Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8');
+  const text = Buffer.concat([
+    decipher.update(Buffer.from(body, 'base64url')),
+    decipher.final(),
+  ]).toString('utf8');
   return JSON.parse(text) as unknown;
 }

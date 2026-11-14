@@ -9,30 +9,43 @@ function defaultLevel(): string {
   return process.env.NODE_ENV === 'test' ? 'silent' : 'info';
 }
 
-export const logger: Logger = pino({
-  level: defaultLevel(),
-  base: { service: 'njangitrust-api' },
-  timestamp: pino.stdTimeFunctions.isoTime,
-  messageKey: 'msg',
-  mixin() {
-    const context = currentContext();
-    if (!context) return {};
-    return {
-      reqId: context.requestId,
-      ...(context.userId ? { userId: context.userId } : {}),
-    };
-  },
-  formatters: {
-    log: (object) => redact(object),
-  },
-  hooks: {
-    // The message string is not part of the object above; redact it too.
-    logMethod(args, method) {
-      const cleaned = args.map((arg) => (typeof arg === 'string' ? redactText(arg) : arg));
-      method.apply(this, cleaned as never);
+/**
+ * Tests keep every log line in memory, so the privacy checks can scan what would have been written
+ * (privacy-guard L11). Elsewhere, lines go to stdout.
+ */
+export const testLogLines: string[] = [];
+const destination =
+  process.env.NODE_ENV === 'test'
+    ? { write: (line: string) => void testLogLines.push(line) }
+    : undefined;
+
+export const logger: Logger = pino(
+  {
+    level: defaultLevel(),
+    base: { service: 'njangitrust-api' },
+    timestamp: pino.stdTimeFunctions.isoTime,
+    messageKey: 'msg',
+    mixin() {
+      const context = currentContext();
+      if (!context) return {};
+      return {
+        reqId: context.requestId,
+        ...(context.userId ? { userId: context.userId } : {}),
+      };
+    },
+    formatters: {
+      log: (object) => redact(object),
+    },
+    hooks: {
+      // The message string is not part of the object above; redact it too.
+      logMethod(args, method) {
+        const cleaned = args.map((arg) => (typeof arg === 'string' ? redactText(arg) : arg));
+        method.apply(this, cleaned as never);
+      },
     },
   },
-});
+  destination,
+);
 
 /** A child logger for one component: `const log = componentLogger('jobs')`. */
 export function componentLogger(component: string): Logger {

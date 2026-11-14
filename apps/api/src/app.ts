@@ -12,7 +12,7 @@ import { requestId } from './http/request-id';
 import { v1Router } from './http/router';
 import { securityHeaders } from './http/security-headers';
 import { getPrisma } from './lib/prisma';
-import { registerActionHandlers } from './modules/register';
+import { registerActionHandlers, registerJobs } from './modules/register';
 import { getStorage, LocalStorage, LOCAL_STORAGE_ROUTE } from './storage';
 import { localStorageRoutes } from './storage/local.routes';
 
@@ -22,6 +22,7 @@ const JSON_LIMIT = '64kb';
 export function createApp(): Express {
   const env = getEnv();
   registerActionHandlers();
+  registerJobs();
 
   const app = express();
   app.disable('x-powered-by');
@@ -36,7 +37,10 @@ export function createApp(): Express {
   app.use(cookieParser());
 
   const storage = getStorage();
-  registerHealthCheck('database', async () => (await getPrisma().$queryRaw<{ ok: number }[]>`SELECT 1 AS ok`).length === 1);
+  registerHealthCheck(
+    'database',
+    async () => (await getPrisma().$queryRaw<{ ok: number }[]>`SELECT 1 AS ok`).length === 1,
+  );
   registerHealthCheck('storage', () => storage.check());
   app.use('/health', healthRoutes());
 

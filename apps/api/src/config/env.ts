@@ -10,6 +10,24 @@ const optionalString = z
   .optional()
   .transform((v) => (v === undefined || v.trim() === '' ? undefined : v.trim()));
 
+/** `scheme://host[:port]` with at most a trailing slash: links are built by concatenation, so a
+ *  path, query or credentials here could put a token somewhere it must not go. */
+function isBareOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.pathname === '/' &&
+      !url.search &&
+      !url.hash &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 const feeScheduleSchema = z.strictObject({
   collection: z.number().int().min(0),
   disbursement: z.number().int().min(0),
@@ -19,9 +37,10 @@ const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
-    LOG_LEVEL: z
-      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
-      .optional(),
+    /** Interface to listen on. Unset: every interface in development (phones on the LAN, D21),
+     *  loopback otherwise (production sits behind a proxy; set HOST=0.0.0.0 in a container). */
+    HOST: optionalString,
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
     /** Number of proxy hops in front of the API (for client IPs in rate limits). */
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
 
@@ -53,16 +72,34 @@ const schema = z
         try {
           return feeScheduleSchema.parse(JSON.parse(raw));
         } catch {
-          ctx.addIssue({ code: 'custom', message: 'FEE_SCHEDULE must be {"collection":int,"disbursement":int}' });
+          ctx.addIssue({
+            code: 'custom',
+            message: 'FEE_SCHEDULE must be {"collection":int,"disbursement":int}',
+          });
           return z.NEVER;
         }
       }),
 
+    /** Expo push access token (optional; enhanced push security in the Expo project). */
+    EXPO_ACCESS_TOKEN: optionalString,
     OPENROUTER_API_KEY: optionalString,
     OPENROUTER_MODEL: optionalString,
     OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
 
     APP_TIMEZONE: z.literal('Africa/Douala').default('Africa/Douala'),
+    /** Public mobile/web application origin for links that must open an app route. Falls back to
+     * PUBLIC_BASE_URL for existing deployments where the API and app share one origin. */
+    PUBLIC_APP_URL: optionalString.pipe(
+      z
+        .string()
+        .url('PUBLIC_APP_URL must be a full origin')
+        .refine(
+          isBareOrigin,
+          'PUBLIC_APP_URL must be an origin only: no path, query or credentials',
+        )
+        .transform((v) => v.replace(/\/+$/, ''))
+        .optional(),
+    ),
     PUBLIC_BASE_URL: z.string().url(),
     /** D1: comma-separated web origins allowed by CORS, e.g. `http://localhost:8081`. */
     WEB_ORIGINS: z
@@ -74,11 +111,17 @@ const schema = z
           .map((o) => o.trim().replace(/\/$/, ''))
           .filter((o) => o.length > 0),
       )
-      .pipe(z.array(z.string().url('WEB_ORIGINS must be full origins such as https://app.example.com'))),
+      .pipe(
+        z.array(z.string().url('WEB_ORIGINS must be full origins such as https://app.example.com')),
+      ),
   })
   .superRefine((env, ctx) => {
     if (env.JWT_SECRET === env.JWT_REFRESH_SECRET) {
-      ctx.addIssue({ code: 'custom', path: ['JWT_REFRESH_SECRET'], message: 'must differ from JWT_SECRET' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['JWT_REFRESH_SECRET'],
+        message: 'must differ from JWT_SECRET',
+      });
     }
     if (env.STORAGE_DRIVER === 'local' && (env.STORAGE_SIGNING_SECRET ?? '').length < 32) {
       ctx.addIssue({
@@ -89,20 +132,54 @@ const schema = z
     }
     if (env.STORAGE_DRIVER === 's3') {
       for (const key of ['S3_BUCKET', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'] as const) {
-        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required with STORAGE_DRIVER=s3' });
+        if (!env[key])
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'is required with STORAGE_DRIVER=s3',
+          });
       }
     }
     if (env.PAYMENT_PROVIDER === 'campay') {
       for (const key of ['CAMPAY_USERNAME', 'CAMPAY_PASSWORD'] as const) {
-        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required with PAYMENT_PROVIDER=campay' });
+        if (!env[key])
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'is required with PAYMENT_PROVIDER=campay',
+          });
       }
     }
     if (env.NODE_ENV === 'production') {
       if (!env.PUBLIC_BASE_URL.startsWith('https://')) {
-        ctx.addIssue({ code: 'custom', path: ['PUBLIC_BASE_URL'], message: 'must use https in production' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['PUBLIC_BASE_URL'],
+          message: 'must use https in production',
+        });
+      }
+      if (env.PUBLIC_APP_URL && !env.PUBLIC_APP_URL.startsWith('https://')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['PUBLIC_APP_URL'],
+          message: 'must use https in production',
+        });
+      }
+      // D1: browsers only send the Secure refresh cookie over https, and an http origin would
+      // let a network attacker script the app. Development may allow http LAN origins.
+      if (env.WEB_ORIGINS.some((origin) => !origin.startsWith('https://'))) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['WEB_ORIGINS'],
+          message: 'must all use https in production',
+        });
       }
       if (!env.HASH_SECRET) {
-        ctx.addIssue({ code: 'custom', path: ['HASH_SECRET'], message: 'is required in production' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['HASH_SECRET'],
+          message: 'is required in production',
+        });
       }
     }
   });
@@ -122,6 +199,13 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
     return `  - ${key}: ${issue.message}`;
   });
   throw new EnvError(`Invalid environment (see apps/api/.env):\n${lines.join('\n')}`);
+}
+
+/** The interface the HTTP server binds: HOST, else all interfaces in development only. */
+export function listenHost(env: Pick<Env, 'HOST' | 'NODE_ENV'>): string | undefined {
+  if (env.HOST) return env.HOST;
+  // undefined = Node's default: every IPv6 and IPv4 interface, so phones on the Wi-Fi reach it.
+  return env.NODE_ENV === 'development' ? undefined : '127.0.0.1';
 }
 
 let cached: Env | undefined;

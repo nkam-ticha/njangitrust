@@ -34,6 +34,11 @@ export function getPrisma(): PrismaClient {
   return client;
 }
 
+/** Whether this process has opened the database client yet (tests skip DB checks otherwise). */
+export function hasPrismaClient(): boolean {
+  return client !== undefined;
+}
+
 export async function disconnectPrisma(): Promise<void> {
   if (client) {
     await client.$disconnect();

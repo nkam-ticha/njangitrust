@@ -28,29 +28,35 @@ function toFieldIssues(error: z.ZodError, where: string): FieldIssue[] {
   return error.issues.slice(0, 20).flatMap((issue) => {
     const path = [where, ...issue.path.map(String)].join('.');
     if (issue.code === 'unrecognized_keys') {
-      const keys = (issue as { keys?: string[] }).keys ?? [];
-      return keys.map((key) => ({ path: `${path}.${key}`, code: 'UNKNOWN_FIELD' }));
+      // The unknown key names are never echoed (they could carry anything).
+      return [{ path, code: 'UNKNOWN_FIELD' }];
     }
-    return [{ path, code: STABLE_CODE.test(issue.message) ? issue.message : issue.code.toUpperCase() }];
+    return [
+      { path, code: STABLE_CODE.test(issue.message) ? issue.message : issue.code.toUpperCase() },
+    ];
   });
 }
 
 function parse(schema: AnySchema, value: unknown, where: string): unknown {
   const result = schema.safeParse(value);
   if (!result.success) {
-    throw commonError('VALIDATION_FAILED', { details: { issues: toFieldIssues(result.error, where) } });
+    throw commonError('VALIDATION_FAILED', {
+      details: { issues: toFieldIssues(result.error, where) },
+    });
   }
   return result.data;
 }
 
 function isEmpty(value: unknown): boolean {
   if (value === undefined || value === null) return true;
-  return typeof value === 'object' && Object.keys(value as object).length === 0;
+  return typeof value === 'object' && Object.keys(value).length === 0;
 }
 
 function refuseUnexpected(value: unknown, where: string): void {
   if (!isEmpty(value)) {
-    throw commonError('VALIDATION_FAILED', { details: { issues: [{ path: where, code: 'UNEXPECTED' }] } });
+    throw commonError('VALIDATION_FAILED', {
+      details: { issues: [{ path: where, code: 'UNEXPECTED' }] },
+    });
   }
 }
 
