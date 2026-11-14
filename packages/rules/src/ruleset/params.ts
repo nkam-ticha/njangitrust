@@ -30,8 +30,8 @@ export interface RuleSetParams {
 
 export type ParameterName = keyof RuleSetParams;
 
-/** R11.1: when a passed RULE_CHANGE applies. */
-export type TakesEffect = 'NEXT_ROUND' | 'NEXT_CYCLE';
+/** D13.1 (FSD section 6, GOV-04): every rule change applies from the next round. */
+export type TakesEffect = 'NEXT_ROUND';
 
 export type ParameterSpec =
   | { kind: 'integer'; min: number; max: number; takesEffect: TakesEffect }
@@ -43,12 +43,11 @@ export type ParameterSpec =
 export const PARAMETER_SPECS: Readonly<Record<ParameterName, ParameterSpec>> = {
   contributionAmount: { kind: 'integer', min: 500, max: 1_000_000, takesEffect: 'NEXT_ROUND' },
   solidarityContribution: { kind: 'integer', min: 0, max: 50_000, takesEffect: 'NEXT_ROUND' },
-  frequency: { kind: 'enum', values: ['WEEKLY', 'BIWEEKLY', 'MONTHLY'], takesEffect: 'NEXT_CYCLE' },
-  // R2.2 derives every round date of a cycle from its first payout time, so the payout time, like
-  // the frequency, changes from the next cycle.
-  payoutTime: { kind: 'payoutTime', takesEffect: 'NEXT_CYCLE' },
+  frequency: { kind: 'enum', values: ['WEEKLY', 'BIWEEKLY', 'MONTHLY'], takesEffect: 'NEXT_ROUND' },
+  // D13.1: a frequency or payout-time change re-dates the remaining rounds (rescheduleFromRound).
+  payoutTime: { kind: 'payoutTime', takesEffect: 'NEXT_ROUND' },
   lateFine: { kind: 'integer', min: 0, max: 50_000, takesEffect: 'NEXT_ROUND' },
-  rotationMode: { kind: 'enum', values: ['FIXED', 'BIDDING'], takesEffect: 'NEXT_CYCLE' },
+  rotationMode: { kind: 'enum', values: ['FIXED', 'BIDDING'], takesEffect: 'NEXT_ROUND' },
   minBid: { kind: 'integer', min: 0, max: 1_000_000, takesEffect: 'NEXT_ROUND' },
   loanRatePermille: { kind: 'integer', min: 0, max: 100, takesEffect: 'NEXT_ROUND' },
   loanMaxMonths: { kind: 'integer', min: 1, max: 6, takesEffect: 'NEXT_ROUND' },

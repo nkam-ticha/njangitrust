@@ -11,7 +11,7 @@ import {
   type TakesEffect,
 } from './params';
 
-/** R11.1: a RULE_CHANGE applies from the next round, except rotation mode, frequency and payout time. */
+/** D13.1, R11.1, GOV-04: every passed RULE_CHANGE applies from the next round. */
 export function ruleChangeTakesEffect(parameter: ParameterName): TakesEffect {
   return PARAMETER_SPECS[parameter].takesEffect;
 }
@@ -82,4 +82,23 @@ export function applyRuleChange(
   const check = validateRuleSet(next);
   if (!check.ok) throw new RangeError(`invalid rule set: ${check.code}`);
   return next;
+}
+
+/**
+ * D13.1, GOV-04, L5: the round a passed rule change applies from, the first round not yet opened.
+ * A round that already received money is refused (its obligations followed the old rules); when
+ * every round of the cycle is open, the change starts with the next cycle's first round
+ * (`nextCycle: true`, round 1 of that cycle).
+ */
+export function ruleChangeTargetRound(
+  rounds: readonly { number: number; opened: boolean; hasCredits: boolean }[],
+):
+  | { ok: true; nextCycle: false; roundNumber: number }
+  | { ok: true; nextCycle: true; roundNumber: 1 }
+  | Refusal<'ROUND_ALREADY_HAS_CREDITS', { roundNumber: number }> {
+  const next = [...rounds].sort((a, b) => a.number - b.number).find((r) => !r.opened);
+  if (!next) return { ok: true, nextCycle: true, roundNumber: 1 };
+  if (next.hasCredits)
+    return { ok: false, code: 'ROUND_ALREADY_HAS_CREDITS', roundNumber: next.number };
+  return { ok: true, nextCycle: false, roundNumber: next.number };
 }
