@@ -17,8 +17,8 @@ export const duration = {
 } as const;
 
 export const easing = {
-  out: Easing.out(Easing.cubic),
-  in: Easing.in(Easing.cubic),
-  inOut: Easing.inOut(Easing.cubic),
-  outQuad: Easing.out(Easing.quad),
+  out: Easing.out((t: number) => Easing.cubic(t)),
+  in: Easing.in((t: number) => Easing.cubic(t)),
+  inOut: Easing.inOut((t: number) => Easing.cubic(t)),
+  outQuad: Easing.out((t: number) => Easing.quad(t)),
 } as const;

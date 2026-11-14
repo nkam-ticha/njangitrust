@@ -47,7 +47,8 @@ export interface ThemeColors {
 function blendHex(top: string, alpha: number, base: string): string {
   const t = parseInt(top.slice(1), 16);
   const b = parseInt(base.slice(1), 16);
-  const ch = (shift: number) => Math.round(((t >> shift) & 255) * alpha + ((b >> shift) & 255) * (1 - alpha));
+  const ch = (shift: number) =>
+    Math.round(((t >> shift) & 255) * alpha + ((b >> shift) & 255) * (1 - alpha));
   return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('')}`.toUpperCase();
 }
 

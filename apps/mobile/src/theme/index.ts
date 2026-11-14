@@ -6,5 +6,12 @@ export { typography, fontScaleCaps, type TypeStyleName } from './typography';
 export { fontFamily, fontSources } from './fonts';
 export { space, radius, size, elevation } from './layout';
 export { duration, easing } from './motion';
-export { breakpoints, contentWidth, breakpointFor, useBreakpoint, type Breakpoint, type BreakpointInfo } from './breakpoints';
+export {
+  breakpoints,
+  contentWidth,
+  breakpointFor,
+  useBreakpoint,
+  type Breakpoint,
+  type BreakpointInfo,
+} from './breakpoints';
 export { useReduceMotion } from './useReduceMotion';

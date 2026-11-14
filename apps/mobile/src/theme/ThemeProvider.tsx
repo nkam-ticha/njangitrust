@@ -23,9 +23,15 @@ interface ThemeProviderProps {
 export function ThemeProvider({ children, initialPreference = 'system' }: ThemeProviderProps) {
   const system = useColorScheme();
   const [preference, setPreference] = useState<ThemePreference>(initialPreference);
-  const scheme: ColorScheme = preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : preference;
+  const scheme: ColorScheme =
+    preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : preference;
   const value = useMemo<Theme>(
-    () => ({ scheme, colors: scheme === 'dark' ? darkColors : lightColors, preference, setPreference }),
+    () => ({
+      scheme,
+      colors: scheme === 'dark' ? darkColors : lightColors,
+      preference,
+      setPreference,
+    }),
     [scheme, preference],
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

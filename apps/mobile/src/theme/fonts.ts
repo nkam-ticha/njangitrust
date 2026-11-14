@@ -9,8 +9,8 @@ export const fontFamily = {
 } as const;
 
 export const fontSources = {
-  [fontFamily.display600]: require('../../assets/fonts/BricolageGrotesque-SemiBold.ttf'),
-  [fontFamily.display700]: require('../../assets/fonts/BricolageGrotesque-Bold.ttf'),
-  [fontFamily.body400]: require('../../assets/fonts/AtkinsonHyperlegible-Regular.ttf'),
-  [fontFamily.body700]: require('../../assets/fonts/AtkinsonHyperlegible-Bold.ttf'),
+  [fontFamily.display600]: require('../../assets/fonts/BricolageGrotesque-SemiBold.ttf') as number,
+  [fontFamily.display700]: require('../../assets/fonts/BricolageGrotesque-Bold.ttf') as number,
+  [fontFamily.body400]: require('../../assets/fonts/AtkinsonHyperlegible-Regular.ttf') as number,
+  [fontFamily.body700]: require('../../assets/fonts/AtkinsonHyperlegible-Bold.ttf') as number,
 } as const;

@@ -36,7 +36,11 @@ export const size = {
 } as const;
 
 /** The two raised surfaces (2.4, 4.4). Dark mode lifts the surface instead of shadowing it. */
-export function elevation(kind: 'card' | 'sheet' | 'dialog', colors: ThemeColors, scheme: ColorScheme): ViewStyle {
+export function elevation(
+  kind: 'card' | 'sheet' | 'dialog',
+  colors: ThemeColors,
+  scheme: ColorScheme,
+): ViewStyle {
   if (scheme === 'dark') return {};
   const shadow = {
     card: { y: 2, blur: 12, alpha: 0.1, android: 3 },

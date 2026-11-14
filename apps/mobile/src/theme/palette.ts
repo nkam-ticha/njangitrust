@@ -3,15 +3,7 @@
 // docs/design/tools/check-contrast.mjs, which verifies every pair built from them.
 
 export type TokenName =
-  | 'indigo'
-  | 'indigoInk'
-  | 'night'
-  | 'cloud'
-  | 'line'
-  | 'raffia'
-  | 'paid'
-  | 'late'
-  | 'pending';
+  'indigo' | 'indigoInk' | 'night' | 'cloud' | 'line' | 'raffia' | 'paid' | 'late' | 'pending';
 
 export type Palette = Readonly<Record<TokenName, string>>;
 

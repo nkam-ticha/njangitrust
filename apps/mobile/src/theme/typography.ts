@@ -22,18 +22,38 @@ export type TypeStyleName =
 const tabular: TextStyle['fontVariant'] = ['tabular-nums'];
 
 export const typography: Readonly<Record<TypeStyleName, TextStyle>> = {
-  amountDisplay: { fontFamily: fontFamily.display700, fontSize: 32, lineHeight: 40, fontVariant: tabular },
+  amountDisplay: {
+    fontFamily: fontFamily.display700,
+    fontSize: 32,
+    lineHeight: 40,
+    fontVariant: tabular,
+  },
   screenTitle: { fontFamily: fontFamily.display700, fontSize: 24, lineHeight: 30 },
-  amountLarge: { fontFamily: fontFamily.display600, fontSize: 24, lineHeight: 30, fontVariant: tabular },
+  amountLarge: {
+    fontFamily: fontFamily.display600,
+    fontSize: 24,
+    lineHeight: 30,
+    fontVariant: tabular,
+  },
   groupTitle: { fontFamily: fontFamily.display700, fontSize: 19, lineHeight: 24 },
-  amountTotal: { fontFamily: fontFamily.display700, fontSize: 19, lineHeight: 24, fontVariant: tabular },
+  amountTotal: {
+    fontFamily: fontFamily.display700,
+    fontSize: 19,
+    lineHeight: 24,
+    fontVariant: tabular,
+  },
   sectionTitle: { fontFamily: fontFamily.body700, fontSize: 19, lineHeight: 26 },
   body: { fontFamily: fontFamily.body400, fontSize: 16, lineHeight: 22 },
   bodyStrong: { fontFamily: fontFamily.body700, fontSize: 16, lineHeight: 22 },
   amount: { fontFamily: fontFamily.display600, fontSize: 16, lineHeight: 22, fontVariant: tabular },
   secondary: { fontFamily: fontFamily.body400, fontSize: 14, lineHeight: 20 },
   secondaryStrong: { fontFamily: fontFamily.body700, fontSize: 14, lineHeight: 20 },
-  amountSmall: { fontFamily: fontFamily.display600, fontSize: 14, lineHeight: 20, fontVariant: tabular },
+  amountSmall: {
+    fontFamily: fontFamily.display600,
+    fontSize: 14,
+    lineHeight: 20,
+    fontVariant: tabular,
+  },
   caption: { fontFamily: fontFamily.body400, fontSize: 12, lineHeight: 17 },
   captionStrong: { fontFamily: fontFamily.body700, fontSize: 12, lineHeight: 17 },
 };
