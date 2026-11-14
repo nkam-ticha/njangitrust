@@ -23,10 +23,14 @@ export function loadTestEnv(): Record<string, string> {
   const file = new URL('../.env', import.meta.url);
   if (existsSync(file)) process.loadEnvFile(file);
   const app = assertTestDatabase(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL');
-  const owner = assertTestDatabase(process.env.TEST_MIGRATION_DATABASE_URL, 'TEST_MIGRATION_DATABASE_URL');
+  const owner = assertTestDatabase(
+    process.env.TEST_MIGRATION_DATABASE_URL,
+    'TEST_MIGRATION_DATABASE_URL',
+  );
   return {
     NODE_ENV: 'test',
-    LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'silent',
+    // Logged to memory and scanned for phone numbers after each test (test/setup-privacy.ts).
+    LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'debug',
     DATABASE_URL: app,
     MIGRATION_DATABASE_URL: owner,
     TEST_MIGRATION_DATABASE_URL: owner,
