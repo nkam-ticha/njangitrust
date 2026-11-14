@@ -2,7 +2,14 @@
 // events carry everything needed to re-run the draw (R2.3, R8.3).
 
 import type { RotationMode } from '../ruleset';
-import { biddingDrawSeed, drawRotation, drawSeed, verifiableShuffle } from '../rotation';
+import {
+  biddingDrawSeed,
+  drawRotation,
+  drawSeed,
+  redrawSeed,
+  remainingRotationDraw,
+  verifiableShuffle,
+} from '../rotation';
 
 /** R2.3: a cycle started; FIXED cycles carry the draw seed and the drawn order. */
 export type CycleStartedEvent = {
@@ -12,6 +19,8 @@ export type CycleStartedEvent = {
   latestHash: string;
   drawSeed: string | null;
   order: string[];
+  /** M3: the cycle's active members, sorted (both modes). */
+  members: string[];
 };
 
 /** R8.3: a bidding round closed with no bids; the beneficiary was drawn. */
@@ -24,6 +33,19 @@ export type BiddingDrawEvent = {
   drawSeed: string;
   eligibleMembershipIds: string[];
   beneficiaryMembershipId: string;
+};
+
+/** D13.1: a cycle switched from BIDDING to FIXED; the remaining order was drawn. */
+export type RotationRedrawnEvent = {
+  event: 'ROTATION_REDRAWN';
+  cycleNumber: number;
+  fromRound: number;
+  latestHash: string;
+  drawSeed: string;
+  /** M3: the members not yet served (the draw's input) and those already served, sorted. */
+  eligibleMembershipIds: string[];
+  servedMembershipIds: string[];
+  order: string[];
 };
 
 /** 2.5 EVENT kinds besides the draws: R11.8 vote results, R12 membership, R13.4, R15.4. */
@@ -39,13 +61,22 @@ export type GovernanceEvent =
       eligible: number;
     }
   | { event: 'ROTATION_CHANGED'; cycleNumber: number; order: string[]; proposalId: string }
-  | { event: 'BIDS_PUBLISHED'; roundId: string; bids: { membershipId: string; amount: number }[] }
+  | {
+      event: 'BIDS_PUBLISHED';
+      cycleNumber: number;
+      roundNumber: number;
+      roundId: string;
+      /** M3: the winner, so a later redraw can be cross-checked. */
+      beneficiaryMembershipId: string;
+      bids: { membershipId: string; amount: number }[];
+    }
   | { event: 'MEMBER_JOINED'; membershipId: string }
   | { event: 'MEMBER_LEFT'; membershipId: string; reason: 'CYCLE_END' | 'EARLY_EXIT' | 'REMOVED' }
   | { event: 'PAYMENT_NUMBER_CHANGED'; membershipId: string }
   | { event: 'MINUTES_PUBLISHED'; meetingId: string; version: number; minutesHash: string };
 
-export type LedgerEvent = CycleStartedEvent | BiddingDrawEvent | GovernanceEvent;
+export type DrawEvent = CycleStartedEvent | BiddingDrawEvent | RotationRedrawnEvent;
+export type LedgerEvent = DrawEvent | GovernanceEvent;
 
 /** R2.3: the CYCLE_STARTED event, running the verifiable draw for a FIXED cycle. */
 export function cycleStartedEvent(input: {
@@ -60,6 +91,7 @@ export function cycleStartedEvent(input: {
     cycleNumber: input.cycleNumber,
     mode: input.mode,
     latestHash: input.latestLedgerHash,
+    members: [...input.activeMembershipIds].sort(),
   } as const;
   if (input.mode === 'BIDDING') return { ...base, drawSeed: null, order: [] };
   const { seed, order } = drawRotation({
@@ -99,13 +131,35 @@ export function biddingDrawEvent(input: {
   };
 }
 
+/** D13.1: the ROTATION_REDRAWN event, running the draw of the remaining order. */
+export function rotationRedrawnEvent(input: {
+  groupId: string;
+  cycleNumber: number;
+  fromRound: number;
+  latestLedgerHash: string;
+  notYetServedMembershipIds: readonly string[];
+  servedMembershipIds: readonly string[];
+}): RotationRedrawnEvent {
+  const { seed, order } = remainingRotationDraw(input);
+  return {
+    event: 'ROTATION_REDRAWN',
+    cycleNumber: input.cycleNumber,
+    fromRound: input.fromRound,
+    latestHash: input.latestLedgerHash,
+    drawSeed: seed,
+    eligibleMembershipIds: [...input.notYetServedMembershipIds].sort(),
+    servedMembershipIds: [...input.servedMembershipIds].sort(),
+    order,
+  };
+}
+
 /**
- * R2.3, R8.3: re-runs a recorded draw. `latestHashAtDraw` is the hash of the transaction before the
+ * R2.3, R8.3, D13.1: re-runs a recorded draw. `latestHashAtDraw` is the hash of the transaction before the
  * EVENT (or the genesis hash). Returns null when the draw is correct, else what is wrong.
  */
 export function drawEventProblem(
   groupId: string,
-  event: CycleStartedEvent | BiddingDrawEvent,
+  event: DrawEvent,
   latestHashAtDraw: string,
 ): string | null {
   if (event.latestHash !== latestHashAtDraw)
@@ -117,6 +171,18 @@ export function drawEventProblem(
       return 'the seed is wrong';
     const redrawn = verifiableShuffle(event.order, event.drawSeed);
     return redrawn.every((id, i) => id === event.order[i])
+      ? null
+      : 'the order does not follow the draw';
+  }
+  if (event.event === 'ROTATION_REDRAWN') {
+    const seed = redrawSeed(groupId, event.cycleNumber, event.fromRound, event.latestHash);
+    if (event.drawSeed !== seed) return 'the seed is wrong';
+    const served = new Set(event.servedMembershipIds);
+    if (event.eligibleMembershipIds.some((id) => served.has(id))) {
+      return 'a served member is in the redraw';
+    }
+    const redrawn = verifiableShuffle(event.eligibleMembershipIds, seed);
+    return redrawn.length === event.order.length && redrawn.every((id, i) => id === event.order[i])
       ? null
       : 'the order does not follow the draw';
   }

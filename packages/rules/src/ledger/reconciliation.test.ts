@@ -6,7 +6,9 @@ describe('daily reconciliation (2.5 invariant 6, R5.5, spec 5.2)', () => {
     ledgerCash: 250_000,
     inFlightCollections: 0,
     inFlightDisbursements: 0,
+    inFlightFeeTolerance: 0,
     ledgerProblemCount: 0,
+    reservedShortfall: 0,
   };
 
   it('is OK when the provider balance equals ledger cash across all groups', () => {
@@ -47,6 +49,14 @@ describe('daily reconciliation (2.5 invariant 6, R5.5, spec 5.2)', () => {
   it('moves to ALERT when the ledger itself breaks an invariant', () => {
     expect(reconcile({ ...base, providerBalance: 250_000, ledgerProblemCount: 1 })).toMatchObject({
       status: 'ALERT',
+      withdrawalsPaused: true,
+    });
+  });
+
+  it('moves to ALERT when cash no longer covers what is reserved for members (D16.2)', () => {
+    expect(reconcile({ ...base, providerBalance: 250_000, reservedShortfall: 5_591 })).toEqual({
+      status: 'ALERT',
+      difference: 0,
       withdrawalsPaused: true,
     });
   });

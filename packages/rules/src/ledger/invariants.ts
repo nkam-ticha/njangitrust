@@ -3,13 +3,19 @@
 
 import { parseAccount } from './accounts';
 import { applyPostings, type Balances } from './balances';
+import { createBidTracker } from './bid-checks';
+import { createCorrectionTracker } from './correction-checks';
 import { inspectChain, sortPostings } from './hash-chain';
+import { createInFlightTracker, DISBURSEMENT_TYPES } from './inflight-checks';
+import { reservedLentProblem } from './lending-checks';
+import { createPotTracker } from './pot-checks';
 import type { LedgerTransaction, Posting } from './types';
 import { entryProblems, type LedgerProblem } from './validation';
 
 /**
  * 2.5 invariants 2–4 (and pots): accounts that may never be below zero, read naturally:
- * member payables, round pots, the solidarity fund and provider cash.
+ * member payables, round pots, in-flight disbursements, the solidarity fund and provider cash. A receivable below zero (a
+ * member credited for a debt they never owed) is flagged too (audit item 8).
  */
 export function negativeAccounts(
   balances: ReadonlyMap<string, number>,
@@ -17,8 +23,14 @@ export function negativeAccounts(
   const out: { account: string; value: number }[] = [];
   for (const [account, raw] of balances) {
     const kind = parseAccount(account)?.kind;
-    if (kind === 'CASH' && raw < 0) out.push({ account, value: raw });
-    if ((kind === 'PAYABLE' || kind === 'POT' || kind === 'SOLIDARITY_FUND') && raw > 0) {
+    if ((kind === 'CASH' || kind === 'RECEIVABLE') && raw < 0) out.push({ account, value: raw });
+    if (
+      (kind === 'PAYABLE' ||
+        kind === 'POT' ||
+        kind === 'SOLIDARITY_FUND' ||
+        kind === 'IN_FLIGHT') &&
+      raw > 0
+    ) {
       out.push({ account, value: -raw });
     }
   }
@@ -45,6 +57,8 @@ function reversalProblem(
   const original = bySeq.get(target);
   if (!original) return `seq ${target} does not exist`;
   if (original.type === 'EVENT') return 'an EVENT cannot be reversed';
+  if (DISBURSEMENT_TYPES.includes(original.type))
+    return `a ${original.type} is never reversed: a failed send is returned (DISBURSEMENT_RETURNED), an operator reversal refunded (DISBURSEMENT_REFUNDED)`;
   if (reversed.has(target)) return `seq ${target} is already reversed`;
   if (tx.refId !== original.id) return 'refId must be the reversed transaction ID';
   const negated = original.postings.map((p) => ({ account: p.account, amount: 0 - p.amount }));
@@ -56,8 +70,13 @@ function reversalProblem(
 
 /**
  * 2.5 invariants 1–5: hash chain and gap-free seq, valid entries that sum to zero, exact
- * reversals, unique IDs, and no payable, pot, solidarity fund or cash below zero after any
- * transaction. Returns every problem in ledger order; empty when the ledger is sound.
+ * reversals, unique IDs, no payable, pot, in-flight, solidarity fund, cash or receivable below zero
+ * after any transaction, bidding pots assigned exactly once to the recorded winner (D10, M3), winning
+ * bids assessed as published, in-flight disbursements opened once and closed once (D18.1), and
+ * corrections exactly as the balances require (D15–D18), completed disbursements refunded at most
+ * once and exactly (D22.1), and no reserved money lent, refunded to a leaver or distributed
+ * (RESERVED_LENT, H1). Returns every problem in ledger order; empty when the ledger is sound.
+ * Reserved-money coverage is current state, not integrity: see coverageGaps and reservedShortfall.
  */
 export function checkLedger(
   groupId: string,
@@ -69,6 +88,10 @@ export function checkLedger(
   const bySeq = new Map<number, LedgerTransaction>();
   const reversed = new Set<number>();
   const negative = new Set<string>();
+  const pots = createPotTracker();
+  const corrections = createCorrectionTracker(pots);
+  const inFlight = createInFlightTracker();
+  const bids = createBidTracker();
   let balances: Balances = new Map();
   transactions.forEach((tx, index) => {
     const seq = chain.seqs[index]!;
@@ -81,6 +104,14 @@ export function checkLedger(
     if (tx.type === 'REVERSAL' && entryIssues.length === 0) {
       const issue = reversalProblem(tx, bySeq, reversed);
       if (issue) problems.push({ seq, code: 'REVERSAL_MISMATCH', detail: issue });
+    }
+    if (entryIssues.length === 0) {
+      problems.push(...corrections.check(tx, seq, balances, bySeq));
+      problems.push(...pots.check(tx, seq, balances, bySeq));
+      problems.push(...inFlight.check(tx, seq, balances));
+      problems.push(...bids.check(tx, seq, bySeq));
+      const lent = reservedLentProblem(tx, seq, balances);
+      if (lent) problems.push(lent);
     }
     if (Number.isSafeInteger(tx.seq)) bySeq.set(tx.seq, tx);
     const postings = Array.isArray(tx.postings)
@@ -96,5 +127,6 @@ export function checkLedger(
     negative.clear();
     for (const { account } of nowNegative) negative.add(account);
   });
+  problems.push(...corrections.finish(), ...pots.finish(balances), ...bids.finish());
   return problems;
 }

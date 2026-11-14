@@ -42,9 +42,12 @@ export interface BalanceSummary {
   pots: number;
   /** Sum of all receivable:member:* (debts owed to the general fund). */
   receivables: number;
+  /** D18.1: sum of all inflight:disbursement:* (sent to the provider, not yet confirmed). */
+  inFlight: number;
   payableByMember: Record<string, number>;
   receivableByMember: Record<string, number>;
   potByRound: Record<string, number>;
+  inFlightByOperation: Record<string, number>;
 }
 
 /** 2.5: the summary of raw balances; throws on an unknown account name. */
@@ -56,9 +59,11 @@ export function summarizeBalances(balances: ReadonlyMap<string, number>): Balanc
     payables: 0,
     pots: 0,
     receivables: 0,
+    inFlight: 0,
     payableByMember: {},
     receivableByMember: {},
     potByRound: {},
+    inFlightByOperation: {},
   };
   for (const [account, raw] of balances) {
     const parsed = parseAccount(account);
@@ -85,6 +90,10 @@ export function summarizeBalances(balances: ReadonlyMap<string, number>): Balanc
       case 'POT':
         summary.pots += value;
         summary.potByRound[parsed.id!] = value;
+        break;
+      case 'IN_FLIGHT':
+        summary.inFlight += value;
+        summary.inFlightByOperation[parsed.id!] = value;
         break;
     }
   }

@@ -18,6 +18,28 @@ export function sortPostings(postings: readonly Posting[]): Posting[] {
     .sort((a, b) => (a.account < b.account ? -1 : a.account > b.account ? 1 : a.amount - b.amount));
 }
 
+/**
+ * D6, D12: the fields of a stored transaction. All but `hash` are hashed; `createdAt` is database
+ * metadata and is not part of the record (D12), so an export carries none of it.
+ */
+export const TRANSACTION_FIELDS = [
+  'id',
+  'groupId',
+  'seq',
+  'type',
+  'occurredAt',
+  'roundId',
+  'membershipId',
+  'refType',
+  'refId',
+  'descriptionFr',
+  'descriptionEn',
+  'metadata',
+  'postings',
+  'prevHash',
+  'hash',
+] as const;
+
 /** D6: the object that is hashed, every field except `hash`, postings sorted. */
 export function hashContent(tx: Omit<LedgerTransaction, 'hash'>): JsonObject {
   return {
