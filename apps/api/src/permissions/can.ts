@@ -1,11 +1,16 @@
 // The one function that decides every permission (spec 2.11, CLAUDE.md rule 6). Pure: it reads
 // nothing; callers load the actor's membership and the resource first.
 import type { GroupActor, GroupStatus, MembershipStatus } from './actor';
-import { GROUP_POLICIES, OWNER_ACTIONS, type Action, type Audience, type GroupAction, type OwnerAction } from './policies';
+import {
+  GROUP_POLICIES,
+  OWNER_ACTIONS,
+  type Action,
+  type Audience,
+  type OwnerAction,
+} from './policies';
 
 export type Resource =
-  | { kind: 'group'; groupId: string; status: GroupStatus }
-  | { kind: 'owned'; ownerUserId: string };
+  { kind: 'group'; groupId: string; status: GroupStatus } | { kind: 'owned'; ownerUserId: string };
 
 export type DenialReason =
   | 'NOT_A_MEMBER'
@@ -52,5 +57,5 @@ export function can(actor: GroupActor, action: Action, resource: Resource): Deci
     return resource.ownerUserId === actor.userId ? ALLOW : deny('NOT_OWNER');
   }
   if (resource.kind !== 'group') return deny('WRONG_RESOURCE');
-  return decideGroup(actor, GROUP_POLICIES[action as GroupAction], resource.status);
+  return decideGroup(actor, GROUP_POLICIES[action], resource.status);
 }

@@ -36,6 +36,11 @@ export function toAdminView(member: MemberSource, viewerMembershipId: string): A
 }
 
 /** Picks the audience from the viewer's own membership. */
-export function toMemberFor(viewer: MembershipRef, member: MemberSource): PublicMemberDto | AdminMemberDto {
-  return viewer.role === 'ADMIN' ? toAdminView(member, viewer.id) : toPublicMember(member, viewer.id);
+export function toMemberFor(
+  viewer: MembershipRef,
+  member: MemberSource,
+): PublicMemberDto | AdminMemberDto {
+  return viewer.role === 'ADMIN'
+    ? toAdminView(member, viewer.id)
+    : toPublicMember(member, viewer.id);
 }

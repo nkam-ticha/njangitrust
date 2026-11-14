@@ -1,7 +1,6 @@
 // Notification and chat-message mappers.
-import type { Bilingual } from '@njangi/shared';
 import type { MessageDto } from '@njangi/shared/contracts/chat';
-import type { NotificationDto } from '@njangi/shared/contracts/notifications';
+import type { NotificationDto, NotificationPrefsDto } from '@njangi/shared/contracts/notifications';
 import { bilingualSchema } from '@njangi/shared/contracts/common';
 import { iso, isoOrNull } from './time';
 
@@ -51,8 +50,32 @@ export function toMessage(m: MessageSource): MessageDto {
     groupId: m.groupId,
     kind: m.kind,
     text: removed ? null : m.text,
-    systemText: system.success ? (system.data as Bilingual) : null,
+    systemText: system.success ? system.data : null,
     author: m.author ? { membershipId: m.author.id, name: m.author.user.name } : null,
     createdAt: iso(m.createdAt),
+  };
+}
+
+const hhmm = (minute: number) =>
+  `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+
+export interface PrefsDtoSource {
+  mutedCategories: string[];
+  quietStartMinute: number;
+  quietEndMinute: number;
+  mutedChatGroupIds: string[];
+  mediaAutoDownload: 'WIFI_ONLY' | 'ALWAYS' | 'NEVER';
+}
+
+/** Spec 1.8: SECURITY can never appear muted, whatever is stored. */
+export function toNotificationPrefs(p: PrefsDtoSource): NotificationPrefsDto {
+  return {
+    mutedCategories: p.mutedCategories.filter(
+      (c): c is NotificationPrefsDto['mutedCategories'][number] =>
+        c === 'REMINDERS' || c === 'MONEY' || c === 'VOTES' || c === 'GROUP',
+    ),
+    quietHours: { from: hhmm(p.quietStartMinute), to: hhmm(p.quietEndMinute) },
+    mutedChatGroupIds: p.mutedChatGroupIds,
+    mediaAutoDownload: p.mediaAutoDownload,
   };
 }

@@ -1,6 +1,9 @@
 // PendingAction mapper. `args` (normalised handler input) never leaves the server: the card is
 // drawn from the server-built preview only (spec 4.5).
-import { actionPreviewSchema, type PendingActionDto } from '@njangi/shared/contracts/pending-actions';
+import {
+  actionPreviewSchema,
+  type PendingActionDto,
+} from '@njangi/shared/contracts/pending-actions';
 import type { PendingActionUpdatedPayload } from '@njangi/shared/contracts/realtime';
 import { bilingualSchema } from '@njangi/shared/contracts/common';
 import type { PendingAction } from '../lib/prisma';
@@ -21,7 +24,12 @@ function resultOf(action: PendingAction): PendingActionDto['result'] {
 function failureOf(action: PendingAction): PendingActionDto['failure'] {
   if (!action.failureCode) return null;
   const text = parseBilingual(action.failureText);
-  return { code: action.failureCode, key: failureKeyOf(action.failureCode), messageFr: text?.fr ?? '', messageEn: text?.en ?? '' };
+  return {
+    code: action.failureCode,
+    key: failureKeyOf(action.failureCode),
+    messageFr: text?.fr ?? '',
+    messageEn: text?.en ?? '',
+  };
 }
 
 export function toPendingAction(action: PendingAction): PendingActionDto {
@@ -42,5 +50,10 @@ export function toPendingAction(action: PendingAction): PendingActionDto {
 }
 
 export function toPendingActionUpdate(action: PendingAction): PendingActionUpdatedPayload {
-  return { id: action.id, status: action.status, result: resultOf(action), failure: failureOf(action) };
+  return {
+    id: action.id,
+    status: action.status,
+    result: resultOf(action),
+    failure: failureOf(action),
+  };
 }

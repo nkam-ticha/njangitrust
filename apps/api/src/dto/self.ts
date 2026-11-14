@@ -14,7 +14,11 @@ export interface SelfSource {
     consentAt: Date;
     createdAt: Date;
   };
-  paymentNumber: { number: string; operator: 'MTN' | 'ORANGE' | 'UNKNOWN'; activeFrom: Date } | null;
+  paymentNumber: {
+    number: string;
+    operator: 'MTN' | 'ORANGE' | 'UNKNOWN';
+    activeFrom: Date;
+  } | null;
 }
 
 /** Call only with the requester's own record. */

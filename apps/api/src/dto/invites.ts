@@ -15,14 +15,20 @@ export interface InviteSource {
   createdAt: Date;
 }
 
-export function inviteStatus(invite: InviteSource, now: Date): 'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED' {
+export function inviteStatus(
+  invite: InviteSource,
+  now: Date,
+): 'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED' {
   if (invite.usedAt) return 'USED';
   if (invite.revokedAt) return 'REVOKED';
   if (invite.expiresAt.getTime() <= now.getTime()) return 'EXPIRED';
   return 'PENDING';
 }
 
-export function toInviteListItem(invite: InviteSource, now: Date): z.infer<typeof inviteListItemSchema> {
+export function toInviteListItem(
+  invite: InviteSource,
+  now: Date,
+): z.infer<typeof inviteListItemSchema> {
   return {
     id: invite.id,
     inviteeName: invite.inviteeName,

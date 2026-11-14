@@ -2,10 +2,26 @@
 // field by field; nothing is ever produced by deleting fields from a database row.
 export { iso, isoOrNull } from './time';
 export { toSelf, type SelfSource } from './self';
-export { toGroup, toMyGroup, toMyMembership, toRuleSet, type GroupSource, type RuleSetSource } from './groups';
+export {
+  toGroup,
+  toMyGroup,
+  toMyMembership,
+  toRuleSet,
+  type GroupSource,
+  type RuleSetSource,
+} from './groups';
 export { toAdminView, toMemberFor, toPublicMember, type MemberSource } from './members';
 export { inviteStatus, toInviteListItem, toInvitePreview, type InviteSource } from './invites';
 export { toPendingAction, toPendingActionUpdate } from './pending-actions';
+export { toActionResultData } from './action-results';
+export { toDevice, type DeviceSource } from './devices';
 export { failureKeyOf, registerFailureKeys, type FailureKey } from './failure-keys';
 export { toProposal, type ProposalView } from './proposals';
-export { toMessage, toNotification, type MessageSource, type NotificationSource } from './notifications';
+export {
+  toMessage,
+  toNotification,
+  toNotificationPrefs,
+  type MessageSource,
+  type NotificationSource,
+} from './notifications';
+export { toSolidarityRequest, type SolidarityRequestSource } from './solidarity';
