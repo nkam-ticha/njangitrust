@@ -1,18 +1,18 @@
-// Withdrawals (R5.4, R5.5, R4.3, R13.5, spec 2.5 "Available to withdraw").
+// Withdrawals (R5.4, R5.5, R4.3, R13.5, D13.3, spec 2.5 "Available to withdraw").
 
-import { maxAmountWithinFee, scheduleFee, type FeeSchedule } from '../fees';
-import type { PayoutCredit } from '../ledger';
-import { assertNonNegativeFcfa, type Fcfa } from '../money';
+import { scheduleFee, type FeeSchedule } from '../fees';
+import { availableToWithdraw, type PayoutCredit } from '../ledger';
+import type { Fcfa } from '../money';
 import type { Refusal } from '../result';
-import { assertDate, type HoldReason } from '../time';
+import type { HoldReason } from '../time';
+import type { SettleableDebt } from './auto-settlement';
+import { HOLD_APPLIES_TO, validateDisbursement, type DisbursementRefusal } from './disbursement';
 
-/** R5.4: the smallest withdrawal. */
+/** R5.4: the smallest withdrawal (D11: withdrawals only). */
 export const MIN_WITHDRAWAL = 100;
 
 export type WithdrawalRefusal =
-  | Refusal<'WITHDRAWALS_PAUSED'>
-  | Refusal<'WITHDRAWAL_HOLD_ACTIVE', { reason: HoldReason; until: Date }>
-  | Refusal<'NO_ACTIVE_PAYMENT_NUMBER'>
+  | DisbursementRefusal
   | Refusal<'WITHDRAWAL_IN_PROGRESS'>
   | Refusal<'INVALID_AMOUNT'>
   | Refusal<'NOTHING_TO_WITHDRAW', { available: Fcfa; locked: Fcfa; unlocksAt: Date | null }>
@@ -20,10 +20,10 @@ export type WithdrawalRefusal =
   | Refusal<'ABOVE_AVAILABLE', { available: Fcfa }>;
 
 /**
- * R5.4, R5.5: checks a withdrawal by the member to their own active number: not while
- * reconciliation is in ALERT or a hold (R13.5) is active, one at a time, from 100 FCFA up to what is
- * available. Available = payable − credits locked until their payout time (R5.2), less the estimated
- * disbursement fee (R4.3). `amount: 'ALL'` withdraws everything available.
+ * R5.4, R5.5: checks a withdrawal by the member to their own active number: no disbursement block
+ * (validateDisbursement), one at a time, from 100 FCFA up to what is available (availableToWithdraw,
+ * the single definition: every due unsettled debt is held back, M1). `amount: 'ALL'` withdraws
+ * everything available. On success the service posts DISBURSEMENT_SENT (D18.1).
  */
 export function validateWithdrawal(input: {
   amount: Fcfa | 'ALL';
@@ -36,46 +36,34 @@ export function validateWithdrawal(input: {
   reconciliationStatus: 'OK' | 'WARNING' | 'ALERT' | null;
   withdrawalInProgress: boolean;
   hasActivePaymentNumber: boolean;
+  /** D13.3, M1: the member's unsettled debts; those due at `now` are held back. */
+  debts: readonly SettleableDebt[];
 }): { ok: true; amount: Fcfa; feeEstimate: Fcfa; available: Fcfa } | WithdrawalRefusal {
-  if (input.reconciliationStatus === 'ALERT') return { ok: false, code: 'WITHDRAWALS_PAUSED' };
-  if (input.hold)
-    return {
-      ok: false,
-      code: 'WITHDRAWAL_HOLD_ACTIVE',
-      reason: input.hold.reason,
-      until: input.hold.until,
-    };
-  if (!input.hasActivePaymentNumber) return { ok: false, code: 'NO_ACTIVE_PAYMENT_NUMBER' };
+  const blocked = validateDisbursement({
+    hold: input.hold,
+    holdApplies: HOLD_APPLIES_TO.WITHDRAWAL,
+    reconciliationStatus: input.reconciliationStatus,
+    hasActivePaymentNumber: input.hasActivePaymentNumber,
+  });
+  if (!blocked.ok) return blocked;
   if (input.withdrawalInProgress) return { ok: false, code: 'WITHDRAWAL_IN_PROGRESS' };
   if (input.amount !== 'ALL' && (!Number.isSafeInteger(input.amount) || input.amount <= 0)) {
     return { ok: false, code: 'INVALID_AMOUNT' };
   }
-  assertNonNegativeFcfa(input.payableBalance, 'payableBalance');
-  const now = assertDate(input.now, 'now');
-  let pending = 0;
-  let unlocksAt: Date | null = null;
-  for (const credit of input.credits) {
-    if (assertDate(credit.payoutAt, 'payoutAt') > now) {
-      pending += credit.amount;
-      if (!unlocksAt || credit.payoutAt.getTime() < unlocksAt.getTime())
-        unlocksAt = credit.payoutAt;
-    }
-  }
-  const locked = Math.min(pending, input.payableBalance);
-  const spendable = input.payableBalance - locked;
-  const available = maxAmountWithinFee(spendable, input.feeSchedule);
+  const { available, spendable, locked, unlocksAt } = availableToWithdraw({
+    payableBalance: input.payableBalance,
+    credits: input.credits,
+    now: input.now,
+    feeSchedule: input.feeSchedule,
+    debts: input.debts,
+  });
   if (available < MIN_WITHDRAWAL) {
-    return {
-      ok: false,
-      code: 'NOTHING_TO_WITHDRAW',
-      available,
-      locked,
-      unlocksAt: locked > 0 ? unlocksAt : null,
-    };
+    return { ok: false, code: 'NOTHING_TO_WITHDRAW', available, locked, unlocksAt };
   }
   const amount = input.amount === 'ALL' ? available : input.amount;
-  if (amount < MIN_WITHDRAWAL)
+  if (amount < MIN_WITHDRAWAL) {
     return { ok: false, code: 'BELOW_MINIMUM_WITHDRAWAL', minimum: MIN_WITHDRAWAL };
+  }
   const feeEstimate = scheduleFee(input.feeSchedule, 'DISBURSEMENT', amount);
   if (amount + feeEstimate > spendable) return { ok: false, code: 'ABOVE_AVAILABLE', available };
   return { ok: true, amount, feeEstimate, available };

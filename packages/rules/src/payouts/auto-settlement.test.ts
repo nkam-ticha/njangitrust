@@ -31,6 +31,7 @@ describe('auto-settlement (R5.3)', () => {
       total: 17_750,
       remainingPayable: 81_340,
       notCovered: [],
+      uncoveredTotal: 0,
     });
   });
 
@@ -60,17 +61,34 @@ describe('auto-settlement (R5.3)', () => {
     expect(result.settled.map((d) => d.id)).toEqual(['f0', 'b1', 'f1', 'i1']);
   });
 
-  it('takes whole debts only; a debt that does not fit stays due and smaller later ones are still taken', () => {
-    const result = autoSettlement({
-      payableBalance: 10_000,
-      debts: [installment1, fine],
-      now: round4Payout,
+  it('takes whole debts strictly oldest first and stops at the first that does not fit (D13.3)', () => {
+    const olderInstallment: SettleableDebt = {
+      id: 'i0',
+      kind: 'LOAN_INSTALLMENT',
+      amount: 16_750,
+      dueAt: new Date('2026-10-30T17:00:00.000Z'),
+    };
+    expect(
+      autoSettlement({
+        payableBalance: 10_000,
+        debts: [fine, olderInstallment],
+        now: round4Payout,
+      }),
+    ).toEqual({
+      settled: [],
+      total: 0,
+      remainingPayable: 10_000,
+      notCovered: [olderInstallment, fine],
+      uncoveredTotal: 17_750,
     });
-    expect(result).toEqual({
+    expect(
+      autoSettlement({ payableBalance: 10_000, debts: [installment1, fine], now: round4Payout }),
+    ).toEqual({
       settled: [fine],
       total: 1_000,
       remainingPayable: 9_000,
       notCovered: [installment1],
+      uncoveredTotal: 16_750,
     });
   });
 
@@ -81,5 +99,42 @@ describe('auto-settlement (R5.3)', () => {
     expect(() => autoSettlement({ payableBalance: -1, debts: [], now: round4Payout })).toThrow(
       RangeError,
     );
+  });
+
+  it('takes a pot-correction debt like a fine, after fines due at the same time (D15)', () => {
+    const correction: SettleableDebt = {
+      id: 'k1',
+      kind: 'CORRECTION',
+      amount: 5_909,
+      dueAt: round4Due,
+    };
+    const result = autoSettlement({
+      payableBalance: 99_090,
+      debts: [installment1, correction, fine],
+      now: round4Payout,
+    });
+    expect(result.settled.map((d) => d.id)).toEqual(['f1', 'k1', 'i1']);
+  });
+
+  it('works from the ledger payable alone: a withdrawal in flight already left it (D18.1)', () => {
+    // 20 000 credited, 15 500 sent out (withdrawal + fee): the payable holds 4 500.
+    const result = autoSettlement({
+      payableBalance: 4_500,
+      debts: [{ id: 'f9', kind: 'FINE', amount: 10_000, dueAt: round4Due }],
+      now: round4Payout,
+    });
+    expect(result).toMatchObject({ total: 0, remainingPayable: 4_500, uncoveredTotal: 10_000 });
+  });
+});
+
+describe('installments of a loan still in flight (L2)', () => {
+  it('are never taken: a return would leave the receivable below zero', () => {
+    const inFlight: SettleableDebt = { ...installment1, id: 'i9', loanInFlight: true };
+    const result = autoSettlement({
+      payableBalance: 99_090,
+      debts: [inFlight, fine],
+      now: round4Payout,
+    });
+    expect(result).toMatchObject({ settled: [fine], total: 1_000, notCovered: [] });
   });
 });
