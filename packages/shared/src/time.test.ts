@@ -16,13 +16,28 @@ describe('Africa/Douala conversion (spec: times stored in UTC, shown in Douala)'
   it('is UTC+1 all year, with no daylight saving', () => {
     expect(DOUALA_OFFSET_MINUTES).toBe(60);
     expect(toDouala(deadline)).toEqual({
-      year: 2026, month: 11, day: 6, weekday: 5, hour: 18, minute: 0,
+      year: 2026,
+      month: 11,
+      day: 6,
+      weekday: 5,
+      hour: 18,
+      minute: 0,
     });
-    expect(toDouala('2026-06-30T23:30:00Z')).toMatchObject({ month: 7, day: 1, hour: 0, minute: 30 });
+    expect(toDouala('2026-06-30T23:30:00Z')).toMatchObject({
+      month: 7,
+      day: 1,
+      hour: 0,
+      minute: 30,
+    });
   });
 
   it('crosses the year boundary', () => {
-    expect(toDouala('2026-12-31T23:15:00Z')).toMatchObject({ year: 2027, month: 1, day: 1, hour: 0 });
+    expect(toDouala('2026-12-31T23:15:00Z')).toMatchObject({
+      year: 2027,
+      month: 1,
+      day: 1,
+      hour: 0,
+    });
   });
 });
 

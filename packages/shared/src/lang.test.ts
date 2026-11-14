@@ -4,7 +4,9 @@ import { formatXAF } from './money';
 
 describe('interpolate', () => {
   it('fills {{placeholders}}', () => {
-    expect(interpolate('Tour {{round}} sur {{total}}', { round: 4, total: 10 })).toBe('Tour 4 sur 10');
+    expect(interpolate('Tour {{round}} sur {{total}}', { round: 4, total: 10 })).toBe(
+      'Tour 4 sur 10',
+    );
     expect(interpolate('Bonjour {{ name }}', { name: 'Carine' })).toBe('Bonjour Carine');
   });
 
