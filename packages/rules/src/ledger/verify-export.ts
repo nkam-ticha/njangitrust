@@ -3,15 +3,22 @@
 
 import { parseAccount } from './accounts';
 import { computeBalances, summarizeBalances, type BalanceSummary } from './balances';
-import { drawProblems, proposalProblems, unmaskedPhoneProblems } from './export-checks';
+import { coverageWarnings } from './coverage';
+import {
+  drawProblems,
+  proposalProblems,
+  tieOrderProblems,
+  unmaskedPhoneProblems,
+} from './export-checks';
 import { LEDGER_EXPORT_FORMAT, LEDGER_EXPORT_VERSION, type LedgerExport } from './export-format';
+import { TRANSACTION_FIELDS } from './hash-chain';
 import { checkLedger } from './invariants';
 import type { LedgerTransaction } from './types';
-import type { LedgerProblem } from './validation';
+import type { LedgerProblem, LedgerWarning } from './validation';
 
 export interface ExportSummary extends Pick<
   BalanceSummary,
-  'cash' | 'generalFund' | 'solidarityFund' | 'payables' | 'receivables' | 'pots'
+  'cash' | 'generalFund' | 'solidarityFund' | 'payables' | 'receivables' | 'pots' | 'inFlight'
 > {
   groupId: string;
   transactions: number;
@@ -23,6 +30,8 @@ export interface ExportVerification {
   ok: boolean;
   /** Problems with a seq first, in ledger order; then problems of the export as a whole. */
   problems: LedgerProblem[];
+  /** H1: the ledger's current state (reserved money not covered now); never makes `ok` false. */
+  warnings: LedgerWarning[];
   summary: ExportSummary | null;
 }
 
@@ -59,6 +68,30 @@ function validPostings(transactions: readonly LedgerTransaction[]) {
   }));
 }
 
+const KNOWN_FIELDS = new Set<string>(TRANSACTION_FIELDS);
+
+/** D12: a field the hash does not cover could be changed unnoticed, so the export may not carry one. */
+function unhashedFieldProblems(transactions: readonly LedgerTransaction[]): LedgerProblem[] {
+  const problems: LedgerProblem[] = [];
+  transactions.forEach((tx, i) => {
+    const seq = Number.isSafeInteger(tx.seq) ? tx.seq : i + 1;
+    const extra = Object.keys(tx).filter((k) => !KNOWN_FIELDS.has(k));
+    const postings = Array.isArray(tx.postings) ? tx.postings : [];
+    const postingExtra = postings.some(
+      (p) =>
+        p && typeof p === 'object' && Object.keys(p).some((k) => k !== 'account' && k !== 'amount'),
+    );
+    if (extra.length > 0 || postingExtra) {
+      problems.push({
+        seq,
+        code: 'UNHASHED_FIELD',
+        detail: `fields outside the hashed record: ${[...extra, ...(postingExtra ? ['postings[].*'] : [])].join(', ')}`,
+      });
+    }
+  });
+  return problems;
+}
+
 function balanceProblems(
   claimed: Record<string, number>,
   actual: ReadonlyMap<string, number>,
@@ -83,6 +116,7 @@ function balanceProblems(
  * 2.14, 5.2: verifies a ledger export. Recomputes the hash chain and every invariant transaction by
  * transaction (a change to any field of any stored transaction is reported at exactly its seq), the
  * head, the balances, the draws, the proposal tallies, and that no phone number appears unmasked.
+ * Reserved money not covered NOW is a warning (H1), not a problem.
  */
 export function verifyLedgerExport(data: unknown): ExportVerification {
   const shape = shapeProblem(data);
@@ -90,13 +124,19 @@ export function verifyLedgerExport(data: unknown): ExportVerification {
     return {
       ok: false,
       problems: [{ seq: null, code: 'MALFORMED_EXPORT', detail: shape }],
+      warnings: [],
       summary: null,
     };
   const exp = data as LedgerExport;
   const groupId = exp.group.id;
   const txs = exp.transactions;
 
-  const withSeq = [...checkLedger(groupId, txs), ...drawProblems(groupId, txs, exp.cycles)];
+  const withSeq = [
+    ...unhashedFieldProblems(txs),
+    ...checkLedger(groupId, txs),
+    ...drawProblems(groupId, txs, exp.cycles),
+    ...tieOrderProblems(txs, exp.cycles),
+  ];
   const ordered = withSeq
     .map((p, i) => ({ p, i }))
     .sort((a, b) => (a.p.seq ?? Infinity) - (b.p.seq ?? Infinity) || a.i - b.i)
@@ -125,6 +165,7 @@ export function verifyLedgerExport(data: unknown): ExportVerification {
   return {
     ok: problems.length === 0,
     problems,
+    warnings: coverageWarnings(balances),
     summary: {
       groupId,
       transactions: txs.length,
@@ -136,6 +177,7 @@ export function verifyLedgerExport(data: unknown): ExportVerification {
       payables: summary.payables,
       receivables: summary.receivables,
       pots: summary.pots,
+      inFlight: summary.inFlight,
     },
   };
 }

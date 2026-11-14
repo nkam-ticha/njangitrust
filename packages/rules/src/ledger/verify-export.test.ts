@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { sampleExport } from './export.test-support';
+import { correctionsExport, sampleExport } from './export.test-support';
+import { computeTransactionHash } from './hash-chain';
 import { chainOf, entry, TEST_GROUP } from './ledger.test-support';
 import type { LedgerTransaction } from './types';
 import { verifyLedgerExport } from './verify-export';
@@ -52,12 +53,31 @@ describe('verifying an audit export (2.14, spec 5.2)', () => {
     expect(result.problems).toEqual([]);
     expect(result.ok).toBe(true);
     expect(result.summary).toMatchObject({
-      transactions: 18,
-      headSeq: 18,
+      transactions: 20,
+      headSeq: 20,
       cash: 5_710,
       solidarityFund: 4_910,
       generalFund: 800,
+      inFlight: 0,
     });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('accepts corrections and payouts in flight; uncovered money is a warning, not a problem (L6, H1)', () => {
+    const file = correctionsExport();
+    expect(file.transactions.map((t) => t.type).slice(-4)).toEqual([
+      'WITHDRAWAL_COMPLETED',
+      'DISBURSEMENT_SENT',
+      'CLAWBACK',
+      'REVERSAL',
+    ]);
+    const result = verifyLedgerExport(file);
+    expect(result.problems).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.summary).toMatchObject({ inFlight: 3_000, receivables: 5_591 });
+    expect(result.warnings).toEqual([
+      { code: 'RESERVED_NOT_COVERED', detail: expect.stringContaining('uncovered now: 691') },
+    ]);
   });
 
   it('fails at the exact seq when any field of any stored transaction changes', () => {
@@ -80,11 +100,64 @@ describe('verifying an audit export (2.14, spec 5.2)', () => {
     expect(checked).toBeGreaterThan(250);
   });
 
+  it('cross-checks each payment part’s tie order against the rotation (L2)', () => {
+    const original = sampleExport();
+    // A forger shifts the beneficiary's tie order, re-hashing everything from there.
+    const forged = original.transactions.map((t) => ({
+      ...t,
+      metadata: structuredClone(t.metadata),
+    }));
+    const parts = (forged[1]!.metadata as { parts: { tieOrder: number }[] }).parts;
+    parts[0]!.tieOrder = 7;
+    for (let i = 1; i < forged.length; i++) {
+      forged[i]!.prevHash = forged[i - 1]!.hash;
+      const { hash: _h, ...rest } = forged[i]!;
+      forged[i]!.hash = computeTransactionHash(rest);
+    }
+    const last = forged.at(-1)!;
+    const problems = verifyLedgerExport({
+      ...original,
+      transactions: forged,
+      head: { seq: last.seq, hash: last.hash },
+    }).problems;
+    expect(problems[0]).toMatchObject({
+      seq: 2,
+      code: 'FEE_MISMATCH',
+      detail: expect.stringContaining('tie order'),
+    });
+  });
+
+  it('refuses any transaction field outside the hashed record, at its seq (D12)', () => {
+    const original = sampleExport();
+    for (const tx of original.transactions) {
+      const withCreatedAt = {
+        ...original,
+        transactions: original.transactions.map((t) =>
+          t.seq === tx.seq ? { ...t, createdAt: '2026-11-01T00:00:00.000Z' } : t,
+        ),
+      };
+      expect(verifyLedgerExport(withCreatedAt).problems[0]).toMatchObject({
+        seq: tx.seq,
+        code: 'UNHASHED_FIELD',
+      });
+    }
+    const postingExtra = {
+      ...original,
+      transactions: original.transactions.map((t) =>
+        t.seq === 3 ? { ...t, postings: t.postings.map((p) => ({ ...p, note: 'x' })) } : t,
+      ),
+    };
+    expect(verifyLedgerExport(postingExtra).problems[0]).toMatchObject({
+      seq: 3,
+      code: 'UNHASHED_FIELD',
+    });
+  });
+
   it('detects a truncated export through its head', () => {
     const original = sampleExport();
     const truncated = { ...original, transactions: original.transactions.slice(0, -1) };
     expect(verifyLedgerExport(truncated).problems).toEqual([
-      expect.objectContaining({ seq: 18, code: 'HEAD_MISMATCH' }),
+      expect.objectContaining({ seq: 20, code: 'HEAD_MISMATCH' }),
     ]);
   });
 

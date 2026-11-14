@@ -6,14 +6,10 @@ import { computeBalances } from './balances';
 import { cycleStartedEvent } from './events';
 import { LEDGER_EXPORT_FORMAT, LEDGER_EXPORT_VERSION, type LedgerExport } from './export-format';
 import { genesisHash } from './hash-chain';
-import { chainOf, entry, TEST_GROUP } from './ledger.test-support';
-import {
-  fineAssessedPostings,
-  paymentReceivedPostings,
-  reversalPostings,
-  solidarityDisbursedPostings,
-  withdrawalCompletedPostings,
-} from './postings';
+import { planReversalCorrections } from './corrections';
+import { paymentReceivedPostings } from './fee-postings';
+import { chainOf, entry, paidOut, TEST_GROUP } from './ledger.test-support';
+import { fineAssessedPostings, reversalPostings } from './postings';
 import type { LedgerEntry } from './types';
 
 export const SAMPLE_MEMBERS = Array.from({ length: 10 }, (_, i) => `M${i + 1}`);
@@ -21,7 +17,7 @@ export const SAMPLE_MEMBERS = Array.from({ length: 10 }, (_, i) => `M${i + 1}`);
 const pay = (payer: string, parts: PaymentPart[]) =>
   entry(
     'PAYMENT_RECEIVED',
-    paymentReceivedPostings({ payerMembershipId: payer, fee: 100, parts }).postings,
+    paymentReceivedPostings({ payerMembershipId: payer, fee: 100, feeSource: 'SCHEDULE', parts }),
     {
       membershipId: payer,
       refType: 'PAYMENT_INTENT',
@@ -29,7 +25,7 @@ const pay = (payer: string, parts: PaymentPart[]) =>
     },
   );
 
-/** One FIXED cycle: draw, a full round paid, a fine paid, the payout withdrawn, a waived fine. */
+/** One FIXED cycle: draw, a full round paid, a fine paid, the payout withdrawn, a solidarity payout, a waived fine. */
 export function sampleExport(): LedgerExport {
   const draw = cycleStartedEvent({
     groupId: TEST_GROUP,
@@ -45,7 +41,7 @@ export function sampleExport(): LedgerExport {
   for (const m of SAMPLE_MEMBERS) {
     entries.push(
       pay(m, [
-        { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: beneficiary },
+        { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: beneficiary, tieOrder: 1 },
         { kind: 'SOLIDARITY', amount: 1_000 },
       ]),
     );
@@ -56,24 +52,9 @@ export function sampleExport(): LedgerExport {
     }),
   );
   entries.push(pay('M5', [{ kind: 'DEBT', amount: 1_000 }]));
-  entries.push(
-    entry(
-      'WITHDRAWAL_COMPLETED',
-      withdrawalCompletedPostings({
-        membershipId: beneficiary,
-        amount: 98_590,
-        feeEstimated: 500,
-        feeActual: 500,
-      }),
-      { membershipId: beneficiary },
-    ),
-  );
-  entries.push(
-    entry(
-      'SOLIDARITY_DISBURSED',
-      solidarityDisbursedPostings({ amount: 5_000, feeEstimated: 500, feeActual: 600 }),
-    ),
-  );
+  // D18.1: each payout is sent (in flight), then completed.
+  entries.push(...paidOut('WITHDRAWAL', beneficiary, 98_590));
+  entries.push(...paidOut('SOLIDARITY', 'M2', 5_000, { feeActual: 600 }));
   const fine = entry('FINE_ASSESSED', fineAssessedPostings({ membershipId: 'M2', amount: 1_000 }), {
     membershipId: 'M2',
   });
@@ -167,6 +148,52 @@ export function sampleExport(): LedgerExport {
         ballots: null,
       },
     ],
+    transactions,
+    head: { seq: last.seq, hash: last.hash },
+    balances: Object.fromEntries(computeBalances(transactions)),
+  };
+}
+
+/**
+ * L6, H1: a group where a withdrawal is completed, another is still in flight, and a payment is then
+ * reversed: a CLAWBACK makes the beneficiary owe what they no longer hold, and cash stays below what
+ * is reserved until that debt is paid (a warning, not a problem).
+ */
+export function correctionsExport(): LedgerExport {
+  const round4 = (payer: string) =>
+    pay(payer, [
+      { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: 'M7', tieOrder: 7 },
+      { kind: 'SOLIDARITY', amount: 1_000 },
+    ]);
+  const before: LedgerEntry[] = [
+    entry('FINE_ASSESSED', fineAssessedPostings({ membershipId: 'M5', amount: 5_000 }), {
+      membershipId: 'M5',
+    }),
+    pay('M5', [{ kind: 'DEBT', amount: 5_000 }]),
+    round4('M3'),
+    round4('M4'),
+    ...paidOut('WITHDRAWAL', 'M7', 12_000),
+  ];
+  before.push(paidOut('WITHDRAWAL', 'M7', 2_500)[0]!);
+  const chain = chainOf(before);
+  const target = chain[2]!;
+  const corrections = planReversalCorrections({ original: target, ledger: chain }).map((c) =>
+    entry(c.type, { postings: c.postings, metadata: c.metadata }, { membershipId: c.membershipId }),
+  );
+  const transactions = chainOf([
+    ...before,
+    ...corrections,
+    entry('REVERSAL', reversalPostings(target.postings), {
+      refType: 'LEDGER_TRANSACTION',
+      refId: target.id,
+      metadata: { reversesSeq: target.seq },
+    }),
+  ]);
+  const last = transactions.at(-1)!;
+  return {
+    ...sampleExport(),
+    cycles: [],
+    proposals: [],
     transactions,
     head: { seq: last.seq, hash: last.hash },
     balances: Object.fromEntries(computeBalances(transactions)),
