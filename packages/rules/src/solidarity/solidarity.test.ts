@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_FEE_SCHEDULE } from '../fees';
-import { validateSolidarityRequest } from './solidarity';
+import { validateSolidarityDisbursement, validateSolidarityRequest } from './solidarity';
 
 const base = {
   event: 'NAISSANCE' as const,
@@ -36,7 +36,7 @@ describe('solidarity requests (R10.2, R10.3)', () => {
     });
   });
 
-  it('refuses unknown events, non-members, bad amounts and amounts that leave the recipient under 100 FCFA', () => {
+  it('refuses unknown events, non-members, bad amounts and amounts not above the fee', () => {
     expect(validateSolidarityRequest({ ...base, event: 'VOYAGE' as never, amount: 5_000 })).toEqual(
       {
         ok: false,
@@ -53,11 +53,56 @@ describe('solidarity requests (R10.2, R10.3)', () => {
       ok: false,
       code: 'INVALID_AMOUNT',
     });
-    expect(validateSolidarityRequest({ ...base, amount: 599 })).toEqual({
+    expect(validateSolidarityRequest({ ...base, amount: 500 })).toEqual({
       ok: false,
-      code: 'BELOW_MINIMUM_PAYOUT',
-      minimumReceived: 100,
+      code: 'AMOUNT_NOT_ABOVE_FEE',
       feeEstimate: 500,
+    });
+    // D11: no 100 FCFA floor; 501 leaves the recipient 1 FCFA after the 500 fee.
+    expect(validateSolidarityRequest({ ...base, amount: 501 })).toMatchObject({
+      ok: true,
+      recipientReceives: 1,
+    });
+  });
+});
+
+describe('sending a passed solidarity payout (R10.3, D13.5)', () => {
+  const ready = {
+    amount: 20_000,
+    solidarityFundBalance: 30_000,
+    feeEstimate: 500,
+    hold: null,
+    reconciliationStatus: 'OK' as const,
+    hasActivePaymentNumber: true,
+  };
+
+  it('sends it when nothing blocks it and the fund still holds the amount', () => {
+    expect(validateSolidarityDisbursement(ready)).toEqual({ ok: true });
+  });
+
+  it('waits for the recipient’s number-change hold (D13.5) and for a reconciliation ALERT', () => {
+    const until = new Date('2026-11-30T10:00:00.000Z');
+    expect(
+      validateSolidarityDisbursement({ ...ready, hold: { reason: 'NUMBER_CHANGE', until } }),
+    ).toMatchObject({
+      ok: false,
+      code: 'HOLD_ACTIVE',
+    });
+    expect(
+      validateSolidarityDisbursement({ ...ready, reconciliationStatus: 'ALERT' }),
+    ).toMatchObject({
+      code: 'DISBURSEMENTS_PAUSED',
+    });
+  });
+
+  it('re-checks the fund balance and the fee', () => {
+    expect(validateSolidarityDisbursement({ ...ready, solidarityFundBalance: 19_999 })).toEqual({
+      ok: false,
+      code: 'ABOVE_SOLIDARITY_FUND',
+      balance: 19_999,
+    });
+    expect(validateSolidarityDisbursement({ ...ready, amount: 500 })).toMatchObject({
+      code: 'AMOUNT_NOT_ABOVE_FEE',
     });
   });
 });
