@@ -10,21 +10,30 @@ export interface Posting {
 }
 
 /**
- * 2.5 transaction types. POT_ASSIGNED is an addition: it moves a bidding round's pot to the
- * winner's payable when the bid closes (R8.3), because contributions paid before the close have no
- * beneficiary yet.
+ * 2.5 transaction types, plus: POT_ASSIGNED moves a bidding round's pot to its winner (D10);
+ * POT_CORRECTION and CLAWBACK put back money a reversed payment had credited and that was already
+ * paid out, right before that payment's REVERSAL (D15, D16.1). DISBURSEMENT_SENT moves money on its
+ * way out to an in-flight account; WITHDRAWAL_COMPLETED, LOAN_DISBURSED and SOLIDARITY_DISBURSED
+ * complete it from there, DISBURSEMENT_RETURNED gives it back when the provider fails (D18.1).
+ * DISBURSEMENT_REFUNDED records a completed disbursement the operator later reversed: the money goes
+ * back where the send took it from, any fee the operator keeps is borne by the general fund (D22.1).
  */
 export const TRANSACTION_TYPES = [
   'PAYMENT_RECEIVED',
   'FINE_ASSESSED',
   'BID_ASSESSED',
   'AUTO_SETTLEMENT',
+  'DISBURSEMENT_SENT',
   'WITHDRAWAL_COMPLETED',
   'LOAN_DISBURSED',
   'SOLIDARITY_DISBURSED',
+  'DISBURSEMENT_RETURNED',
+  'DISBURSEMENT_REFUNDED',
   'LEAVER_REFUND',
   'FUND_DISTRIBUTION',
   'POT_ASSIGNED',
+  'POT_CORRECTION',
+  'CLAWBACK',
   'REVERSAL',
   'EVENT',
 ] as const;

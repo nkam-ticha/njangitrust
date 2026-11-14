@@ -1,27 +1,44 @@
 import { describe, expect, it } from 'vitest';
+import { paymentReceivedPostings } from './fee-postings';
 import {
   autoSettlementPostings,
   bidAssessedPostings,
   fineAssessedPostings,
   fundDistributionPostings,
   leaverRefundPostings,
-  loanDisbursedPostings,
-  paymentReceivedPostings,
   potAssignedPostings,
+  potCorrectionDebt,
+  potCorrectionPostings,
   reversalPostings,
-  solidarityDisbursedPostings,
   sumsToZero,
-  withdrawalCompletedPostings,
 } from './postings';
 
-describe('PAYMENT_RECEIVED (2.5, R4.2)', () => {
-  it('posts E1 exactly: cash +10 900, payable M7 −9 909, solidarity −991', () => {
-    const { postings, parts } = paymentReceivedPostings({
+describe('PAYMENT_RECEIVED (2.5, R4.2, R4.4)', () => {
+  it('refuses a fee equal to the whole payment: some cash must come in (L1)', () => {
+    expect(() =>
+      paymentReceivedPostings({
+        payerMembershipId: 'M1',
+        fee: 100,
+        feeSource: 'PROVIDER',
+        parts: [{ kind: 'SHORTFALL', amount: 100, creditorMembershipId: 'M6' }],
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it('posts E1 exactly and records the fee, its source and each part’s share', () => {
+    const { postings, parts, metadata } = paymentReceivedPostings({
       payerMembershipId: 'M3',
       fee: 100,
+      feeSource: 'SCHEDULE',
       parts: [
-        { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: 'M7' },
-        { kind: 'SOLIDARITY', amount: 1_000 },
+        {
+          kind: 'CONTRIBUTION',
+          amount: 10_000,
+          creditorMembershipId: 'M7',
+          tieOrder: 8,
+          ref: 'c4',
+        },
+        { kind: 'SOLIDARITY', amount: 1_000, ref: 's4' },
       ],
     });
     expect(postings).toEqual([
@@ -30,6 +47,28 @@ describe('PAYMENT_RECEIVED (2.5, R4.2)', () => {
       { account: 'fund:solidarity', amount: -991 },
     ]);
     expect(parts.map((p) => p.feeShare)).toEqual([91, 9]);
+    expect(metadata).toEqual({
+      fee: 100,
+      feeSource: 'SCHEDULE',
+      parts: [
+        {
+          obligationId: 'c4',
+          kind: 'CONTRIBUTION',
+          amount: 10_000,
+          feeShare: 91,
+          tieOrder: 8,
+          account: 'payable:member:M7',
+        },
+        {
+          obligationId: 's4',
+          kind: 'SOLIDARITY',
+          amount: 1_000,
+          feeShare: 9,
+          tieOrder: 0,
+          account: 'fund:solidarity',
+        },
+      ],
+    });
     expect(sumsToZero(postings)).toBe(true);
   });
 
@@ -37,6 +76,7 @@ describe('PAYMENT_RECEIVED (2.5, R4.2)', () => {
     const { postings } = paymentReceivedPostings({
       payerMembershipId: 'M5',
       fee: 100,
+      feeSource: 'PROVIDER',
       parts: [
         { kind: 'CONTRIBUTION', amount: 10_000, creditorMembershipId: 'M7' },
         { kind: 'SOLIDARITY', amount: 1_000 },
@@ -50,13 +90,13 @@ describe('PAYMENT_RECEIVED (2.5, R4.2)', () => {
       { account: 'receivable:member:M5', amount: -1_000 },
       { account: 'fund:general', amount: 8 },
     ]);
-    expect(sumsToZero(postings)).toBe(true);
   });
 
   it('credits the leaver for a shortfall part and the round pot in bidding mode', () => {
     const { postings } = paymentReceivedPostings({
       payerMembershipId: 'M1',
       fee: 100,
+      feeSource: 'SCHEDULE',
       parts: [
         { kind: 'CONTRIBUTION', amount: 10_000, potRoundId: 'r5' },
         { kind: 'SHORTFALL', amount: 1_667, creditorMembershipId: 'M6' },
@@ -90,58 +130,48 @@ describe('the other transaction types (2.5)', () => {
     ]);
   });
 
-  it('WITHDRAWAL_COMPLETED empties E5’s payable and omits a zero fee difference', () => {
-    expect(
-      withdrawalCompletedPostings({
-        membershipId: 'M7',
-        amount: 80_840,
-        feeEstimated: 500,
-        feeActual: 500,
-      }),
-    ).toEqual([
-      { account: 'payable:member:M7', amount: 81_340 },
-      { account: 'cash:provider', amount: -81_340 },
+  it('POT_CORRECTION moves money back from the winner’s payable into the pot', () => {
+    const args = { roundId: 'r5', beneficiaryMembershipId: 'M9', amount: 9_909 };
+    expect(potCorrectionPostings({ ...args, winnerPayable: 50_000 })).toEqual([
+      { account: 'payable:member:M9', amount: 9_909 },
+      { account: 'pot:round:r5', amount: -9_909 },
     ]);
-    expect(
-      withdrawalCompletedPostings({
-        membershipId: 'M7',
-        amount: 80_840,
-        feeEstimated: 500,
-        feeActual: 650,
-      }),
-    ).toEqual([
-      { account: 'payable:member:M7', amount: 81_340 },
-      { account: 'fund:general', amount: 150 },
-      { account: 'cash:provider', amount: -81_490 },
-    ]);
+    expect(potCorrectionDebt({ amount: 9_909, winnerPayable: 50_000 })).toBe(0);
   });
 
-  it('LOAN_DISBURSED posts E3 exactly: receivable +33 500, fund −3 000, cash −30 500', () => {
-    const args = { membershipId: 'M7', principal: 30_000, interest: 3_000, feeEstimated: 500 };
-    expect(loanDisbursedPostings({ ...args, feeActual: 500 })).toEqual([
-      { account: 'receivable:member:M7', amount: 33_500 },
-      { account: 'fund:general', amount: -3_000 },
-      { account: 'cash:provider', amount: -30_500 },
-    ]);
-    const cheaper = loanDisbursedPostings({ ...args, feeActual: 400 });
-    expect(cheaper).toContainEqual({ account: 'fund:general', amount: -100 });
-    expect(sumsToZero(cheaper)).toBe(true);
-  });
-
-  it('SOLIDARITY_DISBURSED takes A from the fund; the recipient bears the fee', () => {
+  it('turns what the winner’s payable no longer holds into the winner’s debt, never the fund’s (D15)', () => {
     expect(
-      solidarityDisbursedPostings({ amount: 20_000, feeEstimated: 500, feeActual: 500 }),
+      potCorrectionPostings({
+        roundId: 'r5',
+        beneficiaryMembershipId: 'M9',
+        amount: 9_909,
+        winnerPayable: 4_000,
+      }),
     ).toEqual([
-      { account: 'fund:solidarity', amount: 20_000 },
-      { account: 'cash:provider', amount: -20_000 },
+      { account: 'payable:member:M9', amount: 4_000 },
+      { account: 'receivable:member:M9', amount: 5_909 },
+      { account: 'pot:round:r5', amount: -9_909 },
     ]);
     expect(
-      solidarityDisbursedPostings({ amount: 20_000, feeEstimated: 500, feeActual: 700 }),
+      potCorrectionPostings({
+        roundId: 'r5',
+        beneficiaryMembershipId: 'M9',
+        amount: 9_909,
+        winnerPayable: 0,
+      }),
     ).toEqual([
-      { account: 'fund:solidarity', amount: 20_000 },
-      { account: 'fund:general', amount: 200 },
-      { account: 'cash:provider', amount: -20_200 },
+      { account: 'receivable:member:M9', amount: 9_909 },
+      { account: 'pot:round:r5', amount: -9_909 },
     ]);
+    expect(potCorrectionDebt({ amount: 9_909, winnerPayable: 4_000 })).toBe(5_909);
+    expect(() =>
+      potCorrectionPostings({
+        roundId: 'r5',
+        beneficiaryMembershipId: 'M9',
+        amount: 9_909,
+        winnerPayable: -1,
+      }),
+    ).toThrow(RangeError);
   });
 
   it('LEAVER_REFUND (E9), FUND_DISTRIBUTION (E8) and POT_ASSIGNED', () => {

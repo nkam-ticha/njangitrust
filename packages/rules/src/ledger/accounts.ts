@@ -7,10 +7,11 @@ export const SOLIDARITY_FUND = 'fund:solidarity';
 /**
  * CASH (asset), PAYABLE (liability: money the group owes a member), RECEIVABLE (asset: money a
  * member owes the general fund), GENERAL_FUND and SOLIDARITY_FUND (equity), and POT (liability:
- * contributions of a bidding round held until its beneficiary is known; an addition to 2.5).
+ * contributions of a bidding round held until its beneficiary is known; an addition to 2.5), and
+ * IN_FLIGHT (liability: a disbursement sent to the provider and not yet confirmed, D18.1).
  */
 export type AccountKind =
-  'CASH' | 'PAYABLE' | 'RECEIVABLE' | 'GENERAL_FUND' | 'SOLIDARITY_FUND' | 'POT';
+  'CASH' | 'PAYABLE' | 'RECEIVABLE' | 'GENERAL_FUND' | 'SOLIDARITY_FUND' | 'POT' | 'IN_FLIGHT';
 
 const ID_PATTERN = /^[^:\s]+$/;
 
@@ -34,6 +35,14 @@ export function potAccount(roundId: string): string {
   return `pot:round:${checkId(roundId, 'round')}`;
 }
 
+/**
+ * D18.1: `inflight:disbursement:<disbursementId>`, one per disbursement sent to the provider. It
+ * holds the amount plus the estimated fee until the provider confirms (completion) or fails (return).
+ */
+export function inFlightAccount(disbursementId: string): string {
+  return `inflight:disbursement:${checkId(disbursementId, 'disbursement')}`;
+}
+
 /** 2.5: the kind and owner of an account name, or null if the name is not a valid account. */
 export function parseAccount(account: string): { kind: AccountKind; id: string | null } | null {
   if (account === CASH_PROVIDER) return { kind: 'CASH', id: null };
@@ -43,6 +52,7 @@ export function parseAccount(account: string): { kind: AccountKind; id: string |
     ['payable:member:', 'PAYABLE'],
     ['receivable:member:', 'RECEIVABLE'],
     ['pot:round:', 'POT'],
+    ['inflight:disbursement:', 'IN_FLIGHT'],
   ];
   for (const [prefix, kind] of prefixes) {
     if (account.startsWith(prefix)) {
