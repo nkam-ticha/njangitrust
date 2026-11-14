@@ -21,7 +21,10 @@ export function buildInitialRuleSet(input: {
   monthlyAnchor?: CreateGroupRequest['monthlyAnchor'];
   rules?: CreateGroupRequest['rules'];
 }): RuleSetParams {
-  const anchor = monthlyAnchorFromFirstPayout(input.firstPayoutAt, input.monthlyAnchor ?? 'DAY_OF_MONTH');
+  const anchor = monthlyAnchorFromFirstPayout(
+    input.firstPayoutAt,
+    input.monthlyAnchor ?? 'DAY_OF_MONTH',
+  );
   if (!anchor.ok) throw rulesetError(anchor.code);
   const local = toDoualaLocal(input.firstPayoutAt);
   const params: RuleSetParams = {
@@ -36,7 +39,12 @@ export function buildInitialRuleSet(input: {
 
 export async function createRuleSetVersion(
   db: Db,
-  input: { groupId: string; version: number; params: RuleSetParams; createdByProposalId?: string | null },
+  input: {
+    groupId: string;
+    version: number;
+    params: RuleSetParams;
+    createdByProposalId?: string | null;
+  },
 ): Promise<RuleSet> {
   const check = validateRuleSet(input.params);
   if (!check.ok) throw parameterRefusalToError(check);
@@ -56,7 +64,10 @@ export async function getCurrentRuleSet(groupId: string, db: Db = getPrisma()): 
 }
 
 /** The current params, re-validated by the rules engine before use. */
-export async function getCurrentParams(groupId: string, db: Db = getPrisma()): Promise<RuleSetParams> {
+export async function getCurrentParams(
+  groupId: string,
+  db: Db = getPrisma(),
+): Promise<RuleSetParams> {
   const params = (await getCurrentRuleSet(groupId, db)).params as unknown as RuleSetParams;
   const check = validateRuleSet(params);
   if (!check.ok) throw new Error(`Stored rule set of group ${groupId} is invalid: ${check.code}`);

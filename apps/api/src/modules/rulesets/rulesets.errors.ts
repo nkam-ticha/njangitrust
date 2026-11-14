@@ -28,8 +28,14 @@ export function parameterRefusalToError(refusal: ParameterRefusal): AppError {
         details: { ...details, min: refusal.min, max: refusal.max },
       });
     case 'INVALID_VALUE':
-      return rulesetError('RULE_VALUE_INVALID', { params: { rule: labelOf(refusal.parameter) }, details });
+      return rulesetError('RULE_VALUE_INVALID', {
+        params: { rule: labelOf(refusal.parameter) },
+        details,
+      });
     case 'UNKNOWN_PARAMETER':
-      return rulesetError('RULE_UNKNOWN', { params: { rule: labelOf(refusal.parameter) }, details });
+      return rulesetError('RULE_UNKNOWN', {
+        params: { rule: labelOf(refusal.parameter) },
+        details,
+      });
   }
 }

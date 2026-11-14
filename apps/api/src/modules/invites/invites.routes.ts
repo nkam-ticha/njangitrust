@@ -6,12 +6,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { uuidSchema } from '@njangi/shared/contracts/common';
-import { acceptInviteRequestSchema, createInviteRequestSchema } from '@njangi/shared/contracts/invites';
+import {
+  acceptInviteRequestSchema,
+  createInviteRequestSchema,
+} from '@njangi/shared/contracts/invites';
 import { actorOf, optionalAuth, requireAuth } from '../../http/auth';
 import { floodLimits, rateLimit } from '../../http/rate-limit';
 import { deliverSession } from '../../http/session-delivery';
 import { handle } from '../../http/validate';
-import { toGroup, toInviteListItem, toInvitePreview, toMyMembership, toPendingAction, toSelf } from '../../dto';
+import {
+  toGroup,
+  toInviteListItem,
+  toInvitePreview,
+  toMyMembership,
+  toPendingAction,
+  toSelf,
+} from '../../dto';
 import { clock } from '../../lib/clock';
 import { getSelfSource } from '../me';
 import { acceptInvite, listInvites, previewInvite, requestInvite } from './invites.service';
@@ -25,10 +35,13 @@ export function inviteGroupRoutes(): Router {
 
   router.post(
     '/:groupId/invites',
-    handle({ params: groupParams, body: createInviteRequestSchema }, async ({ params, body }, req, res) => {
-      const action = await requestInvite(actorOf(req), params.groupId, body);
-      res.status(201).json({ action: toPendingAction(action) });
-    }),
+    handle(
+      { params: groupParams, body: createInviteRequestSchema },
+      async ({ params, body }, req, res) => {
+        const action = await requestInvite(actorOf(req), params.groupId, body);
+        res.status(201).json({ action: toPendingAction(action) });
+      },
+    ),
   );
 
   router.get(
@@ -57,16 +70,22 @@ export function invitePublicRoutes(): Router {
   router.post(
     '/:token/accept',
     optionalAuth(),
-    handle({ params: tokenParams, body: acceptInviteRequestSchema }, async ({ params, body }, req, res) => {
-      const accepted = await acceptInvite(params.token, body, req.actor, req.clientKind);
-      res.status(201).json({
-        group: toGroup(accepted.group, accepted.memberCount),
-        me: toMyMembership(accepted.membership),
-        ...(accepted.session
-          ? { user: toSelf(await getSelfSource(accepted.userId)), session: deliverSession(req, res, accepted.session) }
-          : {}),
-      });
-    }),
+    handle(
+      { params: tokenParams, body: acceptInviteRequestSchema },
+      async ({ params, body }, req, res) => {
+        const accepted = await acceptInvite(params.token, body, req.actor, req.clientKind);
+        res.status(201).json({
+          group: toGroup(accepted.group, accepted.memberCount),
+          me: toMyMembership(accepted.membership),
+          ...(accepted.session
+            ? {
+                user: toSelf(await getSelfSource(accepted.userId)),
+                session: deliverSession(req, res, accepted.session),
+              }
+            : {}),
+        });
+      },
+    ),
   );
 
   return router;

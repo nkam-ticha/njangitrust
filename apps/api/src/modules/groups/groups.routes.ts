@@ -5,7 +5,8 @@ import { uuidSchema } from '@njangi/shared/contracts/common';
 import { createGroupRequestSchema } from '@njangi/shared/contracts/groups';
 import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
-import { toGroup, toMyMembership } from '../../dto';
+import { toGroup, toMyMembership, toPendingAction } from '../../dto';
+import { createPendingAction } from '../pending-actions';
 import { createGroup, getGroupOverview } from './groups.service';
 
 export function groupsRoutes(): Router {
@@ -32,6 +33,23 @@ export function groupsRoutes(): Router {
         me: toMyMembership(overview.membership),
         rulesVersion: overview.rulesVersion,
       });
+    }),
+  );
+
+  // GRP-02/03: the admin starts the first cycle; returns a START_CYCLE card to confirm.
+  router.post(
+    '/:groupId/cycles/start',
+    handle({ params: z.strictObject({ groupId: uuidSchema }) }, async ({ params }, req, res) => {
+      const actor = actorOf(req);
+      const action = await createPendingAction({
+        userId: actor.userId,
+        groupId: params.groupId,
+        lang: actor.lang,
+        origin: 'UI',
+        type: 'START_CYCLE',
+        args: { groupId: params.groupId },
+      });
+      res.status(201).json({ action: toPendingAction(action) });
     }),
   );
 

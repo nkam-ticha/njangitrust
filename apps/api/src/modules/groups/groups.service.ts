@@ -10,7 +10,12 @@ import { authorizeGroup, type MembershipRef } from '../../permissions';
 import type { GroupSource } from '../../dto';
 import { audit } from '../audit';
 import { postSystemMessage } from '../chat';
-import { buildInitialRuleSet, createRuleSetVersion, getCurrentRuleSet, rulesetError } from '../rulesets';
+import {
+  buildInitialRuleSet,
+  createRuleSetVersion,
+  getCurrentRuleSet,
+  rulesetError,
+} from '../rulesets';
 
 /** Members counted in a group: those who read it (INVITED, ACTIVE, LEAVING). */
 export const COUNTED_STATUSES = ['INVITED', 'ACTIVE', 'LEAVING'] as const;
@@ -35,7 +40,10 @@ export async function createGroup(userId: string, input: CreateGroupRequest): Pr
   });
   const effects = new AfterCommit();
   const created = await withTransaction(async (tx) => {
-    const creator = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
+    const creator = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { name: true },
+    });
     const group = await tx.group.create({
       data: { name: input.name, status: 'FORMING', createdByUserId: userId, firstPayoutAt },
     });
@@ -44,8 +52,21 @@ export async function createGroup(userId: string, input: CreateGroupRequest): Pr
       select: { id: true, role: true, status: true },
     });
     await createRuleSetVersion(tx, { groupId: group.id, version: 1, params });
-    await postSystemMessage(group.id, bilingual(groupTexts.groupCreated, { name: creator.name }), effects, tx);
-    await audit({ action: 'group.created', actorUserId: userId, groupId: group.id, target: `Group:${group.id}` }, tx);
+    await postSystemMessage(
+      group.id,
+      bilingual(groupTexts.groupCreated, { name: creator.name }),
+      effects,
+      tx,
+    );
+    await audit(
+      {
+        action: 'group.created',
+        actorUserId: userId,
+        groupId: group.id,
+        target: `Group:${group.id}`,
+      },
+      tx,
+    );
     return { group, membership };
   });
   await effects.run();

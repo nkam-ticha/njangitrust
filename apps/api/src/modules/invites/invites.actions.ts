@@ -1,6 +1,7 @@
 // INVITE_CREATE (L1, admin): R1.6 founding members before the first cycle, then only for a
 // passed MEMBER_ADD whose phone matches (R12.1). The link is returned once and never stored.
 import { canInvite } from '@njangi/rules';
+import { nameSchema } from '@njangi/shared/contracts/common';
 import { inviteActionTexts as t } from '@njangi/shared/i18n/server/groups';
 import { z } from 'zod';
 import { getEnv } from '../../config/env';
@@ -19,7 +20,7 @@ export const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 
 export const inviteArgsSchema = z.strictObject({
   groupId: z.string().uuid(),
-  inviteeName: z.string().min(2).max(60),
+  inviteeName: nameSchema(),
   /** HMAC of the invited phone (lib/crypto hashPhone); the number itself is never stored. */
   phoneHash: z.string().regex(/^[0-9a-f]{64}$/),
   proposalId: z.string().uuid().nullable(),
@@ -31,7 +32,11 @@ function openInvitesWhere(groupId: string, now: Date) {
 }
 
 /** Every check of an invite request; returns whether it is for a founding member. */
-async function checkInvite(ctx: ActionContext, args: InviteArgs, db: Db): Promise<{ founding: boolean }> {
+async function checkInvite(
+  ctx: ActionContext,
+  args: InviteArgs,
+  db: Db,
+): Promise<{ founding: boolean }> {
   const access = await authorizeGroup(ctx.userId, args.groupId, 'group.invites.create', db);
   const firstCycleStarted = access.group.status !== 'FORMING';
   const pendingInvites = await db.invite.count({ where: openInvitesWhere(args.groupId, ctx.now) });
@@ -46,17 +51,28 @@ async function checkInvite(ctx: ActionContext, args: InviteArgs, db: Db): Promis
     if (!safeEqual(readMemberAddPayload(proposal.payload).phoneHash, args.phoneHash)) {
       throw inviteError('PROPOSAL_PHONE_MISMATCH');
     }
-    const previous = await db.invite.findMany({ where: { proposalId: args.proposalId }, select: { usedAt: true, revokedAt: true, expiresAt: true } });
+    const previous = await db.invite.findMany({
+      where: { proposalId: args.proposalId },
+      select: { usedAt: true, revokedAt: true, expiresAt: true },
+    });
     if (previous.some((i) => i.usedAt)) throw inviteError('PROPOSAL_ALREADY_USED');
-    if (previous.some((i) => !i.revokedAt && i.expiresAt > ctx.now)) throw inviteError('INVITE_ALREADY_PENDING');
+    if (previous.some((i) => !i.revokedAt && i.expiresAt > ctx.now))
+      throw inviteError('INVITE_ALREADY_PENDING');
   } else {
-    const samePerson = await db.invite.count({ where: { ...openInvitesWhere(args.groupId, ctx.now), phoneHash: args.phoneHash } });
+    const samePerson = await db.invite.count({
+      where: { ...openInvitesWhere(args.groupId, ctx.now), phoneHash: args.phoneHash },
+    });
     if (samePerson > 0) throw inviteError('INVITE_ALREADY_PENDING');
   }
 
-  const decision = canInvite({ firstCycleStarted, memberAddPassed: args.proposalId !== null, memberCount });
+  const decision = canInvite({
+    firstCycleStarted,
+    memberAddPassed: args.proposalId !== null,
+    memberCount,
+  });
   if (!decision.ok) {
-    if (decision.code === 'GROUP_FULL') throw inviteError('GROUP_FULL', { params: { max: decision.maximum } });
+    if (decision.code === 'GROUP_FULL')
+      throw inviteError('GROUP_FULL', { params: { max: decision.maximum } });
     throw inviteError('PROPOSAL_REQUIRED');
   }
   return { founding: !firstCycleStarted };
@@ -113,7 +129,11 @@ export const inviteCreateHandler = defineActionHandler({
       outcome: 'done',
       resultRef: invite.id,
       summary: ui((c) => c.confirmation.actions.createInvite.done),
-      data: { inviteId: invite.id, link: `${getEnv().PUBLIC_BASE_URL}/invite/${token}`, expiresAt: expiresAt.toISOString() },
+      data: {
+        inviteId: invite.id,
+        link: `${getEnv().PUBLIC_APP_URL ?? getEnv().PUBLIC_BASE_URL}/invite/${token}`,
+        expiresAt: expiresAt.toISOString(),
+      },
     };
   },
 });
