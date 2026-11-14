@@ -100,6 +100,60 @@ The owner's Functional Specification Document is transcribed in `docs/FSD.md`. I
 6. **Loan installments are monthly (LOA-02).** Installment k is due at the deadline (`dueAt`) of the first round whose deadline falls on or after the approval date plus k months. For monthly groups this is spec R7.3 exactly.
 7. **The FSD lists the web version as out of scope (2.4).** D1 (web in scope, at the owner's request) still stands; the owner may update the FSD.
 
+## D14. PIN reset protection (2026-11-04)
+
+Closes the privacy-guard finding that a single admin who knows a member's phone could reset that member's PIN and take over the account. In addition to ACC-04 and D8:
+- The account owner gets a SECURITY notification on every logged-in device when a reset is requested and when it is approved, with a "Cancel" action. Cancelling ends the request and is logged.
+- The one-time reset link only works after a 24-hour waiting period from approval (the 30-minute link validity starts when the wait ends).
+- The two-member confirmation of D8 applies whenever the person is an admin of any group that isn't closed.
+
+## D15. Reversals, self-votes and loan length (2026-11-06)
+
+1. **Pot payment reversed after the pot was assigned (bidding mode).** `POT_CORRECTION` moves the amount back from the winner's payable to the pot before the payment's REVERSAL. If the winner's payable no longer holds the amount (already withdrawn), the missing part becomes the winner's debt to the group (a receivable, settled automatically from their next payout like a fine, or paid by request). The general fund never absorbs it.
+2. **The member concerned does not vote on their own case.** FINE_WAIVER excludes the fined member and EARLY_EXIT excludes the person leaving, as in spec R11.1. The FSD table's "Majority" counts the other eligible members.
+3. **Loan length:** default maximum 3 months as in the FSD; `loanMaxMonths` stays a group rule that a two-thirds vote can raise up to 6 (spec 3.2).
+
+## D16. Reversals after payout, reserved coverage, installment dates (2026-11-06)
+
+1. **Every reversal of money already paid out becomes the recipient's debt** (extends D15.1 to FIXED-mode beneficiaries, solidarity recipients and leavers' shortfall refunds): the recipient's payable is debited as far as it holds, the rest becomes their receivable, settled by auto-settlement from their next payout or paid by request. The general fund never absorbs it.
+2. **Reserved-money coverage is checked every day:** if cash at the provider is below `payables + pots + solidarity fund`, the daily check is ALERT and all withdrawals and disbursements in the group pause (R5.5, CAI-05) until it is resolved.
+3. **Loan installment dates (replaces D13.6):** in monthly groups, installment k is due at the deadline of the k-th round after approval (spec R7.3). In weekly or two-weekly groups, installment k is due at the first round deadline on or after approval + k calendar months (LOA-02 "monthly installments").
+
+## D17. CLAWBACK entries and solidarity shortfalls (2026-11-06)
+
+1. **`CLAWBACK` transaction type approved.** Posted just before a REVERSAL of money already paid out (D16.1): it moves what a member's payable, or the solidarity fund, no longer holds into the recipient's receivable, so the REVERSAL can follow without any balance going negative. Extends the transaction table of spec 2.5, like POT_ASSIGNED and POT_CORRECTION (D10, D15).
+2. **Solidarity shortfall debtor:** when the reversed payment's solidarity part has already been paid out of the fund, the recipient of the most recent solidarity payout owes the missing amount as a debt.
+
+## D18. In-flight money, cross-cycle installments, solidarity cap (2026-11-09)
+
+1. **Withdrawals and other disbursements in flight are recorded in the ledger.** When a disbursement is sent to the provider, an entry moves the amount plus the estimated fee from the member's payable (or the solidarity fund, or the general fund for a loan) to an in-flight account for that operation; the provider's confirmation completes it from there (actual fee reconciled as in R4.3), and a failure returns it. Members see pending withdrawals in the ledger, and no correction ever relies on a self-declared in-flight figure. Extends the spec 2.5 tables.
+2. **Loan installments that fall after the cycle ends** are re-dated when the next cycle starts (to the corresponding round deadlines of the new cycle); until then the member sees "due at a round of the next cycle".
+3. **Solidarity shortfall debt is capped (refines D17.2):** a recipient never owes more than the payout they received. Any rest is owed by the previous recipient, and so on backwards; if no recipient remains, the member whose payment was reversed owes it again.
+
+D18.3 details (confirmed 2026-11-11): the cap is the full voted payout (the fee was the recipient's cost of receiving it, FEE-01), and only payouts the operator has confirmed count as "received"; a payout still in flight makes its recipient owe nothing yet.
+
+## D22. Refunded payouts and correction-debt fees (2026-11-11)
+
+1. **A completed disbursement later reversed by the operator** (withdrawal, loan or solidarity payout) is recorded with a `DISBURSEMENT_REFUNDED` entry that puts the money back exactly where the send took it from (member payable, solidarity fund, or loan receivable/general fund), once per disbursement. Any fee the operator keeps is absorbed by the general fund.
+2. **Repaying a correction debt (CORRECTION obligation) by Mobile Money request:** the member bears the collection fee; the card shows the debt plus the fee, so the group is made whole to the franc (consistent with D16.1). Other debt payments (fines, installments, bids) keep R4.2: the general fund bears their fee share.
+
+## D21. iPhone is a first-class target (2026-11-11)
+
+The owner uses an iPhone. iOS, Android and web are all first-class targets from the same code (the spec's "Android first" no longer sets priority). Consequences:
+- Day-to-day testing on the owner's iPhone with **Expo Go** (App Store), same Wi-Fi as the PC, QR code from `pnpm dev:mobile`. Android and the browser are tested too.
+- Every screen respects iOS safe areas (notch, home indicator), iOS keyboard behaviour, swipe-back, and iOS permission prompts (Face ID, camera, photos, microphone), with French and English texts (`app.json` `ios.infoPlist` + `apps/mobile/locales/{fr,en}.json`).
+- iOS cannot block screenshots (only screen recording): on iOS, PIN and money screens hide their content when the app goes to the background instead.
+- Installing outside Expo Go (TestFlight/App Store) and iOS push notifications require an Apple Developer account and an EAS cloud build (no Mac needed); planned for Phase 9.
+
+## D19. Governance limits (2026-11-09)
+
+Confirms the platform engineer's design: proposals can be opened only after the group's first cycle has started (before that the admin sets up the group directly, R1.6); the admin cannot leave or be removed until an ADMIN_CHANGE has passed; a member can have one open proposal per type at a time (in addition to R11.6's one open RULE_CHANGE per parameter); an ADMIN_CHANGE can only elect an ACTIVE member (not one LEAVING).
+
+## D20. Secret votes never close early; neutral solidarity pushes (2026-11-11)
+
+1. **Secret proposals (MEMBER_REMOVE, ADMIN_CHANGE) always run their full window.** While open, members see only participation; the result and the yes/no totals are published together at `closesAt`. Non-secret proposals still close early when the result is certain (FSD GOV-02). Reason: an early close plus live participation reveals choices in small groups (R11.5, GOV-03, AC-07 take precedence over GOV-02 for secret votes).
+2. **Push and lock-screen texts for solidarity requests are neutral** ("Nouvelle demande de soutien dans <groupe>"); the event type (deuil, maladie…) and the note are visible only inside the app.
+
 ## Open questions (to confirm before the phase that needs them)
 
 - **Q1 (resolved by D13.2):** monthly frequency. R2.2 says `payoutAt(k) = first + (k − 1) × frequency`, but the example payout time is "last Saturday of the month". Proposed default: monthly rounds keep the **same anchor** as the first payout (if the first payout is the last Saturday, every round is the last Saturday; if it is the 28th, every round is the 28th, clamped to the month's last day). Weekly and two-weekly add 7 or 14 days.
