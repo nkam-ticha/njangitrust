@@ -8,8 +8,10 @@ import { ui } from '../../lib/texts';
 import { authorizeGroup } from '../../permissions';
 import { defineActionHandler, type ActionContext } from '../pending-actions';
 import { proposalError } from './proposals.errors';
-import { titleOf } from './proposals.payloads';
-import { settleProposal } from './proposals.tally';
+import { dispatchJob } from '../../jobs/dispatch';
+import { memberNames } from './proposals.context';
+import { announceParticipation } from './proposals.tally';
+import { proposalDefinition } from './types';
 
 export const voteArgsSchema = z.strictObject({
   proposalId: z.string().uuid(),
@@ -31,7 +33,9 @@ async function checkVote(ctx: ActionContext, args: VoteArgs, db: Db) {
   if (!proposal) throw proposalError('PROPOSAL_NOT_FOUND');
   const access = await authorizeGroup(ctx.userId, proposal.groupId, 'group.votes.cast', db);
   const receipt = await db.voteReceipt.findUnique({
-    where: { proposalId_membershipId: { proposalId: proposal.id, membershipId: access.membership.id } },
+    where: {
+      proposalId_membershipId: { proposalId: proposal.id, membershipId: access.membership.id },
+    },
     select: { id: true },
   });
   const check = validateVote({
@@ -56,23 +60,30 @@ export const voteCastHandler = defineActionHandler({
     const { proposal } = await checkVote(ctx, args, ctx.db);
     const yes = args.choice === 'YES';
     return {
-      title: ui((c) => (yes ? c.confirmation.actions.voteYes.title : c.confirmation.actions.voteNo.title)),
+      title: ui((c) =>
+        yes ? c.confirmation.actions.voteYes.title : c.confirmation.actions.voteNo.title,
+      ),
       lines: [],
       total: null,
       notes: [
-        titleOf(proposal.type, proposal.payload),
+        proposalDefinition(proposal.type).describe(
+          proposal.payload,
+          await memberNames(ctx.db, proposal.groupId),
+        ).title,
         ...(proposal.secret ? [ui((c) => c.confirmation.notes.voteSecret)] : []),
         ui((c) => c.confirmation.notes.voteFinal),
       ],
-      confirmLabel: ui((c) => (yes ? c.confirmation.actions.voteYes.button : c.confirmation.actions.voteNo.button)),
+      confirmLabel: ui((c) =>
+        yes ? c.confirmation.actions.voteYes.button : c.confirmation.actions.voteNo.button,
+      ),
     };
   },
 
   // R11.5: while pending, the choice is sealed; once finished, only a neutral card remains, so no
-  // stored row ever links a secret choice to the member.
+  // stored row ever links a secret choice to the member. H1: not even the proposal it was about.
   confidential: (args) => args.secret,
-  redacted: (args) => ({
-    args: { proposalId: args.proposalId, secret: true },
+  redacted: () => ({
+    args: { secret: true },
     preview: {
       title: proposalTexts.secretVoteSealed,
       lines: [],
@@ -83,26 +94,56 @@ export const voteCastHandler = defineActionHandler({
   }),
 
   async execute(ctx, args) {
-    // One vote at a time per proposal, so the tally that closes it is exact.
-    await ctx.db.$queryRaw`SELECT "id" FROM "Proposal" WHERE "id" = ${args.proposalId}::uuid FOR UPDATE`;
+    // One vote at a time per proposal, so the counters stay exact.
+    await ctx.db
+      .$queryRaw`SELECT "id" FROM "Proposal" WHERE "id" = ${args.proposalId}::uuid FOR UPDATE`;
     const { proposal, membershipId } = await checkVote(ctx, args, ctx.db);
+    // M1: a receipt only says the member voted within that hour; its time cannot be matched to
+    // a change in the counters.
+    const hour = new Date(Math.floor(ctx.now.getTime() / 3_600_000) * 3_600_000);
     const receipt = await ctx.db.voteReceipt.create({
-      data: { proposalId: proposal.id, membershipId, votedAt: ctx.now },
+      data: { proposalId: proposal.id, membershipId, votedAt: hour, createdAt: hour },
       select: { id: true },
     });
     if (!proposal.secret) {
-      await ctx.db.ballot.create({ data: { proposalId: proposal.id, membershipId, choice: args.choice, castAt: ctx.now } });
+      await ctx.db.ballot.create({
+        data: {
+          proposalId: proposal.id,
+          membershipId,
+          choice: args.choice,
+          castAt: hour,
+          createdAt: hour,
+        },
+      });
     }
     await ctx.db.proposal.update({
       where: { id: proposal.id },
       data: args.choice === 'YES' ? { yesCount: { increment: 1 } } : { noCount: { increment: 1 } },
     });
-    await settleProposal(ctx.db, proposal.id, ctx.now, ctx.effects);
-    // The audit records that a vote happened, never the choice.
+    const participation = proposal.yesCount + proposal.noCount + 1;
+    if (proposal.secret) {
+      // D20.1, H1: a secret vote never closes early. Only the job at closesAt (scheduled when the
+      // proposal opened) closes it; nothing is scheduled per vote. Members see participation.
+      ctx.afterCommit(() => announceParticipation(proposal, participation));
+    } else {
+      // GOV-02: a public vote closes as soon as its result is certain, in a system job detached
+      // from this member's request (the job id names the proposal and the vote count only).
+      ctx.afterCommit(() =>
+        dispatchJob(
+          'votes.close',
+          { proposalId: proposal.id },
+          { jobId: `tally-${proposal.id}-${participation}` },
+        ),
+      );
+    }
     return {
       outcome: 'done',
       resultRef: receipt.id,
-      summary: ui((c) => (args.choice === 'YES' ? c.confirmation.actions.voteYes.done : c.confirmation.actions.voteNo.done)),
+      summary: ui((c) =>
+        args.choice === 'YES'
+          ? c.confirmation.actions.voteYes.done
+          : c.confirmation.actions.voteNo.done,
+      ),
     };
   },
 });

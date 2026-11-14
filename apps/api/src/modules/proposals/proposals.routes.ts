@@ -1,12 +1,16 @@
 // Proposals (spec 2.7):
 //   GET  /v1/groups/:groupId/proposals     list
-//   POST /v1/groups/:groupId/proposals     returns a PROPOSAL_CREATE card (MEMBER_ADD in Phase 0)
+//   POST /v1/groups/:groupId/proposals     returns a PROPOSAL_CREATE card (any type of R11.1)
 //   GET  /v1/proposals/:id                 one proposal
 //   POST /v1/proposals/:id/votes           returns a VOTE_CAST card
 import { Router } from 'express';
 import { z } from 'zod';
 import { uuidSchema } from '@njangi/shared/contracts/common';
-import { castVoteRequestSchema, createProposalRequestSchema } from '@njangi/shared/contracts/proposals';
+import {
+  castVoteRequestSchema,
+  createProposalRequestSchema,
+  proposalListQuerySchema,
+} from '@njangi/shared/contracts/proposals';
 import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
 import { toPendingAction, toProposal } from '../../dto';
@@ -21,18 +25,24 @@ export function proposalGroupRoutes(): Router {
 
   router.get(
     '/:groupId/proposals',
-    handle({ params: groupParams }, async ({ params }, req, res) => {
-      const views = await listProposals(actorOf(req).userId, params.groupId);
-      res.json({ proposals: views.map(toProposal) });
-    }),
+    handle(
+      { params: groupParams, query: proposalListQuerySchema },
+      async ({ params, query }, req, res) => {
+        const views = await listProposals(actorOf(req).userId, params.groupId, query);
+        res.json({ proposals: views.map(toProposal) });
+      },
+    ),
   );
 
   router.post(
     '/:groupId/proposals',
-    handle({ params: groupParams, body: createProposalRequestSchema }, async ({ params, body }, req, res) => {
-      const action = await requestProposal(actorOf(req), params.groupId, body);
-      res.status(201).json({ action: toPendingAction(action) });
-    }),
+    handle(
+      { params: groupParams, body: createProposalRequestSchema },
+      async ({ params, body }, req, res) => {
+        const action = await requestProposal(actorOf(req), params.groupId, body);
+        res.status(201).json({ action: toPendingAction(action) });
+      },
+    ),
   );
 
   return router;
@@ -51,10 +61,13 @@ export function proposalRoutes(): Router {
 
   router.post(
     '/:id/votes',
-    handle({ params: idParams, body: castVoteRequestSchema }, async ({ params, body }, req, res) => {
-      const action = await requestVote(actorOf(req), params.id, body);
-      res.status(201).json({ action: toPendingAction(action) });
-    }),
+    handle(
+      { params: idParams, body: castVoteRequestSchema },
+      async ({ params, body }, req, res) => {
+        const action = await requestVote(actorOf(req), params.id, body);
+        res.status(201).json({ action: toPendingAction(action) });
+      },
+    ),
   );
 
   return router;

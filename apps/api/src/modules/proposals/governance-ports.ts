@@ -1,0 +1,178 @@
+// What governance needs from the money modules (ledger, cycles, rounds, obligations, loans, funds,
+// payouts). The money engineer implements these and registers them at start-up
+// (`registerGovernancePorts` in src/modules/register.ts). Governance never computes or moves money
+// itself: it decides, then calls these inside the same database transaction.
+import type { FeeSchedule, GovernanceEvent, RuleSetParams } from '@njangi/rules';
+import type { Bilingual } from '@njangi/shared';
+import type { Db, Prisma } from '../../lib/prisma';
+import { componentLogger } from '../../lib/logger';
+
+type Tx = Prisma.TransactionClient;
+
+/** R11.8, R12, 2.5: an EVENT entry (no postings) in the group's hash chain. */
+export interface LedgerEventInput {
+  groupId: string;
+  event: GovernanceEvent;
+  description: Bilingual;
+  membershipId?: string | null;
+  refType: 'Proposal' | 'Membership';
+  refId: string;
+  occurredAt: Date;
+}
+
+export interface LedgerEventsPort {
+  appendEvent(tx: Tx, input: LedgerEventInput): Promise<void>;
+}
+
+export interface FineDescription {
+  membershipId: string;
+  amount: number;
+  roundNumber: number | null;
+  /** Only a DUE or already settled fine can be waived; a CANCELLED one cannot. */
+  waivable: boolean;
+}
+
+export interface MoneyGovernancePort {
+  /** The group's current cycle rotation and round in progress (0 before round 1), or null. */
+  currentRotation(
+    db: Db,
+    groupId: string,
+  ): Promise<{
+    cycleId: string;
+    cycleNumber: number;
+    rotation: string[];
+    currentRound: number;
+  } | null>;
+  /**
+   * D13.1: applies a new rule set version from the next round (re-dating rounds after a frequency
+   * or payout-time change; FIXED <-> BIDDING switches). Returns the first round it applies to.
+   */
+  applyRuleSet(
+    tx: Tx,
+    input: {
+      groupId: string;
+      version: number;
+      previous: RuleSetParams;
+      next: RuleSetParams;
+      proposalId: string;
+    },
+  ): Promise<{ effectiveFromRoundId: string | null; effectiveFromRoundNumber: number | null }>;
+  /**
+   * R1.1, R2.1, R2.3, GRP-02/03: starts the group's first cycle (rounds, verifiable draw and its
+   * EVENT, obligations), sets Group.status ACTIVE and currentCycleId, and returns the draw.
+   */
+  startCycle(
+    tx: Tx,
+    input: { groupId: string; startedByUserId: string },
+  ): Promise<{ cycleNumber: number; firstBeneficiaryMembershipId: string | null }>;
+  /** R2.4: the new order applies from the next round. */
+  applyRotationChange(
+    tx: Tx,
+    input: { groupId: string; newOrder: string[]; proposalId: string },
+  ): Promise<void>;
+  /** R12.3 and D13.4: settlement when a member leaves mid-cycle or is removed. */
+  settleExit(
+    tx: Tx,
+    input: {
+      groupId: string;
+      membershipId: string;
+      reason: 'EARLY_EXIT' | 'REMOVED';
+      proposalId: string;
+    },
+  ): Promise<void>;
+  /** FINE_WAIVER: the fine (a FINE obligation of this group), or null if there is none. */
+  describeFine(
+    db: Db,
+    input: { groupId: string; obligationId: string },
+  ): Promise<FineDescription | null>;
+  /** R6.4: cancels the fine (REVERSAL of its FINE_ASSESSED, or refund if already settled). */
+  waiveFine(
+    tx: Tx,
+    input: { groupId: string; obligationId: string; proposalId: string },
+  ): Promise<void>;
+  /** LEDGER_CORRECTION: whether the entry exists and can be corrected (not an EVENT, not reversed). */
+  describeLedgerEntry(
+    db: Db,
+    input: { groupId: string; seq: number },
+  ): Promise<{ correctable: boolean } | null>;
+  /** LEDGER_CORRECTION: REVERSAL of the entry plus the corrected entry described by the vote. */
+  correctLedger(
+    tx: Tx,
+    input: { groupId: string; seq: number; correction: string; proposalId: string },
+  ): Promise<void>;
+  /** R4.4: the fee schedule used to estimate disbursement fees. */
+  feeSchedule(): FeeSchedule;
+  /** R10: the solidarity fund balance and passed payouts not yet paid. */
+  solidarityFund(db: Db, groupId: string): Promise<{ balance: number; pendingPayouts: number }>;
+  /** R10.3, D13.5: pays a passed request (now, or when the recipient's hold ends). */
+  paySolidarity(
+    tx: Tx,
+    input: { groupId: string; solidarityRequestId: string; proposalId: string },
+  ): Promise<void>;
+  /** R7.4: the ADMIN_LOAN vote's result for the loan. */
+  decideAdminLoan(
+    tx: Tx,
+    input: { groupId: string; loanId: string; approved: boolean; proposalId: string },
+  ): Promise<void>;
+}
+
+const log = componentLogger('governance');
+
+/** Until the ledger service exists, events are logged, not recorded (reported to the lead). */
+const loggingLedgerEvents: LedgerEventsPort = {
+  appendEvent(_tx, input) {
+    log.warn(
+      { groupId: input.groupId, event: input.event.event },
+      'ledger EVENT not recorded: no ledger port registered',
+    );
+    return Promise.resolve();
+  },
+};
+
+let ledgerEvents: LedgerEventsPort = loggingLedgerEvents;
+let money: MoneyGovernancePort | null = null;
+
+export function registerGovernancePorts(ports: {
+  ledgerEvents?: LedgerEventsPort;
+  money?: MoneyGovernancePort;
+}): void {
+  if (ports.ledgerEvents) ledgerEvents = ports.ledgerEvents;
+  if (ports.money) money = ports.money;
+}
+
+const recorders = new Set<LedgerEventInput[]>();
+
+/** Every EVENT governance sends goes through here, so tests can scan them (privacy-guard L-5). */
+const recordingLedgerEvents: LedgerEventsPort = {
+  appendEvent(tx, input) {
+    for (const recorder of recorders) recorder.push(input);
+    return ledgerEvents.appendEvent(tx, input);
+  },
+};
+
+export function ledgerEventsPort(): LedgerEventsPort {
+  return recorders.size > 0 ? recordingLedgerEvents : ledgerEvents;
+}
+
+/** Tests only: records every ledger EVENT input from now on (until `stopRecordingLedgerEvents`). */
+export function recordLedgerEvents(): LedgerEventInput[] {
+  if (process.env.NODE_ENV !== 'test') throw new Error('test only');
+  const recorded: LedgerEventInput[] = [];
+  recorders.add(recorded);
+  return recorded;
+}
+
+export function stopRecordingLedgerEvents(recorded: LedgerEventInput[]): void {
+  recorders.delete(recorded);
+}
+
+/** The money port, or null while the money modules are not registered. */
+export function moneyPort(): MoneyGovernancePort | null {
+  return money;
+}
+
+/** Tests only: back to the defaults. */
+export function resetGovernancePortsForTests(): void {
+  ledgerEvents = loggingLedgerEvents;
+  money = null;
+}
