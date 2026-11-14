@@ -1,6 +1,6 @@
 // Spec 5.1: property-based tests. Random sequences of payments, fines, loans, withdrawals, exits,
-// solidarity payouts and fine waivers, all decided by the rules engine; every invariant of 2.5 must
-// hold after each step.
+// solidarity payouts, fine waivers and payment reversals, in fixed and bidding rotation, all decided
+// by the rules engine; every invariant of 2.5 must hold after each step.
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import {
   checkLedger,
   computeBalances,
   negativeAccounts,
+  reservedShortfall,
   sumsToZero,
   summarizeBalances,
 } from '../index';
@@ -17,20 +18,32 @@ import {
   distributeFund,
   exitMember,
   solidarityPayout,
-  waiveFine,
   withdraw,
 } from './group-actions.test-support';
+import { reversePayment, waiveFine } from './group-corrections.test-support';
+import { resolvePending } from './group-payouts.test-support';
+import { advance } from './group-rounds.test-support';
 import { GroupSimulator } from './group-simulator.test-support';
 
 const action = fc.oneof(
   fc.record({ kind: fc.constant('pay' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('payAll' as const), seed: fc.nat(), debts: fc.boolean() }),
-  fc.record({ kind: fc.constant('advance' as const), seed: fc.nat(), debts: fc.boolean() }),
+  // Weighted so cycles end and new ones start (distribution, D18.2 re-dating).
+  {
+    arbitrary: fc.record({
+      kind: fc.constant('advance' as const),
+      seed: fc.nat(),
+      debts: fc.boolean(),
+    }),
+    weight: 5,
+  },
   fc.record({ kind: fc.constant('withdraw' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('borrow' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('exit' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('solidarity' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('waive' as const), seed: fc.nat(), debts: fc.boolean() }),
+  fc.record({ kind: fc.constant('reverse' as const), seed: fc.nat(), debts: fc.boolean() }),
+  fc.record({ kind: fc.constant('resolve' as const), seed: fc.nat(), debts: fc.boolean() }),
 );
 type Action = typeof action extends fc.Arbitrary<infer A> ? A : never;
 
@@ -43,7 +56,12 @@ const applied: Record<Action['kind'], number> = {
   exit: 0,
   solidarity: 0,
   waive: 0,
+  reverse: 0,
+  resolve: 0,
 };
+const paths: Record<string, number> = {};
+/** A seed whose 300 runs exercise every path (reproducible; the random-seed run keeps exploring). */
+const RARE_PATHS_SEED = 20_261_109;
 
 function run(sim: GroupSimulator, a: Action): boolean {
   switch (a.kind) {
@@ -52,7 +70,7 @@ function run(sim: GroupSimulator, a: Action): boolean {
     case 'payAll':
       return sim.rotation.map((m) => sim.pay(m, a.debts)).some(Boolean);
     case 'advance':
-      sim.advance(() => distributeFund(sim));
+      advance(sim, a.seed, () => distributeFund(sim));
       return true;
     case 'withdraw':
       return withdraw(sim, a.seed);
@@ -64,37 +82,63 @@ function run(sim: GroupSimulator, a: Action): boolean {
       return solidarityPayout(sim, a.seed);
     case 'waive':
       return waiveFine(sim, a.seed);
+    case 'reverse':
+      return reversePayment(sim, a.seed);
+    case 'resolve': {
+      const had = sim.pending.length > 0;
+      resolvePending(sim, a.seed);
+      return had;
+    }
   }
 }
 
+/** Spec 5.1: runs the simulator and checks every invariant after every step. */
+const invariantsProperty = fc.property(
+  fc.integer({ min: 3, max: 10 }),
+  fc.integer({ min: 0, max: 200_000 }),
+  fc.constantFrom('FIXED' as const, 'BIDDING' as const),
+  fc.array(action, { minLength: 10, maxLength: 110 }),
+  (members, seedFund, mode, actions) => {
+    const sim = new GroupSimulator(members, seedFund, mode);
+    for (const a of actions) {
+      const before = sim.chain.length;
+      const paused = sim.reconciliationStatus() === 'ALERT';
+      const ran = run(sim, a);
+      if (ran) applied[a.kind] += 1;
+      // D16.2: while reserved money is not covered, no money leaves the group.
+      if (paused && ['withdraw', 'borrow', 'solidarity'].includes(a.kind)) expect(ran).toBe(false);
+      for (const tx of sim.chain.slice(before)) expect(sumsToZero(tx.postings)).toBe(true); // invariant 1
+      const balances = computeBalances(sim.chain);
+      expect(negativeAccounts(balances)).toEqual([]); // invariants 2, 3, 4
+      // R5.6, D18.1: disbursements (in flight included) never break coverage; only a provider
+      // reversal can (D16.1, D16.2), and coverage comes back once the debts are paid (H1).
+      const shortfall = reservedShortfall(summarizeBalances(balances));
+      if (a.kind !== 'reverse' && !paused) expect(shortfall).toBe(0);
+      if (paused && shortfall === 0) paths.coverageRestored = (paths.coverageRestored ?? 0) + 1;
+    }
+    // Invariants 1–5 transaction by transaction: chain, shapes, fees, in flight, reversals,
+    // corrections, pots and bids. Coverage is not integrity: nothing is filtered (H1).
+    expect(checkLedger(TEST_GROUP, sim.chain)).toEqual([]);
+    for (const [path, count] of Object.entries(sim.counters))
+      paths[path] = (paths[path] ?? 0) + count;
+  },
+);
+
 describe('ledger invariants under random activity (2.5, spec 5.1)', () => {
-  it('holds every invariant after every step', () => {
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 3, max: 10 }),
-        fc.integer({ min: 0, max: 200_000 }),
-        fc.array(action, { minLength: 10, maxLength: 70 }),
-        (members, seedFund, actions) => {
-          const sim = new GroupSimulator(members, seedFund);
-          for (const a of actions) {
-            const before = sim.chain.length;
-            if (run(sim, a)) applied[a.kind] += 1;
-            for (const tx of sim.chain.slice(before)) expect(sumsToZero(tx.postings)).toBe(true); // invariant 1
-            const balances = computeBalances(sim.chain);
-            expect(negativeAccounts(balances)).toEqual([]); // invariants 2, 3, 4
-            const s = summarizeBalances(balances);
-            // R5.6: money reserved for members and the solidarity fund is always covered by cash.
-            expect(s.cash - s.payables - s.pots - s.solidarityFund).toBeGreaterThanOrEqual(0);
-          }
-          // Invariants 1–5 transaction by transaction, including the hash chain and gap-free seq.
-          expect(checkLedger(TEST_GROUP, sim.chain)).toEqual([]);
-        },
-      ),
-      { numRuns: 120 },
-    );
-    // The generator really exercised every kind of action.
+  it('holds every invariant after every step (random seed)', () => {
+    fc.assert(invariantsProperty, { numRuns: 150 });
+  });
+
+  it('holds them on a fixed seed that runs every action and every rare money path', () => {
+    for (const key of Object.keys(paths)) delete paths[key];
+    for (const key of Object.keys(applied) as Action['kind'][]) applied[key] = 0;
+    fc.assert(invariantsProperty, { numRuns: 300, seed: RARE_PATHS_SEED });
     for (const kind of Object.keys(applied) as Action['kind'][])
       expect(applied[kind], kind).toBeGreaterThan(0);
+    expect(Object.keys(paths).sort()).toEqual(
+      [...Object.keys(new GroupSimulator(3, 0).counters), 'coverageRestored'].sort(),
+    );
+    for (const [path, count] of Object.entries(paths)) expect(count, path).toBeGreaterThan(0);
   });
 
   it('reports any change to a stored transaction at exactly its seq (spec 5.2)', () => {
