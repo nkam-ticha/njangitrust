@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { splitCollectionFee, type PaymentPart } from './collection-fee';
+import { collectionFeeShares, splitCollectionFee, type PaymentPart } from './collection-fee';
 
 const contribution = (amount: number, creditor = 'M7', tieOrder = 4): PaymentPart => ({
   kind: 'CONTRIBUTION',
@@ -67,6 +67,31 @@ describe('collection fee split (R4.2)', () => {
     expect(() => splitCollectionFee([{ kind: 'CONTRIBUTION', amount: 100 }], 0)).toThrow(
       RangeError,
     ); // a contribution needs its beneficiary (or round pot)
+  });
+
+  it('refuses a contribution not yet resolved at posting time, or resolved to both pot and payable (R3.4)', () => {
+    expect(() =>
+      splitCollectionFee([{ kind: 'CONTRIBUTION', amount: 100, roundId: 'r5' }], 0),
+    ).toThrow(/resolve/);
+    expect(() =>
+      splitCollectionFee(
+        [{ kind: 'CONTRIBUTION', amount: 100, creditorMembershipId: 'M9', potRoundId: 'r5' }],
+        0,
+      ),
+    ).toThrow(/both/);
+  });
+
+  it('computes the shares from kinds, amounts and tie order alone (for verification)', () => {
+    expect(
+      collectionFeeShares(
+        [
+          { kind: 'DEBT', amount: 1_000, tieOrder: 0 },
+          { kind: 'CONTRIBUTION', amount: 10_000, tieOrder: 7 },
+          { kind: 'SOLIDARITY', amount: 1_000, tieOrder: 0 },
+        ],
+        100,
+      ),
+    ).toEqual([8, 84, 8]);
   });
 
   it('never gives a part a share above its amount and always sums to the fee (property)', () => {
