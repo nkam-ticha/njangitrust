@@ -22,7 +22,10 @@ export interface StorageProvider {
     maxBytes: number;
     expiresInSeconds?: number;
   }): Promise<UploadUrl>;
-  createDownloadUrl(input: { key: string; expiresInSeconds?: number }): Promise<{ url: string; expiresAt: Date }>;
+  createDownloadUrl(input: {
+    key: string;
+    expiresInSeconds?: number;
+  }): Promise<{ url: string; expiresAt: Date }>;
   /** Size of a stored object, or null if it doesn't exist. */
   stat(key: string): Promise<{ sizeBytes: number } | null>;
   /** The first bytes of an object, to check its real type. */

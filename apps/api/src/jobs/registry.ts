@@ -14,6 +14,11 @@ export interface JobDefinition<D = unknown> {
   concurrency?: number;
   /** Retries with exponential backoff. Provider jobs re-check status before every retry (rule 8). */
   attempts?: number;
+  /**
+   * Removes the job from Redis as soon as it completes, so no id, time or return value stays
+   * behind (votes: privacy-guard H1). Its processor should return nothing.
+   */
+  keepNoHistory?: boolean;
 }
 
 export interface RepeatableJob {
@@ -32,7 +37,8 @@ const NAME = /^[a-z][A-Za-z]*(\.[a-z][A-Za-z]*)+$/;
 
 export function registerJob<D>(definition: JobDefinition<D>): void {
   if (!NAME.test(definition.name)) throw new Error(`Invalid job name ${definition.name}`);
-  if (definitions.has(definition.name)) throw new Error(`Job ${definition.name} is already registered`);
+  if (definitions.has(definition.name))
+    throw new Error(`Job ${definition.name} is already registered`);
   definitions.set(definition.name, definition as JobDefinition);
 }
 

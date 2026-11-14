@@ -22,6 +22,17 @@ export function getQueue(name: string): Queue {
   return queue;
 }
 
+/** Retry and retention options of a job (without its id and delay). */
+export function jobOptions(name: string) {
+  const definition = getJobDefinition(name);
+  return {
+    attempts: definition?.attempts ?? 3,
+    backoff: { type: 'exponential', delay: 5_000 },
+    removeOnComplete: definition?.keepNoHistory ? true : 1_000,
+    removeOnFail: 5_000,
+  };
+}
+
 /** Enqueues a job to run at `at` (UTC instant). `jobId` makes it idempotent. */
 export async function scheduleAt(
   name: string,
@@ -29,34 +40,37 @@ export async function scheduleAt(
   at: Date,
   jobId: string,
 ): Promise<void> {
-  const definition = getJobDefinition(name);
   await getQueue(name).add(name, data, {
+    ...jobOptions(name),
     jobId,
     delay: Math.max(0, at.getTime() - clock.nowMs()),
-    attempts: definition?.attempts ?? 3,
-    backoff: { type: 'exponential', delay: 5_000 },
-    removeOnComplete: 1_000,
-    removeOnFail: 5_000,
   });
 }
 
 /** Starts a worker per registered job and installs the repeatable schedules. */
 export async function startJobs(): Promise<void> {
+  for (const repeatable of repeatableJobs()) {
+    const { removeOnComplete } = jobOptions(repeatable.name);
+    await getQueue(repeatable.name).upsertJobScheduler(
+      repeatable.id,
+      { pattern: repeatable.pattern, tz: JOB_TIMEZONE },
+      {
+        name: repeatable.name,
+        data: repeatable.data ?? {},
+        opts: { removeOnComplete: removeOnComplete === true ? true : 100, removeOnFail: 1_000 },
+      },
+    );
+  }
   for (const definition of jobDefinitions()) {
     const worker = new Worker(definition.name, definition.process, {
       connection: getRedis('jobs'),
       prefix: PREFIX,
       concurrency: definition.concurrency ?? 1,
     });
-    worker.on('failed', (job, error) => log.error({ job: definition.name, jobId: job?.id, err: error }, 'job failed'));
-    workers.push(worker);
-  }
-  for (const repeatable of repeatableJobs()) {
-    await getQueue(repeatable.name).upsertJobScheduler(
-      repeatable.id,
-      { pattern: repeatable.pattern, tz: JOB_TIMEZONE },
-      { name: repeatable.name, data: repeatable.data ?? {}, opts: { removeOnComplete: 100, removeOnFail: 1_000 } },
+    worker.on('failed', (job, error) =>
+      log.error({ job: definition.name, jobId: job?.id, err: error }, 'job failed'),
     );
+    workers.push(worker);
   }
   log.info({ workers: workers.length, schedules: repeatableJobs().length }, 'jobs started');
 }

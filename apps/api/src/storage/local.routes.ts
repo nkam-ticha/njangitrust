@@ -20,7 +20,13 @@ function signedRequest(req: Request, op: 'put' | 'get'): { request: SignedReques
   const text = (name: string) => (typeof q[name] === 'string' ? q[name] : '');
   if (!isValidStorageKey(key) || text('op') !== op) throw commonError('NOT_FOUND');
   return {
-    request: { op, key, exp: Number(text('exp')), contentType: text('ct'), maxBytes: Number(text('max')) },
+    request: {
+      op,
+      key,
+      exp: Number(text('exp')),
+      contentType: text('ct'),
+      maxBytes: Number(text('max')),
+    },
     sig: text('sig'),
   };
 }
@@ -42,11 +48,18 @@ export function localStorageRoutes(storage: LocalStorage): Router {
   router.put('/*key', async (req, res) => {
     const { request, sig } = signedRequest(req, 'put');
     if (!storage.verify(request, sig)) throw commonError('FORBIDDEN');
-    if ((req.get('content-type') ?? '') !== request.contentType) throw commonError('UNSUPPORTED_MEDIA_TYPE');
+    if ((req.get('content-type') ?? '') !== request.contentType)
+      throw commonError('UNSUPPORTED_MEDIA_TYPE');
     const declared = Number(req.get('content-length') ?? '0');
     if (declared > request.maxBytes) throw commonError('PAYLOAD_TOO_LARGE');
     const target = storage.pathOf(request.key);
-    if (await stat(target).then(() => true, () => false)) throw commonError('CONFLICT');
+    if (
+      await stat(target).then(
+        () => true,
+        () => false,
+      )
+    )
+      throw commonError('CONFLICT');
     await mkdir(path.dirname(target), { recursive: true });
     const temp = `${target}.${randomUUID()}.part`;
     try {

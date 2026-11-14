@@ -39,20 +39,41 @@ export class S3Storage implements StorageProvider {
     });
   }
 
-  async createUploadUrl(input: { key: string; contentType: string; maxBytes: number; expiresInSeconds?: number }): Promise<UploadUrl> {
+  async createUploadUrl(input: {
+    key: string;
+    contentType: string;
+    maxBytes: number;
+    expiresInSeconds?: number;
+  }): Promise<UploadUrl> {
     assertStorageKey(input.key);
     const expiresIn = input.expiresInSeconds ?? UPLOAD_URL_TTL_SECONDS;
-    const command = new PutObjectCommand({ Bucket: this.bucket, Key: input.key, ContentType: input.contentType });
-    const url = await getSignedUrl(this.client, command, { expiresIn, signableHeaders: new Set(['content-type']) });
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: input.key,
+      ContentType: input.contentType,
+    });
+    const url = await getSignedUrl(this.client, command, {
+      expiresIn,
+      signableHeaders: new Set(['content-type']),
+    });
     // Presigned PUTs can't cap the size; the size is checked after upload (stat) and oversized
     // objects are deleted before any attachment is created.
-    return { url, method: 'PUT', headers: { 'Content-Type': input.contentType }, expiresAt: new Date(clock.nowMs() + expiresIn * 1000) };
+    return {
+      url,
+      method: 'PUT',
+      headers: { 'Content-Type': input.contentType },
+      expiresAt: new Date(clock.nowMs() + expiresIn * 1000),
+    };
   }
 
   async createDownloadUrl(input: { key: string; expiresInSeconds?: number }) {
     assertStorageKey(input.key);
     const expiresIn = input.expiresInSeconds ?? DOWNLOAD_URL_TTL_SECONDS;
-    const url = await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: input.key }), { expiresIn });
+    const url = await getSignedUrl(
+      this.client,
+      new GetObjectCommand({ Bucket: this.bucket, Key: input.key }),
+      { expiresIn },
+    );
     return { url, expiresAt: new Date(clock.nowMs() + expiresIn * 1000) };
   }
 

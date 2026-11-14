@@ -1,5 +1,6 @@
 export {
   attachRealtimeServer,
+  disconnectSession,
   disconnectUser,
   emitToGroup,
   emitToUser,
@@ -7,6 +8,7 @@ export {
   groupRoom,
   leaveGroupRoom,
   recordRealtimeEvents,
+  sessionRoom,
   userRoom,
   type RealtimeServer,
   type RecordedEvent,

@@ -33,7 +33,10 @@ function fromFtyp(bytes: Uint8Array): DetectedType | null {
   if (['M4A ', 'M4B '].includes(brand)) return 'audio/mp4';
   if (brand === 'qt  ') return 'video/quicktime';
   if (brand.startsWith('3gp') || brand.startsWith('3g2')) return 'video/3gpp';
-  if (['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'dash', 'MSNV'].includes(brand)) return 'video/mp4';
+  if (
+    ['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'dash', 'MSNV'].includes(brand)
+  )
+    return 'video/mp4';
   return null;
 }
 
@@ -45,7 +48,11 @@ export function detectFileType(bytes: Uint8Array): DetectedType | null {
   if (ascii(bytes, 0, 5) === '%PDF-') return 'application/pdf';
   if (ascii(bytes, 0, 4) === 'OggS') return 'audio/ogg';
   if (startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3])) return 'video/webm';
-  if (ascii(bytes, 0, 3) === 'ID3' || startsWith(bytes, [0xff, 0xfb]) || startsWith(bytes, [0xff, 0xf3])) {
+  if (
+    ascii(bytes, 0, 3) === 'ID3' ||
+    startsWith(bytes, [0xff, 0xfb]) ||
+    startsWith(bytes, [0xff, 0xf3])
+  ) {
     return 'audio/mpeg';
   }
   // ADTS AAC: sync word 0xFFF, layer 00.

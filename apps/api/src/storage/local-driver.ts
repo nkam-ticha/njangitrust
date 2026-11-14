@@ -40,12 +40,19 @@ export class LocalStorage implements StorageProvider {
   pathOf(key: string): string {
     assertStorageKey(key);
     const full = path.resolve(this.root, ...key.split('/'));
-    if (!full.startsWith(this.root + path.sep)) throw new Error('Storage key escapes the storage folder');
+    if (!full.startsWith(this.root + path.sep))
+      throw new Error('Storage key escapes the storage folder');
     return full;
   }
 
   signature(request: SignedRequest): string {
-    const payload = [request.op, request.key, request.exp, request.contentType, request.maxBytes].join('\n');
+    const payload = [
+      request.op,
+      request.key,
+      request.exp,
+      request.contentType,
+      request.maxBytes,
+    ].join('\n');
     return hmacSha256Hex(this.signingSecret, payload);
   }
 
@@ -66,17 +73,38 @@ export class LocalStorage implements StorageProvider {
     return `${this.publicBaseUrl}${LOCAL_STORAGE_ROUTE}/${request.key}?${query.toString()}`;
   }
 
-  async createUploadUrl(input: { key: string; contentType: string; maxBytes: number; expiresInSeconds?: number }): Promise<UploadUrl> {
+  createUploadUrl(input: {
+    key: string;
+    contentType: string;
+    maxBytes: number;
+    expiresInSeconds?: number;
+  }): Promise<UploadUrl> {
     assertStorageKey(input.key);
-    const exp = Math.floor(clock.nowMs() / 1000) + (input.expiresInSeconds ?? UPLOAD_URL_TTL_SECONDS);
-    const request: SignedRequest = { op: 'put', key: input.key, exp, contentType: input.contentType, maxBytes: input.maxBytes };
-    return { url: this.url(request), method: 'PUT', headers: { 'Content-Type': input.contentType }, expiresAt: new Date(exp * 1000) };
+    const exp =
+      Math.floor(clock.nowMs() / 1000) + (input.expiresInSeconds ?? UPLOAD_URL_TTL_SECONDS);
+    const request: SignedRequest = {
+      op: 'put',
+      key: input.key,
+      exp,
+      contentType: input.contentType,
+      maxBytes: input.maxBytes,
+    };
+    return Promise.resolve({
+      url: this.url(request),
+      method: 'PUT',
+      headers: { 'Content-Type': input.contentType },
+      expiresAt: new Date(exp * 1000),
+    });
   }
 
-  async createDownloadUrl(input: { key: string; expiresInSeconds?: number }) {
+  createDownloadUrl(input: { key: string; expiresInSeconds?: number }) {
     assertStorageKey(input.key);
-    const exp = Math.floor(clock.nowMs() / 1000) + (input.expiresInSeconds ?? DOWNLOAD_URL_TTL_SECONDS);
-    return { url: this.url({ op: 'get', key: input.key, exp, contentType: '', maxBytes: 0 }), expiresAt: new Date(exp * 1000) };
+    const exp =
+      Math.floor(clock.nowMs() / 1000) + (input.expiresInSeconds ?? DOWNLOAD_URL_TTL_SECONDS);
+    return Promise.resolve({
+      url: this.url({ op: 'get', key: input.key, exp, contentType: '', maxBytes: 0 }),
+      expiresAt: new Date(exp * 1000),
+    });
   }
 
   async stat(key: string) {
