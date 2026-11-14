@@ -75,26 +75,27 @@ model Membership {
   leftAt          DateTime?        @db.Timestamptz(3)
   chatLastReadAt  DateTime?        @db.Timestamptz(3)
 
-  invitesCreated        Invite[]            @relation("InviteCreatedBy")
-  obligations           Obligation[]        @relation("ObligationDebtor")
-  credits               Obligation[]        @relation("ObligationCreditor")
-  paymentIntents        PaymentIntent[]
-  disbursements         Disbursement[]
-  loans                 Loan[]
-  bids                  Bid[]
-  beneficiaryRounds     Round[]
-  statements            Statement[]
-  ledgerTransactions    LedgerTransaction[]
-  proposals             Proposal[]
-  voteReceipts          VoteReceipt[]
-  ballots               Ballot[]
-  solidarityRequested   SolidarityRequest[] @relation("SolidarityRequester")
-  solidarityReceived    SolidarityRequest[] @relation("SolidarityRecipient")
-  agendaItems           AgendaItem[]
-  attendances           Attendance[]
-  messages              Message[]
-  attachments           Attachment[]
-  pinResetApprovals     PinResetApproval[]
+  invitesCreated      Invite[]            @relation("InviteCreatedBy")
+  obligations         Obligation[]        @relation("ObligationDebtor")
+  credits             Obligation[]        @relation("ObligationCreditor")
+  paymentIntents      PaymentIntent[]
+  disbursements       Disbursement[]
+  loans               Loan[]
+  bids                Bid[]
+  beneficiaryRounds   Round[]
+  statements          Statement[]
+  ledgerTransactions  LedgerTransaction[]
+  proposals           Proposal[]          @relation("ProposalProposer")
+  proposalsAbout      Proposal[]          @relation("ProposalSubject")
+  voteReceipts        VoteReceipt[]
+  ballots             Ballot[]
+  solidarityRequested SolidarityRequest[] @relation("SolidarityRequester")
+  solidarityReceived  SolidarityRequest[] @relation("SolidarityRecipient")
+  agendaItems         AgendaItem[]
+  attendances         Attendance[]
+  messages            Message[]
+  attachments         Attachment[]
+  pinResetApprovals   PinResetApproval[]
 
   @@unique([groupId, userId])
   @@index([userId, status])

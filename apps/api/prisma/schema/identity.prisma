@@ -26,8 +26,8 @@ model User {
   refreshTokens     RefreshToken[]
   pinResets         PinReset[]
   memberships       Membership[]
-  createdGroups     Group[]              @relation("GroupCreator")
-  acceptedInvites   Invite[]             @relation("InviteAcceptedBy")
+  createdGroups     Group[]             @relation("GroupCreator")
+  acceptedInvites   Invite[]            @relation("InviteAcceptedBy")
   notifications     Notification[]
   notificationPrefs NotificationPrefs?
   pendingActions    PendingAction[]
@@ -43,19 +43,24 @@ enum DevicePlatform {
 }
 
 model Device {
-  id            String         @id @default(uuid()) @db.Uuid
-  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
-  userId        String         @db.Uuid
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  platform      DevicePlatform
+  id              String         @id @default(uuid()) @db.Uuid
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  userId          String         @db.Uuid
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform        DevicePlatform
   /// Expo push token. A token belongs to one device; re-registering moves it.
-  expoPushToken String?        @unique
-  lastSeenAt    DateTime       @default(now()) @db.Timestamptz(3)
-  revokedAt     DateTime?      @db.Timestamptz(3)
+  expoPushToken   String?        @unique
+  lastSeenAt      DateTime       @default(now()) @db.Timestamptz(3)
+  /// The login (refresh-token family) that registered the device; revoking it revokes the
+  /// device's push token too (privacy-guard L9).
+  sessionFamilyId String?        @db.Uuid
+  revokedAt       DateTime?      @db.Timestamptz(3)
 
   refreshTokens RefreshToken[]
+  pushTickets   PushTicket[]
 
   @@index([userId])
+  @@index([sessionFamilyId])
 }
 
 /// R13: one active payment number per user (partial unique index on userId WHERE activeTo IS
@@ -116,21 +121,21 @@ enum PinResetStatus {
 /// Spec 2.10, D7, D8. A member asks; their group's admin confirms they know them (for an admin,
 /// two other active members confirm). Then a one-time link valid 30 minutes is created.
 model PinReset {
-  id                 String            @id @default(uuid()) @db.Uuid
-  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
-  userId             String            @db.Uuid
-  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status             PinResetStatus    @default(REQUESTED)
+  id                String             @id @default(uuid()) @db.Uuid
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  userId            String             @db.Uuid
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            PinResetStatus     @default(REQUESTED)
   /// The request itself expires if nobody confirms it in time.
-  requestExpiresAt   DateTime          @db.Timestamptz(3)
+  requestExpiresAt  DateTime           @db.Timestamptz(3)
   /// The group whose confirmations unlocked the link.
-  approvedInGroupId  String?           @db.Uuid
-  approvedAt         DateTime?         @db.Timestamptz(3)
+  approvedInGroupId String?            @db.Uuid
+  approvedAt        DateTime?          @db.Timestamptz(3)
   /// SHA-256 of the one-time link token, set on approval.
-  tokenHash          String?           @unique
-  linkExpiresAt      DateTime?         @db.Timestamptz(3)
-  completedAt        DateTime?         @db.Timestamptz(3)
-  approvals          PinResetApproval[]
+  tokenHash         String?            @unique
+  linkExpiresAt     DateTime?          @db.Timestamptz(3)
+  completedAt       DateTime?          @db.Timestamptz(3)
+  approvals         PinResetApproval[]
 
   @@index([userId, status])
 }

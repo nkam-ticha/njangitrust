@@ -69,6 +69,8 @@ enum ObligationKind {
   LOAN_INSTALLMENT
   BID
   SHORTFALL_SHARE
+  /// D15, D16: debt left when money already paid out is reversed.
+  CORRECTION
 }
 
 enum ObligationStatus {

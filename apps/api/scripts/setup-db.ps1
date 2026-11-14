@@ -95,6 +95,7 @@ $lines = @(
   'REDIS_URL=redis://localhost:6379',
   "JWT_SECRET=$(New-Secret 48)",
   "JWT_REFRESH_SECRET=$(New-Secret 48)",
+  "HASH_SECRET=$(New-Secret 48)",
   'STORAGE_DRIVER=local',
   'STORAGE_LOCAL_DIR=.storage',
   "STORAGE_SIGNING_SECRET=$(New-Secret 32)",

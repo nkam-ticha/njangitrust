@@ -20,6 +20,16 @@ enum LedgerTransactionType {
   FUND_DISTRIBUTION
   /// Bidding mode: moves a round's pot to the winner's payable when the bid closes (R8.3).
   POT_ASSIGNED
+  /// D15: corrects a bidding pot after a reversed payment.
+  POT_CORRECTION
+  /// D17: moves what a payable or the solidarity fund no longer holds into the recipient's
+  /// receivable, just before the REVERSAL of money already paid out.
+  CLAWBACK
+  /// D18.1: a disbursement sent to the provider moves amount + estimated fee from the payable (or
+  /// a fund) to `inflight:disbursement:<disbursementId>`; the provider's confirmation completes it.
+  DISBURSEMENT_SENT
+  /// D18.1: a failed disbursement returns its in-flight amount to where it came from.
+  DISBURSEMENT_RETURNED
   REVERSAL
   /// No postings: governance facts in the hash chain (draw seed, rule set, vote result, ...).
   EVENT
@@ -61,7 +71,8 @@ model LedgerPosting {
   createdAt     DateTime          @default(now()) @db.Timestamptz(3)
   transactionId String            @db.Uuid
   transaction   LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
-  /// `cash:provider`, `payable:member:<id>`, `receivable:member:<id>`, `fund:general`, ...
+  /// `cash:provider`, `payable:member:<id>`, `receivable:member:<id>`, `fund:general`,
+  /// `inflight:disbursement:<disbursementId>` (D18.1), ...
   account       String
   amount        Int
 

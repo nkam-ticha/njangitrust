@@ -36,6 +36,7 @@ model Notification {
   readAt       DateTime?            @db.Timestamptz(3)
   pushTicketId String?
   pushStatus   PushStatus           @default(NOT_SENT)
+  pushTickets  PushTicket[]
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
@@ -63,4 +64,29 @@ model NotificationPrefs {
   /// Groups whose new chat messages don't notify (mentions still do).
   mutedChatGroupIds String[]               @db.Uuid
   mediaAutoDownload MediaAutoDownload      @default(WIFI_ONLY)
+}
+
+enum PushTicketStatus {
+  /// Accepted by the Expo push service; the receipt is checked later.
+  OK
+  ERROR
+  DELIVERED
+  FAILED
+}
+
+/// Spec 2.13: one Expo push ticket per notification and device, checked against its receipt.
+model PushTicket {
+  id             String           @id @default(uuid()) @db.Uuid
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  notificationId String           @db.Uuid
+  notification   Notification     @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deviceId       String           @db.Uuid
+  device         Device           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ticketId       String?          @unique
+  status         PushTicketStatus
+  /// Expo error code only (DeviceNotRegistered, MessageTooBig, ...), never the token.
+  error          String?
+  checkedAt      DateTime?        @db.Timestamptz(3)
+
+  @@index([status, createdAt])
 }

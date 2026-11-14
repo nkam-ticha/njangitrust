@@ -6,14 +6,14 @@ enum AgentChannel {
 }
 
 model AgentConversation {
-  id             String         @id @default(uuid()) @db.Uuid
-  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
-  userId         String         @db.Uuid
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String       @id @default(uuid()) @db.Uuid
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  userId         String       @db.Uuid
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// The active group of the conversation; null only before the member joins a group.
-  groupId        String?        @db.Uuid
-  group          Group?         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  groupId        String?      @db.Uuid
+  group          Group?       @relation(fields: [groupId], references: [id], onDelete: Restrict)
   channel        AgentChannel
   rollingSummary String?
 
@@ -74,28 +74,28 @@ enum PendingActionStatus {
 /// server; the app draws the confirmation card from it, never from the AI's text. Only the owner
 /// confirms, through the app (POST /v1/pending-actions/:id/confirm); the LLM has no path to it.
 model PendingAction {
-  id           String              @id @default(uuid()) @db.Uuid
-  createdAt    DateTime            @default(now()) @db.Timestamptz(3)
-  userId       String              @db.Uuid
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  groupId      String?             @db.Uuid
-  group        Group?              @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  type         String
+  id            String              @id @default(uuid()) @db.Uuid
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  userId        String              @db.Uuid
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupId       String?             @db.Uuid
+  group         Group?              @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  type          String
   /// Normalised by the handler; never a raw phone number, PIN or token.
-  args         Json
-  preview      Json
-  level        ActionLevel
-  status       PendingActionStatus @default(PENDING)
-  origin       ActionOrigin
-  expiresAt    DateTime            @db.Timestamptz(3)
-  confirmedAt  DateTime?           @db.Timestamptz(3)
-  completedAt  DateTime?           @db.Timestamptz(3)
+  args          Json
+  preview       Json
+  level         ActionLevel
+  status        PendingActionStatus @default(PENDING)
+  origin        ActionOrigin
+  expiresAt     DateTime            @db.Timestamptz(3)
+  confirmedAt   DateTime?           @db.Timestamptz(3)
+  completedAt   DateTime?           @db.Timestamptz(3)
   /// The record the action produced (payment, invite, vote receipt, ...).
-  resultRef    String?
+  resultRef     String?
   /// Short bilingual result shown on the card ("Payé, réf. MP2611…").
   resultSummary Json?
-  failureCode  String?
-  failureText  Json?
+  failureCode   String?
+  failureText   Json?
 
   @@index([userId, status])
   @@index([status, expiresAt])

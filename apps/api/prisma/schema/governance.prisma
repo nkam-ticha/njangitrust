@@ -30,30 +30,38 @@ enum ProposalStatus {
 }
 
 model Proposal {
-  id                    String         @id @default(uuid()) @db.Uuid
-  createdAt             DateTime       @default(now()) @db.Timestamptz(3)
-  groupId               String         @db.Uuid
-  group                 Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  type                  ProposalType
+  id                       String         @id @default(uuid()) @db.Uuid
+  createdAt                DateTime       @default(now()) @db.Timestamptz(3)
+  groupId                  String         @db.Uuid
+  group                    Group          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  type                     ProposalType
   /// Type-specific, validated by zod. Never holds a phone number: MEMBER_ADD keeps a keyed hash.
-  payload               Json
-  reason                String?
-  proposerMembershipId  String         @db.Uuid
-  proposer              Membership     @relation(fields: [proposerMembershipId], references: [id], onDelete: Restrict)
-  secret                Boolean
-  thresholdKind         ThresholdKind
+  payload                  Json
+  reason                   String?
+  proposerMembershipId     String         @db.Uuid
+  proposer                 Membership     @relation("ProposalProposer", fields: [proposerMembershipId], references: [id], onDelete: Restrict)
+  secret                   Boolean
+  thresholdKind            ThresholdKind
   /// 3.1: active members when the proposal is created, minus the exclusions of its type.
-  eligibleMembershipIds String[]       @db.Uuid
+  eligibleMembershipIds    String[]       @db.Uuid
+  /// The member the proposal is about: removal target, new admin, leaver, fined member, borrowing
+  /// admin. One open proposal per type and subject (partial unique index in SQL).
+  subjectMembershipId      String?        @db.Uuid
+  subject                  Membership?    @relation("ProposalSubject", fields: [subjectMembershipId], references: [id], onDelete: Restrict)
+  /// ROTATION_CHANGE: members whose turn moves; each must vote yes (R11.1).
+  mustApproveMembershipIds String[]       @db.Uuid
+  /// votes.remind sent (24 h before the close).
+  remindedAt               DateTime?      @db.Timestamptz(3)
   /// Counters; for secret proposals the only record of the choices (R11.5).
-  yesCount              Int            @default(0)
-  noCount               Int            @default(0)
-  opensAt               DateTime       @db.Timestamptz(3)
-  closesAt              DateTime       @db.Timestamptz(3)
-  status                ProposalStatus @default(OPEN)
-  closedAt              DateTime?      @db.Timestamptz(3)
-  appliedAt             DateTime?      @db.Timestamptz(3)
+  yesCount                 Int            @default(0)
+  noCount                  Int            @default(0)
+  opensAt                  DateTime       @db.Timestamptz(3)
+  closesAt                 DateTime       @db.Timestamptz(3)
+  status                   ProposalStatus @default(OPEN)
+  closedAt                 DateTime?      @db.Timestamptz(3)
+  appliedAt                DateTime?      @db.Timestamptz(3)
   /// What the passed proposal did, in both languages ("Appliqué au tour 5").
-  effect                Json?
+  effect                   Json?
 
   voteReceipts      VoteReceipt[]
   ballots           Ballot[]
