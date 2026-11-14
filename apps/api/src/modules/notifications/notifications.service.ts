@@ -1,11 +1,12 @@
-// Notifications (spec 1.8, 2.13): the in-app notification is always written first; realtime (and,
-// from Phase 7, push with categories and quiet hours) follows once it is committed.
+// Notifications (spec 1.8, 2.13): the in-app notification is always written first; realtime and the
+// push (job `notifications.push`, with categories and quiet hours) follow once it is committed.
 import type { Bilingual } from '@njangi/shared';
 import type { NotificationCategory } from '@njangi/shared/contracts/notifications';
 import { AfterCommit, type EffectSink } from '../../lib/after-commit';
 import { getPrisma, type Db } from '../../lib/prisma';
 import { toNotification } from '../../dto';
 import { emitToUser } from '../../realtime/emitter';
+import { dispatchJob } from '../../jobs/dispatch';
 
 export interface NotificationInput {
   userId: string;
@@ -40,6 +41,10 @@ export async function createNotifications(
       },
     });
     effects.add(() => emitToUser(row.userId, 'notification.created', toNotification(row)));
+    // Spec 2.13: the push follows the committed in-app notification, in its own job.
+    effects.add(() =>
+      dispatchJob('notifications.push', { notificationId: row.id }, { jobId: `push-${row.id}` }),
+    );
   }
 }
 
