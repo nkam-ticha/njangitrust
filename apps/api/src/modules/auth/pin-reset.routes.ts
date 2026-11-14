@@ -12,7 +12,7 @@ import { iso, toPendingAction } from '../../dto';
 import { authorizeGroup } from '../../permissions';
 import { createPendingAction } from '../pending-actions';
 import { listReviewable, type ReviewState } from './pin-reset.review';
-import { declinePinReset } from './pin-reset.service';
+import { cancelOwnPinReset, declinePinReset } from './pin-reset.service';
 
 const groupParams = z.strictObject({ groupId: uuidSchema });
 const resetParams = z.strictObject({ groupId: uuidSchema, id: uuidSchema });
@@ -67,5 +67,19 @@ export function pinResetGroupRoutes(): Router {
     }),
   );
 
+  return router;
+}
+
+/** POST /v1/me/pin-reset/cancel: the account owner stops a reset in progress (D14). */
+export function pinResetOwnerRoutes(): Router {
+  const router = Router();
+  router.post(
+    '/cancel',
+    requireAuth(),
+    handle({}, async (_input, req, res) => {
+      await cancelOwnPinReset(actorOf(req).userId);
+      res.status(204).end();
+    }),
+  );
   return router;
 }

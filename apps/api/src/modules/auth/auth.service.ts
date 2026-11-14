@@ -2,12 +2,15 @@
 import type { LoginRequest, PinChangeRequest, SignupRequest } from '@njangi/shared/contracts/auth';
 import { authTexts } from '@njangi/shared/i18n/server/auth';
 import { AfterCommit } from '../../lib/after-commit';
+import { hashPhone } from '../../lib/crypto';
+import { consumeOrThrow, lazyLimiter } from '../../http/rate-limit';
 import { clock } from '../../lib/clock';
 import { getPrisma, withTransaction } from '../../lib/prisma';
 import type { AuthActor, ClientKind } from '../../permissions/actor';
-import { disconnectUser } from '../../realtime/emitter';
+import { disconnectSession, disconnectUser } from '../../realtime/emitter';
 import type { SelfSource } from '../../dto';
 import { audit } from '../audit';
+import { revokeSessionDevices, revokeUserDevices } from '../devices';
 import { getSelfSource } from '../me';
 import { createNotifications, notify } from '../notifications';
 import { insertAccount, prepareAccount } from './accounts';
@@ -22,7 +25,13 @@ import {
   recordFailure,
 } from './lockout';
 import { assertPinAcceptable, burnPinCheck, hashPin, verifyPin } from './pin';
-import { revokeAllForUser, revokeFamily, rotateRefreshToken, familyOfToken } from './refresh-tokens';
+import { cancelPinResetsOnProof } from './pin-reset.service';
+import {
+  revokeAllForUser,
+  revokeFamily,
+  rotateRefreshToken,
+  familyOfToken,
+} from './refresh-tokens';
 import { continueSession, startSession, type SessionTokens } from './sessions';
 
 export interface AuthResult {
@@ -30,7 +39,11 @@ export interface AuthResult {
   session: SessionTokens;
 }
 
+/** L4: sign-up attempts per phone, so a number cannot be probed at a high rate. */
+const signupsPerPhone = lazyLimiter({ name: 'signup-phone', points: 5, durationSeconds: 86_400 });
+
 export async function signup(input: SignupRequest, client: ClientKind): Promise<AuthResult> {
+  await consumeOrThrow(signupsPerPhone, `p:${hashPhone(input.phone)}`);
   const account = await prepareAccount(input);
   const { userId, session } = await withTransaction(async (tx) => {
     const user = await insertAccount(tx, account);
@@ -58,19 +71,28 @@ export async function login(input: LoginRequest, client: ClientKind): Promise<Au
 
   if (!valid || !user) {
     const failure = await recordFailure(loginAttempts, key);
-    if (user) await audit({ action: 'auth.login.failed', actorUserId: user.id, details: { locked: failure.locked } });
+    if (user)
+      await audit({
+        action: 'auth.login.failed',
+        actorUserId: user.id,
+        details: { locked: failure.locked },
+      });
     if (failure.locked) {
       throw authError('LOGIN_LOCKED', {
         params: { minutes: lockMinutes(failure.retryAfterSeconds) },
         details: { retryAfterSeconds: failure.retryAfterSeconds },
       });
     }
-    throw authError(failure.attemptsLeft === 1 ? 'INVALID_CREDENTIALS_LAST_ATTEMPT' : 'INVALID_CREDENTIALS', {
-      details: { attemptsLeft: failure.attemptsLeft },
-    });
+    throw authError(
+      failure.attemptsLeft === 1 ? 'INVALID_CREDENTIALS_LAST_ATTEMPT' : 'INVALID_CREDENTIALS',
+      {
+        details: { attemptsLeft: failure.attemptsLeft },
+      },
+    );
   }
   await clearFailures(loginAttempts, key);
   const session = await startSession(getPrisma(), user, client);
+  await cancelPinResetsOnProof(user.id, 'LOGIN');
   return { self: await getSelfSource(user.id), session };
 }
 
@@ -82,14 +104,23 @@ export async function refresh(token: string): Promise<SessionTokens> {
     const effects = new AfterCommit();
     await withTransaction(async (tx) => {
       await revokeFamily(tx, result.familyId, 'REUSE_DETECTED');
+      await revokeSessionDevices(tx, result.familyId);
       await audit({ action: 'auth.refresh.reuse_detected', actorUserId: result.userId }, tx);
       await createNotifications(
-        [{ userId: result.userId, category: 'SECURITY', title: authTexts.sessionReusedTitle, body: authTexts.sessionReusedBody }],
+        [
+          {
+            userId: result.userId,
+            category: 'SECURITY',
+            title: authTexts.sessionReusedTitle,
+            body: authTexts.sessionReusedBody,
+          },
+        ],
         effects,
         tx,
       );
     });
     await effects.run();
+    disconnectSession(result.familyId);
     throw authError('SESSION_REUSED');
   }
   throw authError('SESSION_INVALID');
@@ -101,12 +132,15 @@ export async function logout(input: { refreshToken?: string; actor?: AuthActor }
   const familyId = family?.familyId ?? input.actor?.sessionId;
   if (!familyId) return;
   await revokeFamily(getPrisma(), familyId, 'LOGOUT');
+  await revokeSessionDevices(getPrisma(), familyId);
+  disconnectSession(familyId);
 }
 
 /** Spec 2.10: revokes every refresh token and, through the epoch, every access token. */
 export async function logoutEverywhere(actor: AuthActor): Promise<void> {
   await withTransaction(async (tx) => {
     await revokeAllForUser(tx, actor.userId, 'LOGOUT_ALL');
+    await revokeUserDevices(tx, actor.userId);
     await tx.user.update({ where: { id: actor.userId }, data: { sessionEpoch: { increment: 1 } } });
     await audit({ action: 'auth.logout_all', actorUserId: actor.userId }, tx);
   });
@@ -126,13 +160,20 @@ export async function verifyMemberPin(userId: string, pin: string | undefined): 
       details: { retryAfterSeconds: lock.retryAfterSeconds },
     });
   }
-  const user = await getPrisma().user.findUniqueOrThrow({ where: { id: userId }, select: { pinHash: true } });
+  const user = await getPrisma().user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { pinHash: true },
+  });
   if (await verifyPin(user.pinHash, pin)) {
     await clearFailures(actionPinAttempts, userId);
     return;
   }
   const failure = await recordFailure(actionPinAttempts, userId);
-  await audit({ action: 'auth.pin.failed', actorUserId: userId, details: { locked: failure.locked } });
+  await audit({
+    action: 'auth.pin.failed',
+    actorUserId: userId,
+    details: { locked: failure.locked },
+  });
   if (failure.locked) {
     throw authError('PIN_LOCKED', {
       params: { minutes: lockMinutes(failure.retryAfterSeconds) },
@@ -149,7 +190,10 @@ export async function changePin(actor: AuthActor, input: PinChangeRequest): Prom
   await verifyMemberPin(actor.userId, input.currentPin);
   if (input.newPin === input.currentPin) throw authError('PIN_SAME_AS_OLD');
   const self = await getSelfSource(actor.userId);
-  assertPinAcceptable(input.newPin, [self.user.loginPhone, ...(self.paymentNumber ? [self.paymentNumber.number] : [])]);
+  assertPinAcceptable(input.newPin, [
+    self.user.loginPhone,
+    ...(self.paymentNumber ? [self.paymentNumber.number] : []),
+  ]);
   const pinHash = await hashPin(input.newPin);
   const session = await withTransaction(async (tx) => {
     const user = await tx.user.update({
@@ -158,12 +202,19 @@ export async function changePin(actor: AuthActor, input: PinChangeRequest): Prom
       select: { id: true, sessionEpoch: true },
     });
     await revokeAllForUser(tx, actor.userId, 'PIN_CHANGED');
+    await revokeUserDevices(tx, actor.userId);
     await audit({ action: 'auth.pin.changed', actorUserId: actor.userId }, tx);
     return startSession(tx, user, actor.client);
   });
   disconnectUser(actor.userId);
+  await cancelPinResetsOnProof(actor.userId, 'PIN_CHANGED');
   await notify([
-    { userId: actor.userId, category: 'SECURITY', title: authTexts.pinChangedTitle, body: authTexts.pinChangedBody },
+    {
+      userId: actor.userId,
+      category: 'SECURITY',
+      title: authTexts.pinChangedTitle,
+      body: authTexts.pinChangedBody,
+    },
   ]);
   return session;
 }

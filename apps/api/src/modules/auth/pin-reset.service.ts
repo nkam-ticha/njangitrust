@@ -2,6 +2,7 @@
 // confirmation by the admin or by two members (pin-reset.actions.ts), then the one-time link.
 // The reset is logged, the group is told, and withdrawals are held for numberChangeHoldHours
 // (the withdrawal service reads User.pinResetAt through @njangi/rules `activeHold`).
+import { formatDateTime } from '@njangi/shared';
 import type { PinResetCompleteRequest } from '@njangi/shared/contracts/auth';
 import { authTexts } from '@njangi/shared/i18n/server/auth';
 import { AfterCommit } from '../../lib/after-commit';
@@ -14,21 +15,36 @@ import type { ClientKind } from '../../permissions/actor';
 import { disconnectUser } from '../../realtime/emitter';
 import { audit } from '../audit';
 import { postSystemMessage } from '../chat';
+import { revokeUserDevices } from '../devices';
 import { getCurrentParams } from '../rulesets';
 import { createNotifications, type NotificationInput } from '../notifications';
 import { authError } from './auth.errors';
-import { clearFailures, loginAttempts, loginKey, recordFailure, resetLinkAttempts } from './lockout';
+import {
+  clearFailures,
+  loginAttempts,
+  loginKey,
+  recordFailure,
+  resetLinkAttempts,
+} from './lockout';
 import { assertPinAcceptable, hashPin } from './pin';
-import { loadReview } from './pin-reset.review';
+import {
+  PIN_RESET_LINK_TTL_MS,
+  PIN_RESET_OWNER_LINK,
+  PIN_RESET_REQUEST_TTL_MS as REQUEST_TTL_MS,
+} from './pin-reset.constants';
+import { isAdminAnywhere, loadReview } from './pin-reset.review';
 import { revokeAllForUser } from './refresh-tokens';
 import { startSession, type SessionTokens } from './sessions';
 
-const REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 const READABLE = ['INVITED', 'ACTIVE', 'LEAVING'] as const;
 const PARTICIPANTS = ['ACTIVE', 'LEAVING'] as const;
 
 /** Three requests a day per phone, so nobody can flood a group's admin. */
-const requestsPerPhone = lazyLimiter({ name: 'pin-reset-request', points: 3, durationSeconds: 86_400 });
+const requestsPerPhone = lazyLimiter({
+  name: 'pin-reset-request',
+  points: 3,
+  durationSeconds: 86_400,
+});
 
 /** User ids that may confirm, per group (admin; for the admin, the other active members). */
 async function confirmersOf(userId: string): Promise<Map<string, string[]>> {
@@ -47,11 +63,17 @@ async function confirmersOf(userId: string): Promise<Map<string, string[]>> {
       },
     },
   });
+  // D8, D14: an admin of any open group is confirmed by two other members, in any of their groups.
+  const adminAnywhere = await isAdminAnywhere(getPrisma(), userId);
   const byGroup = new Map<string, string[]>();
   for (const m of memberships) {
     const others = m.group.memberships;
-    const confirmers = m.role === 'ADMIN' ? others : others.filter((o) => o.role === 'ADMIN');
-    if (confirmers.length > 0) byGroup.set(m.groupId, confirmers.map((c) => c.userId));
+    const confirmers = adminAnywhere ? others : others.filter((o) => o.role === 'ADMIN');
+    if (confirmers.length > 0)
+      byGroup.set(
+        m.groupId,
+        confirmers.map((c) => c.userId),
+      );
   }
   return byGroup;
 }
@@ -64,7 +86,10 @@ export async function requestPinReset(phone: string): Promise<void> {
   }
   const prisma = getPrisma();
   const now = clock.now();
-  const user = await prisma.user.findUnique({ where: { loginPhone: phone }, select: { id: true, name: true, deletedAt: true } });
+  const user = await prisma.user.findUnique({
+    where: { loginPhone: phone },
+    select: { id: true, name: true, deletedAt: true },
+  });
   if (!user || user.deletedAt) return;
 
   await prisma.pinReset.updateMany({
@@ -89,7 +114,16 @@ export async function requestPinReset(phone: string): Promise<void> {
     const reset = await tx.pinReset.create({
       data: { userId: user.id, requestExpiresAt: new Date(now.getTime() + REQUEST_TTL_MS) },
     });
-    const notifications: NotificationInput[] = [];
+    // D14: the account owner hears of it on every logged-in device, and can cancel.
+    const notifications: NotificationInput[] = [
+      {
+        userId: user.id,
+        category: 'SECURITY',
+        title: authTexts.pinResetOwnerRequestedTitle,
+        body: authTexts.pinResetOwnerRequestedBody,
+        deepLink: PIN_RESET_OWNER_LINK,
+      },
+    ];
     for (const [groupId, userIds] of confirmers) {
       for (const confirmerId of userIds) {
         notifications.push({
@@ -130,12 +164,25 @@ async function findApprovedReset(token: string) {
   if (!reset || reset.status !== 'APPROVED' || !reset.linkExpiresAt || reset.user.deletedAt) {
     throw authError('PIN_RESET_LINK_INVALID');
   }
-  if (reset.linkExpiresAt <= clock.now()) throw authError('PIN_RESET_LINK_INVALID');
+  const now = clock.now();
+  if (reset.linkExpiresAt <= now) throw authError('PIN_RESET_LINK_INVALID');
+  // D14: the link works only after the 24-hour wait, for the last 30 minutes of its life.
+  const usableFrom = new Date(reset.linkExpiresAt.getTime() - PIN_RESET_LINK_TTL_MS);
+  if (now < usableFrom) {
+    throw authError('PIN_RESET_LINK_NOT_YET', {
+      params: {
+        date: { fr: formatDateTime(usableFrom, 'fr'), en: formatDateTime(usableFrom, 'en') },
+      },
+      details: { usableFrom: usableFrom.toISOString() },
+    });
+  }
   return { ...reset, linkExpiresAt: reset.linkExpiresAt };
 }
 
 /** What the reset page shows before the member types their number and new PIN. */
-export async function previewPinResetLink(token: string): Promise<{ name: string; expiresAt: Date }> {
+export async function previewPinResetLink(
+  token: string,
+): Promise<{ name: string; expiresAt: Date }> {
   const reset = await findApprovedReset(token);
   return { name: reset.user.name, expiresAt: reset.linkExpiresAt };
 }
@@ -150,13 +197,25 @@ export async function completePinReset(
   if (!safeEqual(reset.user.loginPhone, input.phone)) {
     const failure = await recordFailure(resetLinkAttempts, attemptsKey);
     if (failure.locked) {
-      await getPrisma().pinReset.updateMany({ where: { id: reset.id, status: 'APPROVED' }, data: { status: 'CANCELLED' } });
-      await audit({ action: 'pin.reset.link_burned', actorUserId: reset.user.id, target: `PinReset:${reset.id}` });
+      await getPrisma().pinReset.updateMany({
+        where: { id: reset.id, status: 'APPROVED' },
+        data: { status: 'CANCELLED' },
+      });
+      await audit({
+        action: 'pin.reset.link_burned',
+        actorUserId: reset.user.id,
+        target: `PinReset:${reset.id}`,
+      });
       throw authError('PIN_RESET_LINK_INVALID');
     }
-    throw authError('PIN_RESET_PHONE_MISMATCH', { details: { attemptsLeft: failure.attemptsLeft } });
+    throw authError('PIN_RESET_PHONE_MISMATCH', {
+      details: { attemptsLeft: failure.attemptsLeft },
+    });
   }
-  const numbers = await getPrisma().paymentNumber.findMany({ where: { userId: reset.user.id }, select: { number: true } });
+  const numbers = await getPrisma().paymentNumber.findMany({
+    where: { userId: reset.user.id },
+    select: { number: true },
+  });
   assertPinAcceptable(input.newPin, [reset.user.loginPhone, ...numbers.map((n) => n.number)]);
   const pinHash = await hashPin(input.newPin);
 
@@ -174,21 +233,39 @@ export async function completePinReset(
       select: { id: true, sessionEpoch: true },
     });
     await revokeAllForUser(tx, user.id, 'PIN_RESET');
+    await revokeUserDevices(tx, user.id);
     const groups = await tx.membership.findMany({
       where: { userId: user.id, status: { in: [...READABLE] } },
       select: { groupId: true },
     });
     for (const { groupId } of groups) {
       const { numberChangeHoldHours: hours } = await getCurrentParams(groupId, tx);
-      await postSystemMessage(groupId, ui((c) => c.chat.system.pinReset, { name: reset.user.name, hours }), effects, tx);
+      await postSystemMessage(
+        groupId,
+        ui((c) => c.chat.system.pinReset, { name: reset.user.name, hours }),
+        effects,
+        tx,
+      );
     }
     await createNotifications(
-      [{ userId: user.id, category: 'SECURITY', title: authTexts.pinResetDoneTitle, body: authTexts.pinResetDoneBody }],
+      [
+        {
+          userId: user.id,
+          category: 'SECURITY',
+          title: authTexts.pinResetDoneTitle,
+          body: authTexts.pinResetDoneBody,
+        },
+      ],
       effects,
       tx,
     );
     await audit(
-      { action: 'pin.reset.completed', actorUserId: user.id, groupId: reset.approvedInGroupId, target: `PinReset:${reset.id}` },
+      {
+        action: 'pin.reset.completed',
+        actorUserId: user.id,
+        groupId: reset.approvedInGroupId,
+        target: `PinReset:${reset.id}`,
+      },
       tx,
     );
     return startSession(tx, user, client);
@@ -200,12 +277,15 @@ export async function completePinReset(
   return { userId: reset.user.id, session };
 }
 
-
 /**
  * "Je ne reconnais pas cette demande": any member who may confirm can stop the request. It only
  * reduces risk, so it needs no confirmation card. The requester is told.
  */
-export async function declinePinReset(reviewerUserId: string, groupId: string, pinResetId: string): Promise<void> {
+export async function declinePinReset(
+  reviewerUserId: string,
+  groupId: string,
+  pinResetId: string,
+): Promise<void> {
   const review = await loadReview(reviewerUserId, groupId, pinResetId);
   const effects = new AfterCommit();
   await withTransaction(async (tx) => {
@@ -227,7 +307,77 @@ export async function declinePinReset(reviewerUserId: string, groupId: string, p
       tx,
     );
     await audit(
-      { action: 'pin.reset.declined', actorUserId: reviewerUserId, groupId, target: `PinReset:${pinResetId}` },
+      {
+        action: 'pin.reset.declined',
+        actorUserId: reviewerUserId,
+        groupId,
+        target: `PinReset:${pinResetId}`,
+      },
+      tx,
+    );
+  });
+  await effects.run();
+}
+
+/**
+ * D14: the account owner cancels a PIN reset in progress for their account (requested or already
+ * approved). Logged. A lost phone thus never stays exposed to a reset the owner didn't ask for.
+ */
+export async function cancelOwnPinReset(userId: string): Promise<void> {
+  const cancelled = await getPrisma().pinReset.updateMany({
+    where: { userId, status: { in: ['REQUESTED', 'APPROVED'] } },
+    data: { status: 'CANCELLED' },
+  });
+  if (cancelled.count === 0) throw authError('PIN_RESET_NONE_PENDING');
+  await audit({
+    action: 'pin.reset.cancelled_by_owner',
+    actorUserId: userId,
+    target: `User:${userId}`,
+  });
+}
+
+/**
+ * Privacy-guard L-4: the owner has just shown they know their PIN (a successful login or a PIN
+ * change), so a reset still running for their account is not theirs or no longer needed. It ends,
+ * the end is logged, and the owner gets a SECURITY notice on every device.
+ */
+export async function cancelPinResetsOnProof(
+  userId: string,
+  reason: 'LOGIN' | 'PIN_CHANGED',
+): Promise<void> {
+  const now = clock.now();
+  const effects = new AfterCommit();
+  await withTransaction(async (tx) => {
+    const cancelled = await tx.pinReset.updateMany({
+      where: {
+        userId,
+        OR: [
+          { status: 'REQUESTED', requestExpiresAt: { gt: now } },
+          { status: 'APPROVED', linkExpiresAt: { gt: now } },
+        ],
+      },
+      data: { status: 'CANCELLED' },
+    });
+    if (cancelled.count === 0) return;
+    await audit(
+      {
+        action: 'pin.reset.auto_cancelled',
+        actorUserId: userId,
+        target: `User:${userId}`,
+        details: { reason },
+      },
+      tx,
+    );
+    await createNotifications(
+      [
+        {
+          userId,
+          category: 'SECURITY',
+          title: authTexts.pinResetAutoCancelledTitle,
+          body: authTexts.pinResetAutoCancelledBody,
+        },
+      ],
+      effects,
       tx,
     );
   });

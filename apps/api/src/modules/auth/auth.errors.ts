@@ -21,5 +21,7 @@ export const authError = defineErrors({
   PIN_RESET_PHONE_MISMATCH: { status: 400, text: t.PIN_RESET_PHONE_MISMATCH },
   PIN_RESET_NOT_FOUND: { status: 404, text: t.PIN_RESET_NOT_FOUND },
   PIN_RESET_NOT_ALLOWED: { status: 403, text: t.PIN_RESET_NOT_ALLOWED },
+  PIN_RESET_LINK_NOT_YET: { status: 409, text: t.PIN_RESET_LINK_NOT_YET },
+  PIN_RESET_NONE_PENDING: { status: 404, text: t.PIN_RESET_NONE_PENDING },
   PIN_RESET_ALREADY_CONFIRMED: { status: 409, text: t.PIN_RESET_ALREADY_CONFIRMED },
 });

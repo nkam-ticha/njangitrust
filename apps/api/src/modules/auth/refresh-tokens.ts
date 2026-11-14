@@ -9,10 +9,13 @@ import type { ClientKind } from '../../permissions/actor';
 export const REFRESH_TOKEN_TTL_DAYS = 30;
 const DAY_MS = 86_400_000;
 
-type RevokeReason = 'LOGOUT' | 'LOGOUT_ALL' | 'REUSE_DETECTED' | 'PIN_CHANGED' | 'PIN_RESET' | 'ACCOUNT_DELETED';
+type RevokeReason =
+  'LOGOUT' | 'LOGOUT_ALL' | 'REUSE_DETECTED' | 'PIN_CHANGED' | 'PIN_RESET' | 'ACCOUNT_DELETED';
 
-export const toDbClient = (client: ClientKind) => (client === 'web' ? 'WEB' : 'MOBILE') as const;
-export const fromDbClient = (client: 'WEB' | 'MOBILE'): ClientKind => (client === 'WEB' ? 'web' : 'mobile');
+export const toDbClient = (client: ClientKind): 'WEB' | 'MOBILE' =>
+  client === 'web' ? 'WEB' : 'MOBILE';
+export const fromDbClient = (client: 'WEB' | 'MOBILE'): ClientKind =>
+  client === 'WEB' ? 'web' : 'mobile';
 
 export interface IssuedRefreshToken {
   id: string;
@@ -53,7 +56,11 @@ export async function revokeFamily(db: Db, familyId: string, reason: RevokeReaso
   });
 }
 
-export async function revokeAllForUser(db: Db, userId: string, reason: RevokeReason): Promise<void> {
+export async function revokeAllForUser(
+  db: Db,
+  userId: string,
+  reason: RevokeReason,
+): Promise<void> {
   await db.refreshToken.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: clock.now(), revokedReason: reason },
@@ -99,7 +106,9 @@ export async function rotateRefreshToken(token: string): Promise<RotationResult>
 }
 
 /** The family of a token, if it exists (logout from a refresh token). */
-export async function familyOfToken(token: string): Promise<{ familyId: string; userId: string } | null> {
+export async function familyOfToken(
+  token: string,
+): Promise<{ familyId: string; userId: string } | null> {
   const row = await getPrisma().refreshToken.findUnique({
     where: { tokenHash: hashRefreshToken(token) },
     select: { familyId: true, userId: true },

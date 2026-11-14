@@ -21,6 +21,19 @@ export interface ReviewState {
   confirmedByMe: boolean;
 }
 
+/** D8, D14: whether a user is the admin of any group that isn't closed. */
+export async function isAdminAnywhere(db: Db, userId: string): Promise<boolean> {
+  const count = await db.membership.count({
+    where: {
+      userId,
+      role: 'ADMIN',
+      status: { in: ['ACTIVE', 'LEAVING'] },
+      group: { status: { not: 'CLOSED' } },
+    },
+  });
+  return count > 0;
+}
+
 /** Confirmations still needed after this reviewer, and whether they may confirm at all. */
 export async function loadReview(
   reviewerUserId: string,
@@ -51,9 +64,11 @@ export async function loadReview(
   if (!requester || !(READABLE as readonly string[]).includes(requester.status)) {
     throw authError('PIN_RESET_NOT_FOUND');
   }
-  const requesterIsAdmin = requester.role === 'ADMIN';
+  // D14: the two-member rule applies when the person is admin of any group that isn't closed.
+  const requesterIsAdmin = await isAdminAnywhere(db, reset.userId);
   if (reset.userId === reviewerUserId) throw authError('PIN_RESET_NOT_ALLOWED');
-  if (!requesterIsAdmin && access.membership.role !== 'ADMIN') throw authError('PIN_RESET_NOT_ALLOWED');
+  if (!requesterIsAdmin && access.membership.role !== 'ADMIN')
+    throw authError('PIN_RESET_NOT_ALLOWED');
   return {
     pinResetId: reset.id,
     requesterUserId: reset.userId,
@@ -69,7 +84,10 @@ export async function loadReview(
 }
 
 /** Open requests in a group that the viewer may confirm. */
-export async function listReviewable(reviewerUserId: string, groupId: string): Promise<ReviewState[]> {
+export async function listReviewable(
+  reviewerUserId: string,
+  groupId: string,
+): Promise<ReviewState[]> {
   await authorizeGroup(reviewerUserId, groupId, 'group.pinResets.review');
   const open = await getPrisma().pinReset.findMany({
     where: {

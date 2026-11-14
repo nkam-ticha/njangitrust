@@ -13,14 +13,19 @@ export interface AuditEntry {
   target?: string | null;
   /** Non-personal facts (counts, statuses, codes). Redacted anyway. */
   details?: Record<string, unknown>;
+  /**
+   * A system decision (a vote closing, a job): never attributed to the request it happens to run
+   * in, so a secret vote that closes a proposal cannot be traced to its voter (privacy-guard H1).
+   */
+  system?: boolean;
 }
 
 export async function audit(entry: AuditEntry, db: Db = getPrisma()): Promise<void> {
-  const context = currentContext();
+  const context = entry.system ? undefined : currentContext();
   await db.auditLog.create({
     data: {
       action: entry.action,
-      actorUserId: entry.actorUserId ?? context?.userId ?? null,
+      actorUserId: entry.system ? null : (entry.actorUserId ?? context?.userId ?? null),
       groupId: entry.groupId ?? null,
       target: entry.target ?? null,
       details: redact(entry.details ?? {}) as Prisma.InputJsonValue,

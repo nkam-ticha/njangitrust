@@ -50,7 +50,10 @@ export async function insertAccount(
   account: PreparedAccount,
 ): Promise<{ id: string; sessionEpoch: number }> {
   const now = clock.now();
-  const existing = await tx.user.findUnique({ where: { loginPhone: account.phone }, select: { id: true } });
+  const existing = await tx.user.findUnique({
+    where: { loginPhone: account.phone },
+    select: { id: true },
+  });
   if (existing) throw authError('PHONE_ALREADY_REGISTERED');
   try {
     return await tx.user.create({

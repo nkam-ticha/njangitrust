@@ -4,13 +4,19 @@
 import { z } from 'zod';
 import { getEnv } from '../../config/env';
 import { hashLinkToken, randomToken } from '../../lib/crypto';
-import { ui } from '../../lib/texts';
+import { formatDateTime } from '@njangi/shared';
+import { authTexts } from '@njangi/shared/i18n/server/auth';
+import { bilingual, ui } from '../../lib/texts';
+import { createNotifications } from '../notifications';
 import { defineActionHandler } from '../pending-actions';
 import { audit } from '../audit';
 import { authError } from './auth.errors';
 import { loadReview, type ReviewState } from './pin-reset.review';
-
-export const PIN_RESET_LINK_TTL_MS = 30 * 60 * 1000;
+import {
+  PIN_RESET_LINK_TTL_MS,
+  PIN_RESET_LINK_WAIT_MS,
+  PIN_RESET_OWNER_LINK,
+} from './pin-reset.constants';
 
 const argsSchema = z.strictObject({ pinResetId: z.string().uuid(), groupId: z.string().uuid() });
 
@@ -32,7 +38,10 @@ function previewOf(review: ReviewState) {
     total: null,
     notes: [
       ui((c) => c.pinReset.members.body, name),
-      ui((c) => (count === 1 ? c.pinReset.members.progress_one : c.pinReset.members.progress_other), { count }),
+      ui(
+        (c) => (count === 1 ? c.pinReset.members.progress_one : c.pinReset.members.progress_other),
+        { count },
+      ),
     ],
     confirmLabel: ui((c) => c.pinReset.members.confirm),
   };
@@ -51,11 +60,16 @@ export const pinResetApproveHandler = defineActionHandler({
 
   async execute(ctx, args) {
     // Serialise confirmations of one request: the second confirmer must see the first.
-    await ctx.db.$queryRaw`SELECT "id" FROM "PinReset" WHERE "id" = ${args.pinResetId}::uuid FOR UPDATE`;
+    await ctx.db
+      .$queryRaw`SELECT "id" FROM "PinReset" WHERE "id" = ${args.pinResetId}::uuid FOR UPDATE`;
     const review = await loadReview(ctx.userId, args.groupId, args.pinResetId, ctx.db);
     if (review.confirmedByMe) throw authError('PIN_RESET_ALREADY_CONFIRMED');
     await ctx.db.pinResetApproval.create({
-      data: { pinResetId: args.pinResetId, groupId: args.groupId, membershipId: review.reviewerMembershipId },
+      data: {
+        pinResetId: args.pinResetId,
+        groupId: args.groupId,
+        membershipId: review.reviewerMembershipId,
+      },
     });
     const given = review.given + 1;
     await audit(
@@ -77,7 +91,9 @@ export const pinResetApproveHandler = defineActionHandler({
       };
     }
     const token = randomToken(32);
-    const linkExpiresAt = new Date(ctx.now.getTime() + PIN_RESET_LINK_TTL_MS);
+    // D14: usable only after a 24-hour wait, then for 30 minutes.
+    const linkUsableFrom = new Date(ctx.now.getTime() + PIN_RESET_LINK_WAIT_MS);
+    const linkExpiresAt = new Date(linkUsableFrom.getTime() + PIN_RESET_LINK_TTL_MS);
     await ctx.db.pinReset.update({
       where: { id: args.pinResetId },
       data: {
@@ -89,7 +105,31 @@ export const pinResetApproveHandler = defineActionHandler({
       },
     });
     await audit(
-      { action: 'pin.reset.approved', actorUserId: ctx.userId, groupId: args.groupId, target: `PinReset:${args.pinResetId}` },
+      {
+        action: 'pin.reset.approved',
+        actorUserId: ctx.userId,
+        groupId: args.groupId,
+        target: `PinReset:${args.pinResetId}`,
+      },
+      ctx.db,
+    );
+    // D14: the account owner is told on every device, with the date the link starts working.
+    await createNotifications(
+      [
+        {
+          userId: review.requesterUserId,
+          category: 'SECURITY',
+          title: authTexts.pinResetOwnerApprovedTitle,
+          body: bilingual(authTexts.pinResetOwnerApprovedBody, {
+            date: {
+              fr: formatDateTime(linkUsableFrom, 'fr'),
+              en: formatDateTime(linkUsableFrom, 'en'),
+            },
+          }),
+          deepLink: PIN_RESET_OWNER_LINK,
+        },
+      ],
+      ctx.effects,
       ctx.db,
     );
     const name = { name: review.requesterName };
@@ -102,7 +142,8 @@ export const pinResetApproveHandler = defineActionHandler({
           : ui((c) => c.pinReset.members.ready, name),
       data: {
         approved: true,
-        link: `${getEnv().PUBLIC_BASE_URL}/reset-pin/${token}`,
+        link: `${getEnv().PUBLIC_APP_URL ?? getEnv().PUBLIC_BASE_URL}/reset-pin/${token}`,
+        linkUsableFrom: linkUsableFrom.toISOString(),
         linkExpiresAt: linkExpiresAt.toISOString(),
       },
     };

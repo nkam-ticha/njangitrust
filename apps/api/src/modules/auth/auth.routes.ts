@@ -14,16 +14,27 @@ import { actorOf, optionalAuth, requireAuth } from '../../http/auth';
 import { floodLimits, rateLimit } from '../../http/rate-limit';
 import { clearRefreshCookie, deliverSession, refreshTokenOf } from '../../http/session-delivery';
 import { handle } from '../../http/validate';
+import { runInBackground } from '../../jobs/dispatch';
 import { iso, toSelf } from '../../dto';
 import { getSelfSource } from '../me';
 import { authError } from './auth.errors';
-import { changePin, login, logout, logoutEverywhere, refresh, signup, type AuthResult } from './auth.service';
+import {
+  changePin,
+  login,
+  logout,
+  logoutEverywhere,
+  refresh,
+  signup,
+  type AuthResult,
+} from './auth.service';
 import { completePinReset, previewPinResetLink, requestPinReset } from './pin-reset.service';
 
 const tokenParams = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{40,64}$/) });
 
 function sendAuth(req: Request, res: Response, status: number, result: AuthResult): void {
-  res.status(status).json({ user: toSelf(result.self), session: deliverSession(req, res, result.session) });
+  res
+    .status(status)
+    .json({ user: toSelf(result.self), session: deliverSession(req, res, result.session) });
 }
 
 export function authRoutes(): Router {
@@ -66,7 +77,10 @@ export function authRoutes(): Router {
     optionalAuth(),
     handle({ body: logoutRequestSchema }, async ({ body }, req, res) => {
       const token = refreshTokenOf(req, body.refreshToken);
-      await logout({ ...(token ? { refreshToken: token } : {}), ...(req.actor ? { actor: req.actor } : {}) });
+      await logout({
+        ...(token ? { refreshToken: token } : {}),
+        ...(req.actor ? { actor: req.actor } : {}),
+      });
       clearRefreshCookie(res);
       res.status(204).end();
     }),
@@ -94,9 +108,10 @@ export function authRoutes(): Router {
   router.post(
     '/pin/reset-request',
     authLimit,
-    handle({ body: pinResetRequestSchema }, async ({ body }, _req, res) => {
-      await requestPinReset(body.phone);
-      // Same answer whether or not the phone has an account.
+    handle({ body: pinResetRequestSchema }, ({ body }, _req, res) => {
+      // L4: the work happens after the answer, so the answer and its timing are the same whether
+      // or not the phone has an account.
+      runInBackground('pin.reset.request', () => requestPinReset(body.phone));
       res.status(202).json({ status: 'REQUESTED' });
     }),
   );
@@ -113,10 +128,13 @@ export function authRoutes(): Router {
   router.post(
     '/pin/reset/:token',
     authLimit,
-    handle({ params: tokenParams, body: pinResetCompleteRequestSchema }, async ({ params, body }, req, res) => {
-      const { userId, session } = await completePinReset(params.token, body, req.clientKind);
-      sendAuth(req, res, 200, { self: await getSelfSource(userId), session });
-    }),
+    handle(
+      { params: tokenParams, body: pinResetCompleteRequestSchema },
+      async ({ params, body }, req, res) => {
+        const { userId, session } = await completePinReset(params.token, body, req.clientKind);
+        sendAuth(req, res, 200, { self: await getSelfSource(userId), session });
+      },
+    ),
   );
 
   return router;

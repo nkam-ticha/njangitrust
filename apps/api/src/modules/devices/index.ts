@@ -1,1 +1,1 @@
-export { registerDevice, type DeviceSource } from './devices.service';
+export { registerDevice, revokeSessionDevices, revokeUserDevices } from './devices.service';

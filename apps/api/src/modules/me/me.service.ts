@@ -48,7 +48,11 @@ export async function updateMe(userId: string, input: UpdateMeRequest): Promise<
 
 export interface MyGroupSource {
   group: { id: string; name: string; status: 'FORMING' | 'ACTIVE' | 'CLOSED' };
-  membership: { id: string; role: 'ADMIN' | 'MEMBER'; status: 'INVITED' | 'ACTIVE' | 'LEAVING' | 'LEFT' | 'REMOVED' };
+  membership: {
+    id: string;
+    role: 'ADMIN' | 'MEMBER';
+    status: 'INVITED' | 'ACTIVE' | 'LEAVING' | 'LEFT' | 'REMOVED';
+  };
   memberCount: number;
 }
 
@@ -66,7 +70,9 @@ export async function listMyGroups(userId: string): Promise<MyGroupSource[]> {
           id: true,
           name: true,
           status: true,
-          _count: { select: { memberships: { where: { status: { in: [...ACTIVE_MEMBER_STATUSES] } } } } },
+          _count: {
+            select: { memberships: { where: { status: { in: [...ACTIVE_MEMBER_STATUSES] } } } },
+          },
         },
       },
     },

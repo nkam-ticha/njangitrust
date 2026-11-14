@@ -1,27 +1,46 @@
 // Devices for push notifications (spec 2.7 POST /me/devices, 2.13). A push token belongs to one
-// device of one user: registering it again (another account on the same phone) moves it.
+// device of one login: registering it again moves it, and revoking the login revokes the token
+// (privacy-guard L9), so a logged-out phone stops receiving pushes.
 import type { RegisterDeviceRequest } from '@njangi/shared/contracts/me';
+import type { DeviceSource } from '../../dto/devices';
 import { clock } from '../../lib/clock';
-import { getPrisma } from '../../lib/prisma';
+import { getPrisma, type Db } from '../../lib/prisma';
 
-export interface DeviceSource {
-  id: string;
-  platform: 'ANDROID' | 'IOS' | 'WEB';
-  expoPushToken: string | null;
-  lastSeenAt: Date;
-}
+const select = { id: true, platform: true, expoPushToken: true, lastSeenAt: true } as const;
 
-export async function registerDevice(userId: string, input: RegisterDeviceRequest): Promise<DeviceSource> {
+export async function registerDevice(
+  userId: string,
+  sessionFamilyId: string,
+  input: RegisterDeviceRequest,
+): Promise<DeviceSource> {
   const prisma = getPrisma();
   const now = clock.now();
-  const select = { id: true, platform: true, expoPushToken: true, lastSeenAt: true } as const;
+  const data = {
+    userId,
+    platform: input.platform,
+    lastSeenAt: now,
+    sessionFamilyId,
+    revokedAt: null,
+  };
   if (input.expoPushToken) {
     return prisma.device.upsert({
       where: { expoPushToken: input.expoPushToken },
-      create: { userId, platform: input.platform, expoPushToken: input.expoPushToken, lastSeenAt: now },
-      update: { userId, platform: input.platform, lastSeenAt: now, revokedAt: null },
+      create: { ...data, expoPushToken: input.expoPushToken },
+      update: data,
       select,
     });
   }
-  return prisma.device.create({ data: { userId, platform: input.platform, lastSeenAt: now }, select });
+  return prisma.device.create({ data, select });
+}
+
+const revoked = () => ({ revokedAt: clock.now(), expoPushToken: null });
+
+/** Logout or token reuse: the devices of that one login. */
+export async function revokeSessionDevices(db: Db, sessionFamilyId: string): Promise<void> {
+  await db.device.updateMany({ where: { sessionFamilyId, revokedAt: null }, data: revoked() });
+}
+
+/** Log out everywhere, PIN change, PIN reset: every device of the user. */
+export async function revokeUserDevices(db: Db, userId: string): Promise<void> {
+  await db.device.updateMany({ where: { userId, revokedAt: null }, data: revoked() });
 }

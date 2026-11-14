@@ -1,20 +1,10 @@
-// POST /v1/me/devices: registers this device (and its Expo push token) for the member.
+// POST /v1/me/devices: registers this device (and its Expo push token) for this login.
 import { Router } from 'express';
-import { registerDeviceRequestSchema, type DeviceDto } from '@njangi/shared/contracts/me';
+import { registerDeviceRequestSchema } from '@njangi/shared/contracts/me';
 import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
-import { iso } from '../../dto';
-import { registerDevice, type DeviceSource } from './devices.service';
-
-/** Allowlist: the push token itself never goes back to the client. */
-function toDevice(device: DeviceSource): DeviceDto {
-  return {
-    id: device.id,
-    platform: device.platform,
-    pushEnabled: device.expoPushToken !== null,
-    lastSeenAt: iso(device.lastSeenAt),
-  };
-}
+import { toDevice } from '../../dto';
+import { registerDevice } from './devices.service';
 
 export function devicesRoutes(): Router {
   const router = Router();
@@ -22,7 +12,10 @@ export function devicesRoutes(): Router {
     '/',
     requireAuth(),
     handle({ body: registerDeviceRequestSchema }, async ({ body }, req, res) => {
-      res.status(201).json({ device: toDevice(await registerDevice(actorOf(req).userId, body)) });
+      const actor = actorOf(req);
+      res
+        .status(201)
+        .json({ device: toDevice(await registerDevice(actor.userId, actor.sessionId, body)) });
     }),
   );
   return router;
