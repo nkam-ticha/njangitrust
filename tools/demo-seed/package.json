@@ -1,0 +1,11 @@
+{
+  "name": "@njangi/demo-seed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Creates the spec 5.5 demo people and groups through the real HTTP API (development only).",
+  "scripts": {
+    "seed": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
