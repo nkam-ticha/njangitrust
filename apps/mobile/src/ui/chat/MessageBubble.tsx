@@ -40,8 +40,12 @@ export function MessageBubble(p: MessageBubbleProps) {
   const { t } = useTranslation();
   const own = p.author === 'own';
   const agent = p.author === 'agent';
-  const text = (p.parts ?? []).map((part) => (typeof part === 'string' ? part : `@${part.mention}`)).join('');
-  const a11y = own ? t('chat.message.a11yOwn', { time: p.time, text }) : t('chat.message.a11y', { name: p.name ?? '', time: p.time, text });
+  const text = (p.parts ?? [])
+    .map((part) => (typeof part === 'string' ? part : `@${part.mention}`))
+    .join('');
+  const a11y = own
+    ? t('chat.message.a11yOwn', { time: p.time, text })
+    : t('chat.message.a11y', { name: p.name ?? '', time: p.time, text });
 
   if (p.deleted || p.hidden) {
     const Glyph = p.deleted ? Ban : EyeOff;
@@ -50,7 +54,11 @@ export function MessageBubble(p: MessageBubbleProps) {
         <View style={styles.placeholder}>
           <Glyph size={16} color={colors.iconSecondary} strokeWidth={2} />
           <Txt variant="secondary" color="textSecondary">
-            {p.hidden ? t('chat.message.hidden') : own ? t('chat.message.deletedOwn') : t('chat.message.deleted')}
+            {p.hidden
+              ? t('chat.message.hidden')
+              : own
+                ? t('chat.message.deletedOwn')
+                : t('chat.message.deleted')}
           </Txt>
         </View>
       </View>
@@ -67,10 +75,21 @@ export function MessageBubble(p: MessageBubbleProps) {
       ]}
     >
       {p.reply ? (
-        <Touchable onPress={p.reply.onPress} disabled={!p.reply.onPress} accessibilityRole="button" accessibilityLabel={t('chat.message.replyTo', { name: p.reply.name })}>
-          <View style={[styles.quote, { backgroundColor: own ? colors.surfaceTint : colors.canvas }]}>
-            <Txt variant="captionStrong" color="textLink">{p.reply.name}</Txt>
-            <Txt variant="caption" color="textSecondary" numberOfLines={1}>{p.reply.text}</Txt>
+        <Touchable
+          onPress={p.reply.onPress}
+          disabled={!p.reply.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.message.replyTo', { name: p.reply.name })}
+        >
+          <View
+            style={[styles.quote, { backgroundColor: own ? colors.surfaceTint : colors.canvas }]}
+          >
+            <Txt variant="captionStrong" color="textLink">
+              {p.reply.name}
+            </Txt>
+            <Txt variant="caption" color="textSecondary" numberOfLines={1}>
+              {p.reply.text}
+            </Txt>
           </View>
         </Touchable>
       ) : null}
@@ -81,7 +100,12 @@ export function MessageBubble(p: MessageBubbleProps) {
             typeof part === 'string' ? (
               part
             ) : (
-              <Txt key={i} variant="bodyStrong" color="textLink" onPress={() => p.onMentionPress?.(part.mention)}>
+              <Txt
+                key={i}
+                variant="bodyStrong"
+                color="textLink"
+                onPress={() => p.onMentionPress?.(part.mention)}
+              >
                 {`@${part.mention}`}
               </Txt>
             ),
@@ -89,9 +113,15 @@ export function MessageBubble(p: MessageBubbleProps) {
         </Txt>
       ) : null}
       <View style={styles.meta}>
-        <Txt variant="caption" color="textSecondary">{p.time}</Txt>
-        {own && p.delivery === 'queued' ? <Clock size={14} color={colors.iconSecondary} strokeWidth={2} /> : null}
-        {own && (p.delivery ?? 'sent') === 'sent' ? <Check size={14} color={colors.iconSecondary} strokeWidth={2} /> : null}
+        <Txt variant="caption" color="textSecondary">
+          {p.time}
+        </Txt>
+        {own && p.delivery === 'queued' ? (
+          <Clock size={14} color={colors.iconSecondary} strokeWidth={2} />
+        ) : null}
+        {own && (p.delivery ?? 'sent') === 'sent' ? (
+          <Check size={14} color={colors.iconSecondary} strokeWidth={2} />
+        ) : null}
       </View>
       {p.footer}
     </View>
@@ -99,22 +129,44 @@ export function MessageBubble(p: MessageBubbleProps) {
 
   return (
     <View style={[styles.lane, own && styles.laneOwn]} accessible accessibilityLabel={a11y}>
-      {!own ? <View style={styles.avatarSlot}>{p.firstOfRun ? <Avatar size={32} name={p.name} agent={agent} /> : null}</View> : null}
+      {!own ? (
+        <View style={styles.avatarSlot}>
+          {p.firstOfRun ? <Avatar size={32} name={p.name} agent={agent} /> : null}
+        </View>
+      ) : null}
       <View style={[styles.column, own && styles.columnOwn]}>
         {!own && p.firstOfRun ? (
           <View style={styles.nameRow}>
-            <Txt variant="secondaryStrong" color={agent ? 'textLink' : 'textPrimary'}>{p.name}</Txt>
-            {agent ? <Txt variant="caption" color="textSecondary">{t('agent.group.caption')}</Txt> : null}
+            <Txt variant="secondaryStrong" color={agent ? 'textLink' : 'textPrimary'}>
+              {p.name}
+            </Txt>
+            {agent ? (
+              <Txt variant="caption" color="textSecondary">
+                {t('agent.group.caption')}
+              </Txt>
+            ) : null}
           </View>
         ) : null}
-        <Touchable onLongPress={p.onLongPress} disabled={!p.onLongPress} pressedLayer={null} hoverLayer={null} accessibilityRole="text">
+        <Touchable
+          onLongPress={p.onLongPress}
+          disabled={!p.onLongPress}
+          pressedLayer={null}
+          hoverLayer={null}
+          accessibilityRole="text"
+        >
           {bubble}
         </Touchable>
         {own && p.delivery === 'failed' ? (
-          <Touchable onPress={p.onRetry} accessibilityRole="button" accessibilityLabel={t('chat.message.failed')}>
+          <Touchable
+            onPress={p.onRetry}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.message.failed')}
+          >
             <View style={styles.failed}>
               <CircleAlert size={16} color={colors.statusLate} strokeWidth={2} />
-              <Txt variant="secondary" color="textDanger">{t('chat.message.failed')}</Txt>
+              <Txt variant="secondary" color="textDanger">
+                {t('chat.message.failed')}
+              </Txt>
             </View>
           </Touchable>
         ) : null}
@@ -130,9 +182,20 @@ const styles = StyleSheet.create({
   column: { maxWidth: '80%', gap: 2 },
   columnOwn: { alignItems: 'flex-end' },
   nameRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.s1 },
-  bubble: { borderRadius: radius.group, paddingHorizontal: space.s3, paddingVertical: space.s2, gap: space.s1, maxWidth: contentWidth.bubble },
+  bubble: {
+    borderRadius: radius.group,
+    paddingHorizontal: space.s3,
+    paddingVertical: space.s2,
+    gap: space.s1,
+    maxWidth: contentWidth.bubble,
+  },
   quote: { borderRadius: radius.group, padding: space.s2 },
   meta: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', gap: 2 },
-  placeholder: { flexDirection: 'row', alignItems: 'center', gap: space.s1, paddingVertical: space.s1 },
+  placeholder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s1,
+    paddingVertical: space.s1,
+  },
   failed: { flexDirection: 'row', alignItems: 'center', gap: space.s1, paddingVertical: space.s1 },
 });

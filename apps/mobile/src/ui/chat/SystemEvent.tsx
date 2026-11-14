@@ -15,7 +15,13 @@ interface SystemEventProps {
   onPress?: () => void;
 }
 
-export function SystemEvent({ icon: Glyph, iconColor = 'iconSecondary', text, time, onPress }: SystemEventProps) {
+export function SystemEvent({
+  icon: Glyph,
+  iconColor = 'iconSecondary',
+  text,
+  time,
+  onPress,
+}: SystemEventProps) {
   const { colors } = useTheme();
   const content = (
     <View style={styles.row}>
@@ -26,9 +32,19 @@ export function SystemEvent({ icon: Glyph, iconColor = 'iconSecondary', text, ti
       {onPress ? <ChevronRight size={16} color={colors.iconSecondary} strokeWidth={2} /> : null}
     </View>
   );
-  if (!onPress) return <View accessible accessibilityLabel={text}>{content}</View>;
+  if (!onPress)
+    return (
+      <View accessible accessibilityLabel={text}>
+        {content}
+      </View>
+    );
   return (
-    <Touchable onPress={onPress} accessibilityRole="button" accessibilityLabel={text} style={styles.touch}>
+    <Touchable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={text}
+      style={styles.touch}
+    >
       {content}
     </Touchable>
   );
@@ -37,7 +53,13 @@ export function SystemEvent({ icon: Glyph, iconColor = 'iconSecondary', text, ti
 /** Centred date separator ("Aujourd’hui", "lundi 2 novembre"). */
 export function DateSeparator({ label }: { label: string }) {
   return (
-    <Txt variant="captionStrong" color="textSecondary" align="center" accessibilityRole="header" style={styles.date}>
+    <Txt
+      variant="captionStrong"
+      color="textSecondary"
+      align="center"
+      accessibilityRole="header"
+      style={styles.date}
+    >
       {label}
     </Txt>
   );
@@ -49,7 +71,9 @@ export function UnreadDivider({ label }: { label: string }) {
   return (
     <View style={styles.unread} accessible accessibilityLabel={label}>
       <View style={[styles.rule, { backgroundColor: colors.primary }]} />
-      <Txt variant="captionStrong" color="textLink">{label}</Txt>
+      <Txt variant="captionStrong" color="textLink">
+        {label}
+      </Txt>
       <View style={[styles.rule, { backgroundColor: colors.primary }]} />
     </View>
   );
@@ -57,9 +81,24 @@ export function UnreadDivider({ label }: { label: string }) {
 
 const styles = StyleSheet.create({
   touch: { alignSelf: 'center' },
-  row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', gap: 6, paddingHorizontal: space.s8, paddingVertical: space.s1, maxWidth: 360, alignSelf: 'center' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: space.s8,
+    paddingVertical: space.s1,
+    maxWidth: 360,
+    alignSelf: 'center',
+  },
   text: { flexShrink: 1 },
   date: { paddingVertical: space.s2 },
-  unread: { flexDirection: 'row', alignItems: 'center', gap: space.s2, paddingHorizontal: space.s4, paddingVertical: space.s2 },
+  unread: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s2,
+    paddingHorizontal: space.s4,
+    paddingVertical: space.s2,
+  },
   rule: { flex: 1, height: 1 },
 });
