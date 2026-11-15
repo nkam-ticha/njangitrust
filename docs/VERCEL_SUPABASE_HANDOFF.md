@@ -217,9 +217,11 @@ The API Vercel project is rooted at `apps/api` and deploys from GitHub `main`.
 Its Vercel project Build Command must stay set to
 `pnpm db:generate && node scripts/bundle-vercel.mjs`; its framework preset must
 be unset so Vercel does not auto-detect the Express app and bypass the
-serverless function entry points. Git-triggered deployments are disabled for
-this project, so publish a reviewed commit with the Vercel CLI from a clean
-checkout of `main`.
+serverless function entry points. The output directory is `public`; it holds
+only the API status landing page while API requests use the configured
+serverless functions. Git-triggered deployments are disabled for this project,
+so publish a reviewed commit with the Vercel CLI from a clean checkout of
+`main`.
 
 Vercel discovers function files before running the project build. Therefore,
 `apps/api/api/index.mjs` and `apps/api/api/process-jobs.mjs` are committed

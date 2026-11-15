@@ -2,6 +2,7 @@
   "version": 2,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "pnpm db:generate && node scripts/bundle-vercel.mjs",
+  "outputDirectory": "public",
   "functions": {
     "api/index.mjs": {
       "maxDuration": 60
