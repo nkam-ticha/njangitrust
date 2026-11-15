@@ -25,11 +25,18 @@ enum LedgerTransactionType {
   /// D17: moves what a payable or the solidarity fund no longer holds into the recipient's
   /// receivable, just before the REVERSAL of money already paid out.
   CLAWBACK
+  /// Owner Q1, Q3 (2026-11-14): right after a solidarity payout's money comes back to the fund
+  /// (returned or refunded), releases the clawbacks it made unnecessary: an unpaid debt is
+  /// cancelled, an amount already paid is credited back to the debtor's payable.
+  CLAWBACK_RELEASE
   /// D18.1: a disbursement sent to the provider moves amount + estimated fee from the payable (or
   /// a fund) to `inflight:disbursement:<disbursementId>`; the provider's confirmation completes it.
   DISBURSEMENT_SENT
   /// D18.1: a failed disbursement returns its in-flight amount to where it came from.
   DISBURSEMENT_RETURNED
+  /// D22.1: a completed disbursement the operator reversed: the money goes back where the send
+  /// took it from (a loan's repaid installments are credited back to the borrower, Q2).
+  DISBURSEMENT_REFUNDED
   REVERSAL
   /// No postings: governance facts in the hash chain (draw seed, rule set, vote result, ...).
   EVENT

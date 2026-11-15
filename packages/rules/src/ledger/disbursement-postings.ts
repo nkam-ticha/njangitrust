@@ -149,8 +149,11 @@ export function disbursementReturnedPostings(sent: readonly Posting[]): Posting[
   return sent.map((p) => ({ account: p.account, amount: 0 - p.amount }));
 }
 
-/** D22.1: DISBURSEMENT_REFUNDED metadata: the completion it undoes and the fee the operator kept. */
-export type DisbursementRefundedMetadata = { completedSeq: number; feeKept: Fcfa };
+/**
+ * D22.1: DISBURSEMENT_REFUNDED metadata: the completion it undoes and the fee the operator kept.
+ * Owner Q2: a loan refund also records `paidBack`, the installments already repaid (0 when none).
+ */
+export type DisbursementRefundedMetadata = { completedSeq: number; feeKept: Fcfa; paidBack?: Fcfa };
 
 type Recorded = { postings: readonly Posting[]; metadata: Readonly<Record<string, unknown>> };
 
@@ -161,6 +164,9 @@ type Recorded = { postings: readonly Posting[]; metadata: Readonly<Record<string
  * out (amount + feeActual) minus `feeKept`, the fee the operator keeps (0 to feeActual); the general
  * fund takes the difference (feeEst − feeActual + feeKept): with nothing kept, completion and refund
  * cancel out exactly; whatever the operator keeps is borne by the general fund.
+ * Owner Q2: for a loan, `paidBack` (the installments already repaid, 0 to P + I + feeEst) is credited
+ * back to the borrower's payable and the receivable is reduced only by P + I + feeEst − paidBack (the
+ * unpaid installments, which the service cancels).
  */
 export function disbursementRefundedPostings(input: {
   /** The DISBURSEMENT_SENT and the completion, as stored. */
@@ -168,6 +174,8 @@ export function disbursementRefundedPostings(input: {
   completed: Recorded;
   completedSeq: number;
   feeKept: Fcfa;
+  /** Owner Q2, loans only: installments already repaid (default 0). */
+  paidBack?: Fcfa;
 }): { postings: Posting[]; metadata: DisbursementRefundedMetadata } {
   const isInFlight = (p: Posting) => p.account.startsWith('inflight:disbursement:');
   const sources = input.sent.postings.filter((p) => !isInFlight(p));
@@ -192,8 +200,24 @@ export function disbursementRefundedPostings(input: {
   add(CASH_PROVIDER, cashBack);
   // The sources refilled hold amount + feeEst; cash brings back amount + feeAct − feeKept.
   add(GENERAL_FUND, 0 - inFlight.amount - cashBack);
+  const isLoan = input.sent.metadata.purpose === 'LOAN';
+  const paidBack = input.paidBack ?? 0;
+  assertNonNegativeFcfa(paidBack, 'paidBack');
+  if (!isLoan && paidBack > 0) throw new RangeError('only a loan refund credits installments back');
+  if (isLoan) {
+    const receivable = sources.find((p) => p.account.startsWith('receivable:member:'))!;
+    if (paidBack > receivable.amount)
+      throw new RangeError('paidBack cannot be above the loan total (P + I + fee)');
+    add(receivable.account, paidBack);
+    add(payableAccount(receivable.account.slice('receivable:member:'.length)), -paidBack);
+  }
   const postings: Posting[] = [];
   for (const [account, amount] of [...lines].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
     post(postings, account, amount);
-  return { postings, metadata: { completedSeq: input.completedSeq, feeKept: input.feeKept } };
+  const metadata: DisbursementRefundedMetadata = {
+    completedSeq: input.completedSeq,
+    feeKept: input.feeKept,
+  };
+  if (isLoan) metadata.paidBack = paidBack;
+  return { postings, metadata };
 }

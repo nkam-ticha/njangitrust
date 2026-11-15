@@ -161,6 +161,97 @@ describe('a completed disbursement reversed by the operator (D22.1, DISBURSEMENT
     expect(checkLedger(TEST_GROUP, txs)[0]).toMatchObject({ seq: 7, code: 'REVERSAL_MISMATCH' });
   });
 
+  it('credits installments already repaid back to the borrower (owner Q2, metadata paidBack)', () => {
+    // P 5 000, I 500, fee 500: 6 000 due; 2 000 repaid before the operator reversed the loan.
+    const loan = sendOf('LOAN', 'M7', 5_000, { id: 'l2', interest: 500, feeEstimated: 500 });
+    const done = completeOf(loan);
+    expect(
+      disbursementRefundedPostings({
+        sent: loan,
+        completed: done,
+        completedSeq: 9,
+        feeKept: 0,
+        paidBack: 2_000,
+      }),
+    ).toEqual({
+      postings: sorted([
+        { account: 'cash:provider', amount: 5_500 },
+        { account: 'fund:general', amount: 500 },
+        { account: 'payable:member:M7', amount: -2_000 },
+        { account: 'receivable:member:M7', amount: -4_000 },
+      ]),
+      metadata: { completedSeq: 9, feeKept: 0, paidBack: 2_000 },
+    });
+    const all = disbursementRefundedPostings({
+      sent: loan,
+      completed: done,
+      completedSeq: 9,
+      feeKept: 0,
+      paidBack: 6_000,
+    }).postings;
+    expect(all.find((p) => p.account.startsWith('receivable:'))).toBeUndefined();
+    expect(all.find((p) => p.account.startsWith('payable:'))).toEqual({
+      account: 'payable:member:M7',
+      amount: -6_000,
+    });
+    const refund = (sent: LedgerEntry, paidBack: number) => () =>
+      disbursementRefundedPostings({
+        sent,
+        completed: completeOf(sent),
+        completedSeq: 9,
+        feeKept: 0,
+        paidBack,
+      });
+    expect(refund(loan, 6_001)).toThrow(RangeError); // never more than P + I + fee
+    expect(refund(sendOf('WITHDRAWAL', 'M7', 9_000), 1)).toThrow(RangeError); // loans only
+    expect(refund(loan, -1)).toThrow(RangeError);
+  });
+
+  it('accepts a loan refunded after an installment was paid only with that paidBack (Q2)', () => {
+    const loan = sendOf('LOAN', 'M7', 5_000, { interest: 500, feeEstimated: 500 });
+    const done = completeOf(loan);
+    const installment = entry(
+      'PAYMENT_RECEIVED',
+      paymentReceivedPostings({
+        payerMembershipId: 'M7',
+        fee: 0,
+        feeSource: 'PROVIDER',
+        parts: [{ kind: 'DEBT', amount: 2_000, ref: 'i1' }],
+      }),
+      { membershipId: 'M7' },
+    );
+    const base = [...seedFund(20_000), credit('M7', 10_000), loan, done, installment];
+    const refund = (paidBack: number) =>
+      entry(
+        'DISBURSEMENT_REFUNDED',
+        disbursementRefundedPostings({
+          sent: loan,
+          completed: done,
+          completedSeq: 5,
+          feeKept: 0,
+          paidBack,
+        }),
+        { membershipId: 'M7' },
+      );
+    expect(checkLedger(TEST_GROUP, chainOf([...base, refund(2_000)]))).toEqual([]);
+    expect(checkLedger(TEST_GROUP, chainOf([...base, refund(0)]))).toEqual([
+      { seq: 7, code: 'NEGATIVE_BALANCE', detail: 'receivable:member:M7 is -2000' },
+    ]);
+    const unrecorded = { ...refund(2_000), metadata: { completedSeq: 5, feeKept: 0 } };
+    expect(checkLedger(TEST_GROUP, chainOf([...base, unrecorded]))[0]).toMatchObject({
+      seq: 7,
+      code: 'IN_FLIGHT_MISMATCH',
+    });
+    const overstated = {
+      ...refund(2_000),
+      metadata: { completedSeq: 5, feeKept: 0, paidBack: 3_000 },
+    };
+    expect(checkLedger(TEST_GROUP, chainOf([...base, overstated]))[0]).toMatchObject({
+      seq: 7,
+      code: 'IN_FLIGHT_MISMATCH',
+    });
+  });
+
   it('no longer counts a refunded solidarity payout as received (D18.3)', () => {
     const pay = (payer: string) =>
       entry(

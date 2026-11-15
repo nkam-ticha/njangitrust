@@ -45,10 +45,15 @@ function potCorrectionIssue(
   return { key: pot.account, issue };
 }
 
-/** Tracks correction blocks; call `check` for each valid transaction, then `finish`. */
-export function createCorrectionTracker(pots: Pots) {
+/**
+ * Tracks correction blocks; call `check` for each valid transaction, then `finish`. The solidarity
+ * history is shared with the release checks (Q1, Q3); this tracker observes every transaction into it.
+ */
+export function createCorrectionTracker(
+  pots: Pots,
+  history: ReturnType<typeof createSolidarityHistory> = createSolidarityHistory(),
+) {
   let pending: { target: number; lastSeq: number; keys: Set<string> } | null = null;
-  const history = createSolidarityHistory();
   /** Payment seq → the seq of the REVERSAL that closed its correction block. */
   const blockReversal = new Map<number, number>();
   const reversed = new Set<number>();
@@ -129,6 +134,9 @@ export function createCorrectionTracker(pots: Pots) {
             mismatch(
               'a correction can only be reversed after the REVERSAL it prepared is itself reversed (L2)',
             );
+          // Q1, Q3: the release already gave back what it no longer owed; reversing would do it twice.
+          else if ((history.clawback(target.seq)?.released ?? 0) > 0)
+            mismatch('a clawback already released (CLAWBACK_RELEASE) is never reversed');
         }
         reversed.add(tx.metadata.reversesSeq as number);
       }
@@ -145,7 +153,9 @@ export function createCorrectionTracker(pots: Pots) {
           };
         } else if (
           !target ||
-          ['EVENT', 'REVERSAL', 'POT_CORRECTION', 'CLAWBACK'].includes(target.type)
+          ['EVENT', 'REVERSAL', 'POT_CORRECTION', 'CLAWBACK', 'CLAWBACK_RELEASE'].includes(
+            target.type,
+          )
         ) {
           result = { key: '', issue: `seq ${targetSeq} is not a transaction that can be reversed` };
         } else {

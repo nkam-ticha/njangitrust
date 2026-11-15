@@ -17,6 +17,9 @@ export interface Posting {
  * complete it from there, DISBURSEMENT_RETURNED gives it back when the provider fails (D18.1).
  * DISBURSEMENT_REFUNDED records a completed disbursement the operator later reversed: the money goes
  * back where the send took it from, any fee the operator keeps is borne by the general fund (D22.1).
+ * CLAWBACK_RELEASE (owner decisions Q1 and Q3 of 2026-11-14) follows the return or refund of a
+ * solidarity payout: the money back in the fund releases the solidarity clawbacks it made
+ * unnecessary (an unpaid debt is cancelled, an amount already paid is credited back to the payable).
  */
 export const TRANSACTION_TYPES = [
   'PAYMENT_RECEIVED',
@@ -34,6 +37,7 @@ export const TRANSACTION_TYPES = [
   'POT_ASSIGNED',
   'POT_CORRECTION',
   'CLAWBACK',
+  'CLAWBACK_RELEASE',
   'REVERSAL',
   'EVENT',
 ] as const;

@@ -44,6 +44,14 @@ describe('rules registry (spec 4.9 "Explaining rules")', () => {
     expect(getRule('R5.5')?.text.fr).toContain('de nouveau couvert');
   });
 
+  it('carries the owner decisions of 2026-11-14: released solidarity debts, loan refunds (Q1–Q3)', () => {
+    expect(getRule('R10.3')?.text.en).toContain('the debts it had made necessary are released');
+    expect(getRule('R10.3')?.text.fr).toContain('les dettes qu');
+    expect(getRule('R7.5')?.text.en).toContain('installments already repaid are credited back');
+    expect(getRule('R7.5')?.text.fr).toContain('échéances déjà remboursées');
+    expect(findRules('dette annulée').map((r) => r.id)).toContain('R10.3');
+  });
+
   it('returns a rule by its id, whatever the spelling', () => {
     expect(getRule('R7.3')?.text.en).toContain('round half up');
     expect(getRule('r7.3')?.id).toBe('R7.3');

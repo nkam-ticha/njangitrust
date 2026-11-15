@@ -5,6 +5,7 @@
 // in progress (not a problem). D22.1: a completed one may later be refunded once, exactly
 // (DISBURSEMENT_REFUNDED, metadata.completedSeq).
 
+import { canonicalJSON } from '../crypto';
 import { parseAccount } from './accounts';
 import {
   completionType,
@@ -80,16 +81,22 @@ export function createInFlightTracker() {
         completed: op.completion,
         completedSeq: tx.metadata.completedSeq as number,
         feeKept: tx.metadata.feeKept as number,
-      }).postings;
+        paidBack: tx.metadata.paidBack as number | undefined,
+      });
     } catch (error) {
       return (error as Error).message;
     }
+    // Owner Q2: a loan refund records paidBack (0 included); no other refund does.
+    if (canonicalJSON(expected.metadata) !== canonicalJSON(tx.metadata))
+      return op.purpose === 'LOAN'
+        ? 'a loan refund records paidBack, the installments already repaid'
+        : 'only a loan refund records paidBack';
     const key = (ps: readonly Posting[]) =>
       sortPostings(ps)
         .map((p) => `${p.account}|${p.amount}`)
         .join(',');
-    if (key(expected) !== key(tx.postings))
-      return 'the refund does not put back exactly what the send took, less the fee kept';
+    if (key(expected.postings) !== key(tx.postings))
+      return 'the refund does not put back exactly what the send took, less the fee kept and the installments repaid';
     op.refundedAt = seq;
     return null;
   }

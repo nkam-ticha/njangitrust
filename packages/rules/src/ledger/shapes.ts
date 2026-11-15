@@ -68,6 +68,14 @@ export const TRANSACTION_SHAPES: Readonly<Partial<Record<TransactionType, Shape>
     POT: ['-', 1, 1],
     sameMember: true,
   },
+  // Q1, Q3: the fund gives back (debit); the debt is cancelled (RECEIVABLE −) and/or what was
+  // already paid is credited back (PAYABLE −). Exact amounts in release-checks.ts.
+  CLAWBACK_RELEASE: {
+    SOLIDARITY_FUND: ['+', 1, 1],
+    RECEIVABLE: ['-', 0, 1],
+    PAYABLE: ['-', 0, 1],
+    sameMember: true,
+  },
 };
 
 const KINDS: readonly AccountKind[] = [
@@ -87,6 +95,7 @@ const OWN_ACCOUNTS: Partial<Record<TransactionType, readonly AccountKind[]>> = {
   DISBURSEMENT_REFUNDED: ['PAYABLE', 'RECEIVABLE'],
   POT_CORRECTION: ['PAYABLE', 'RECEIVABLE'],
   CLAWBACK: ['PAYABLE', 'RECEIVABLE'],
+  CLAWBACK_RELEASE: ['PAYABLE', 'RECEIVABLE'],
 };
 
 type Line = { kind: AccountKind; id: string | null; amount: number };

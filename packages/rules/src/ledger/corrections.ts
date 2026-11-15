@@ -58,6 +58,24 @@ export interface PlannedCorrection {
   metadata: { forReversalOfSeq: number; solidarityPayoutSeq?: number | null };
 }
 
+/**
+ * D15, D16.1, D18.3: the CORRECTION obligations to create for a correction block: one for each
+ * correction whose receivable line is a debit (what its member now owes), with its position in the
+ * plan so the service links the obligation to that entry's seq (needed later for CLAWBACK_RELEASE).
+ */
+export function correctionDebts(
+  plan: readonly Pick<PlannedCorrection, 'membershipId' | 'postings'>[],
+): { index: number; membershipId: string; amount: Fcfa }[] {
+  const out: { index: number; membershipId: string; amount: Fcfa }[] = [];
+  plan.forEach((c, index) => {
+    const debt = c.postings
+      .filter((p) => p.account === receivableAccount(c.membershipId) && p.amount > 0)
+      .reduce((s, p) => s + p.amount, 0);
+    if (debt > 0) out.push({ index, membershipId: c.membershipId, amount: debt });
+  });
+  return out;
+}
+
 /** Money the given postings credit to an account (read naturally, liabilities only). */
 export const creditsTo = (postings: readonly Posting[], account: string): Fcfa =>
   postings.filter((p) => p.account === account && p.amount < 0).reduce((s, p) => s - p.amount, 0);

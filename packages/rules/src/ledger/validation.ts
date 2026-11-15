@@ -82,6 +82,7 @@ export const ALLOWED_ACCOUNT_KINDS: Readonly<
   POT_ASSIGNED: ['POT', 'PAYABLE'],
   POT_CORRECTION: ['PAYABLE', 'RECEIVABLE', 'POT'],
   CLAWBACK: ['RECEIVABLE', 'PAYABLE', 'SOLIDARITY_FUND'],
+  CLAWBACK_RELEASE: ['SOLIDARITY_FUND', 'RECEIVABLE', 'PAYABLE'],
   REVERSAL: 'ANY',
   EVENT: [],
 };
@@ -156,6 +157,15 @@ export function entryProblems(entry: LedgerEntry): { code: LedgerProblemCode; de
       malformed('metadata.solidarityPayoutSeq must be a seq or null');
     }
   }
+  if (entry.type === 'CLAWBACK_RELEASE') {
+    // Q1, Q3, H2: the amounts are rebuilt from the ledger; the entry only names what it releases.
+    const m = entry.metadata ?? {};
+    if (!isSeq(m.clawbackSeq) || !isSeq(m.releasedBySeq))
+      malformed('a CLAWBACK_RELEASE records metadata.clawbackSeq and metadata.releasedBySeq');
+    const extra = Object.keys(m).filter((k) => k !== 'clawbackSeq' && k !== 'releasedBySeq');
+    if (extra.length > 0)
+      malformed(`a CLAWBACK_RELEASE carries no other metadata (${extra.join(', ')})`);
+  }
   if (entry.type === 'DISBURSEMENT_RETURNED' && !isSeq(entry.metadata?.sentSeq)) {
     malformed('a DISBURSEMENT_RETURNED records metadata.sentSeq');
   }
@@ -164,7 +174,15 @@ export function entryProblems(entry: LedgerEntry): { code: LedgerProblemCode; de
     if (!isSeq(m.completedSeq)) malformed('a DISBURSEMENT_REFUNDED records metadata.completedSeq');
     if (typeof m.feeKept !== 'number' || !Number.isSafeInteger(m.feeKept) || m.feeKept < 0)
       malformed('a DISBURSEMENT_REFUNDED records metadata.feeKept (whole francs)');
-    const extra = Object.keys(m).filter((k) => k !== 'completedSeq' && k !== 'feeKept');
+    // Owner Q2: a loan refund records paidBack (checked against the purpose in inflight-checks.ts).
+    if (
+      m.paidBack !== undefined &&
+      (typeof m.paidBack !== 'number' || !Number.isSafeInteger(m.paidBack) || m.paidBack < 0)
+    )
+      malformed('metadata.paidBack must be whole francs');
+    const extra = Object.keys(m).filter(
+      (k) => k !== 'completedSeq' && k !== 'feeKept' && k !== 'paidBack',
+    );
     if (extra.length > 0)
       malformed(`a DISBURSEMENT_REFUNDED carries no other metadata (${extra.join(', ')})`);
   }
