@@ -123,6 +123,13 @@ export class GroupSimulator {
     refundFeeKept: 0,
     /** D22.2: correction debts repaid by request, the member bearing the fee. */
     correctionFeeBorne: 0,
+    /** Q1, Q3: clawback releases, after a return or a refund, and credited back to a payable. */
+    clawbackReleased: 0,
+    releaseAfterReturn: 0,
+    releaseAfterRefund: 0,
+    releaseToPayable: 0,
+    /** Q2: a loan refunded after installments were repaid, credited back to the borrower. */
+    loanRefundPaidBack: 0,
   };
   private ids = 0;
 
@@ -294,7 +301,11 @@ export class GroupSimulator {
   pay(m: string, includeDebts: boolean): boolean {
     const owed = this.owed(m);
     const now = this.now().getTime();
-    const proposal = proposeRoundToPay(owed, { now: this.now(), includeDueDebts: includeDebts });
+    const proposal = proposeRoundToPay(owed, {
+      now: this.now(),
+      includeDueDebts: includeDebts,
+      feeSchedule: MOCK_FEE_SCHEDULE,
+    });
     const ids =
       proposal?.obligationIds ??
       owed
@@ -306,7 +317,14 @@ export class GroupSimulator {
             !o.loanInFlight,
         )
         .map((o) => o.id);
-    const chosen = owed.filter((o) => ids.includes(o.id));
+    return this.payChosen(
+      m,
+      owed.filter((o) => ids.includes(o.id)),
+    );
+  }
+
+  /** R3.2, R3.6, R4.2: one payment for exactly these obligations, then auto-settlement. */
+  payChosen(m: string, chosen: SimObligation[]): boolean {
     const prepared = preparePayment({
       payerMembershipId: m,
       obligations: chosen,

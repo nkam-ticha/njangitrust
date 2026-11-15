@@ -14,6 +14,7 @@ import {
   loanSentPostings,
   MOCK_FEE_SCHEDULE,
   removeFromRotation,
+  selectInstallmentsForRepayment,
   solidaritySentPostings,
   validateLoanDisbursement,
   validateSolidarityDisbursement,
@@ -148,13 +149,35 @@ export function borrow(sim: GroupSimulator, seed: number, months: number): boole
   return true;
 }
 
+/**
+ * R7.7: a borrower repays early, the next installment or everything left, by request (never an
+ * installment of a loan still in flight, L2). Makes loans partly or fully repaid before an operator
+ * reversal (owner Q2) as well as early repayment itself.
+ */
+export function repayEarly(sim: GroupSimulator, seed: number): boolean {
+  const borrowers = sim.everyone.filter((m) =>
+    sim.owed(m).some((o) => o.kind === 'LOAN_INSTALLMENT' && !o.loanInFlight),
+  );
+  const m = pick(borrowers, seed);
+  if (!m) return false;
+  const unpaid = sim.owed(m).filter((o) => o.kind === 'LOAN_INSTALLMENT' && !o.loanInFlight);
+  const choice = selectInstallmentsForRepayment(unpaid, seed % 2 === 0 ? 'NEXT' : 'ALL');
+  if (!choice.ok) return false;
+  return sim.payChosen(
+    m,
+    unpaid.filter((o) => choice.installmentIds.includes(o.id)),
+  );
+}
+
 /** R10.2, R10.3, D13.5, D18.1: a solidarity payout voted through; the recipient bears the fee. */
 export function solidarityPayout(sim: GroupSimulator, seed: number): boolean {
   const fund = sim.summary().solidarityFund;
   // D18.3 rollbacks need a payout leaving a little in the fund, then a small one; the payer owes when
   // the whole fund is in flight. Otherwise any amount.
   const amounts = [fund - 501 - (seed % 400), 501 + (seed % 300), fund, 501 + (seed % 20_000)];
-  const amount = amounts[seed % 4]!;
+  // When little is left (after a large payout), half the time a small payout nearly empties it.
+  const small = fund > 502 && fund <= 1_300 && (seed >> 2) % 2 === 0;
+  const amount = small ? 501 + (seed % (fund - 501)) : amounts[seed % 4]!;
   const request = validateSolidarityRequest({
     amount,
     event: 'NAISSANCE',

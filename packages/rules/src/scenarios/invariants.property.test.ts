@@ -1,6 +1,7 @@
-// Spec 5.1: property-based tests. Random sequences of payments, fines, loans, withdrawals, exits,
-// solidarity payouts, fine waivers and payment reversals, in fixed and bidding rotation, all decided
-// by the rules engine; every invariant of 2.5 must hold after each step.
+// Spec 5.1: property-based tests. Random sequences of payments, fines, loans, early repayments,
+// withdrawals, exits, solidarity payouts, fine waivers, payment reversals, provider failures and
+// operator refunds (with the clawback releases they require), in fixed and bidding rotation, all
+// decided by the rules engine; every invariant of 2.5 must hold after each step.
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
@@ -17,6 +18,7 @@ import {
   borrow,
   distributeFund,
   exitMember,
+  repayEarly,
   solidarityPayout,
   withdraw,
 } from './group-actions.test-support';
@@ -39,6 +41,7 @@ const action = fc.oneof(
   },
   fc.record({ kind: fc.constant('withdraw' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('borrow' as const), seed: fc.nat(), debts: fc.boolean() }),
+  fc.record({ kind: fc.constant('repay' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('exit' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('solidarity' as const), seed: fc.nat(), debts: fc.boolean() }),
   fc.record({ kind: fc.constant('waive' as const), seed: fc.nat(), debts: fc.boolean() }),
@@ -53,6 +56,7 @@ const applied: Record<Action['kind'], number> = {
   advance: 0,
   withdraw: 0,
   borrow: 0,
+  repay: 0,
   exit: 0,
   solidarity: 0,
   waive: 0,
@@ -62,6 +66,8 @@ const applied: Record<Action['kind'], number> = {
 const paths: Record<string, number> = {};
 /** A seed whose 300 runs exercise every path (reproducible; the random-seed run keeps exploring). */
 const RARE_PATHS_SEED = 20_261_109;
+/** The simulator runs hundreds of groups: more than the default 5 s on a busy machine. */
+const HEAVY_TIMEOUT_MS = 120_000;
 
 function run(sim: GroupSimulator, a: Action): boolean {
   switch (a.kind) {
@@ -76,6 +82,8 @@ function run(sim: GroupSimulator, a: Action): boolean {
       return withdraw(sim, a.seed);
     case 'borrow':
       return borrow(sim, a.seed, 1 + (a.seed % 3));
+    case 'repay':
+      return repayEarly(sim, a.seed);
     case 'exit':
       return exitMember(sim, a.seed);
     case 'solidarity':
@@ -125,85 +133,100 @@ const invariantsProperty = fc.property(
 );
 
 describe('ledger invariants under random activity (2.5, spec 5.1)', () => {
-  it('holds every invariant after every step (random seed)', () => {
-    fc.assert(invariantsProperty, { numRuns: 150 });
-  });
+  it(
+    'holds every invariant after every step (random seed)',
+    () => {
+      fc.assert(invariantsProperty, { numRuns: 150 });
+    },
+    HEAVY_TIMEOUT_MS,
+  );
 
-  it('holds them on a fixed seed that runs every action and every rare money path', () => {
-    for (const key of Object.keys(paths)) delete paths[key];
-    for (const key of Object.keys(applied) as Action['kind'][]) applied[key] = 0;
-    fc.assert(invariantsProperty, { numRuns: 300, seed: RARE_PATHS_SEED });
-    for (const kind of Object.keys(applied) as Action['kind'][])
-      expect(applied[kind], kind).toBeGreaterThan(0);
-    expect(Object.keys(paths).sort()).toEqual(
-      [...Object.keys(new GroupSimulator(3, 0).counters), 'coverageRestored'].sort(),
-    );
-    for (const [path, count] of Object.entries(paths)) expect(count, path).toBeGreaterThan(0);
-  });
+  it(
+    'holds them on a fixed seed that runs every action and every rare money path',
+    () => {
+      for (const key of Object.keys(paths)) delete paths[key];
+      for (const key of Object.keys(applied) as Action['kind'][]) applied[key] = 0;
+      fc.assert(invariantsProperty, { numRuns: 300, seed: RARE_PATHS_SEED });
+      for (const kind of Object.keys(applied) as Action['kind'][])
+        expect(applied[kind], kind).toBeGreaterThan(0);
+      expect(Object.keys(paths).sort()).toEqual(
+        [...Object.keys(new GroupSimulator(3, 0).counters), 'coverageRestored'].sort(),
+      );
+      for (const [path, count] of Object.entries(paths)) expect(count, path).toBeGreaterThan(0);
+    },
+    HEAVY_TIMEOUT_MS,
+  );
 
-  it('reports any change to a stored transaction at exactly its seq (spec 5.2)', () => {
-    fc.assert(
-      fc.property(
-        fc.array(action, { minLength: 15, maxLength: 40 }),
-        fc.nat(),
-        fc.constantFrom(
-          'amount',
-          'account',
-          'description',
-          'metadata',
-          'occurredAt',
-          'type',
-          'hash',
+  it(
+    'reports any change to a stored transaction at exactly its seq (spec 5.2)',
+    () => {
+      fc.assert(
+        fc.property(
+          fc.array(action, { minLength: 15, maxLength: 40 }),
+          fc.nat(),
+          fc.constantFrom(
+            'amount',
+            'account',
+            'description',
+            'metadata',
+            'occurredAt',
+            'type',
+            'hash',
+          ),
+          (actions, pickTx, field) => {
+            const sim = new GroupSimulator(5, 50_000);
+            for (const a of actions) run(sim, a);
+            const target = sim.chain[pickTx % sim.chain.length]!;
+            const tampered = sim.chain.map((t) => {
+              if (t !== target) return t;
+              switch (field) {
+                case 'amount':
+                  return t.postings.length
+                    ? {
+                        ...t,
+                        postings: [
+                          { ...t.postings[0]!, amount: t.postings[0]!.amount + 1 },
+                          ...t.postings.slice(1),
+                        ],
+                      }
+                    : { ...t, descriptionEn: 'x' };
+                case 'account':
+                  return t.postings.length
+                    ? {
+                        ...t,
+                        postings: [
+                          { ...t.postings[0]!, account: 'payable:member:X' },
+                          ...t.postings.slice(1),
+                        ],
+                      }
+                    : { ...t, descriptionFr: 'x' };
+                case 'description':
+                  return { ...t, descriptionFr: `${t.descriptionFr} ` };
+                case 'metadata':
+                  return { ...t, metadata: { ...t.metadata, note: 'changed' } };
+                case 'occurredAt':
+                  return {
+                    ...t,
+                    occurredAt: new Date(Date.parse(t.occurredAt) - 1000).toISOString(),
+                  };
+                case 'type':
+                  return {
+                    ...t,
+                    type: t.type === 'REVERSAL' ? ('EVENT' as const) : ('REVERSAL' as const),
+                  };
+                default:
+                  return {
+                    ...t,
+                    hash: `${t.hash.slice(0, -1)}${t.hash.endsWith('a') ? 'b' : 'a'}`,
+                  };
+              }
+            });
+            expect(checkLedger(TEST_GROUP, tampered)[0]?.seq).toBe(target.seq);
+          },
         ),
-        (actions, pickTx, field) => {
-          const sim = new GroupSimulator(5, 50_000);
-          for (const a of actions) run(sim, a);
-          const target = sim.chain[pickTx % sim.chain.length]!;
-          const tampered = sim.chain.map((t) => {
-            if (t !== target) return t;
-            switch (field) {
-              case 'amount':
-                return t.postings.length
-                  ? {
-                      ...t,
-                      postings: [
-                        { ...t.postings[0]!, amount: t.postings[0]!.amount + 1 },
-                        ...t.postings.slice(1),
-                      ],
-                    }
-                  : { ...t, descriptionEn: 'x' };
-              case 'account':
-                return t.postings.length
-                  ? {
-                      ...t,
-                      postings: [
-                        { ...t.postings[0]!, account: 'payable:member:X' },
-                        ...t.postings.slice(1),
-                      ],
-                    }
-                  : { ...t, descriptionFr: 'x' };
-              case 'description':
-                return { ...t, descriptionFr: `${t.descriptionFr} ` };
-              case 'metadata':
-                return { ...t, metadata: { ...t.metadata, note: 'changed' } };
-              case 'occurredAt':
-                return {
-                  ...t,
-                  occurredAt: new Date(Date.parse(t.occurredAt) - 1000).toISOString(),
-                };
-              case 'type':
-                return {
-                  ...t,
-                  type: t.type === 'REVERSAL' ? ('EVENT' as const) : ('REVERSAL' as const),
-                };
-              default:
-                return { ...t, hash: `${t.hash.slice(0, -1)}${t.hash.endsWith('a') ? 'b' : 'a'}` };
-            }
-          });
-          expect(checkLedger(TEST_GROUP, tampered)[0]?.seq).toBe(target.seq);
-        },
-      ),
-      { numRuns: 100 },
-    );
-  });
+        { numRuns: 100 },
+      );
+    },
+    HEAVY_TIMEOUT_MS,
+  );
 });

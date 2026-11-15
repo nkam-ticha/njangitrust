@@ -65,10 +65,15 @@ function recordDebt(
  * below zero (the provider cannot take back more than the account holds).
  */
 export function reversePayment(sim: GroupSimulator, seed: number): boolean {
-  const payment = pick(
-    sim.payments.filter((p) => !p.reversed),
-    seed,
-  );
+  const open = sim.payments.filter((p) => !p.reversed);
+  // D18.3 rollbacks over several payouts are rare: half the time, one of the latest payments whose
+  // reversal needs them goes first.
+  const rollsBack = (p: (typeof open)[number]) =>
+    planReversalCorrections({ original: p.tx, ledger: sim.chain }).filter(
+      (c) => typeof c.metadata.solidarityPayoutSeq === 'number',
+    ).length > 1;
+  const preferred = (seed >> 3) % 2 === 0 ? open.slice(-6).find(rollsBack) : undefined;
+  const payment = preferred ?? pick(open, seed);
   if (!payment) return false;
   const balancesBefore = computeBalances(sim.chain);
   const plan = planReversalCorrections({ original: payment.tx, ledger: sim.chain });
