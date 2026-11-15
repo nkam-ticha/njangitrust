@@ -4,11 +4,9 @@
   "buildCommand": "pnpm db:generate",
   "functions": {
     "api/index.ts": {
-      "runtime": "nodejs22.x",
       "maxDuration": 60
     },
     "api/process-jobs.ts": {
-      "runtime": "nodejs22.x",
       "maxDuration": 60
     }
   },
