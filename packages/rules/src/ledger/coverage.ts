@@ -5,7 +5,7 @@
 
 import type { Fcfa } from '../money';
 import { parseAccount } from './accounts';
-import { applyPostings, summarizeBalances, type Balances } from './balances';
+import { summarizeBalances, tryApplyPostings, type Balances } from './balances';
 import { reservedShortfall } from './derived';
 import type { Posting } from './types';
 import type { LedgerWarning } from './validation';
@@ -33,7 +33,8 @@ export function coverageGaps(
   let open: CoverageGap | null = null;
   transactions.forEach((tx, i) => {
     const seq = Number.isSafeInteger(tx.seq) ? tx.seq : i + 1;
-    balances = applyPostings(balances, sound(tx.postings));
+    // N5: a transaction that would leave the safe integer range is skipped (checkLedger reports it).
+    balances = tryApplyPostings(balances, sound(tx.postings)) ?? balances;
     const shortfall = reservedShortfall(summarizeBalances(balances));
     if (shortfall > 0) {
       if (!open) {

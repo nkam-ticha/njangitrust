@@ -7,18 +7,39 @@ import type { Posting } from './types';
 /** Raw balance per account: the sum of its postings, debit positive. */
 export type Balances = Map<string, number>;
 
-/** 2.5: adds postings to a copy of the balances. */
+/**
+ * N5 (audit 5): adds postings to a copy of the balances, or returns null when the result would leave
+ * the safe integer range: any balance, or the total size of all balances (the sum of their absolute
+ * values), above Number.MAX_SAFE_INTEGER. Within that bound every total and difference the checks
+ * form (summaries, available for loans, coverage) is exact. The checks report such a transaction
+ * and skip it instead of throwing.
+ */
+export function tryApplyPostings(
+  balances: ReadonlyMap<string, number>,
+  postings: readonly Posting[],
+): Balances | null {
+  const next = new Map(balances);
+  for (const p of postings) {
+    const sum = (next.get(p.account) ?? 0) + p.amount;
+    if (!Number.isSafeInteger(sum)) return null;
+    next.set(p.account, sum);
+  }
+  let size = 0;
+  for (const value of next.values()) {
+    // Exact until it passes the limit: every partial sum below it is a safe integer.
+    size += Math.abs(value);
+    if (size > Number.MAX_SAFE_INTEGER) return null;
+  }
+  return next;
+}
+
+/** 2.5: adds postings to a copy of the balances; throws when they leave the safe range (N5). */
 export function applyPostings(
   balances: ReadonlyMap<string, number>,
   postings: readonly Posting[],
 ): Balances {
-  const next = new Map(balances);
-  for (const p of postings) {
-    const sum = (next.get(p.account) ?? 0) + p.amount;
-    if (!Number.isSafeInteger(sum))
-      throw new RangeError(`balance of ${p.account} left the safe range`);
-    next.set(p.account, sum);
-  }
+  const next = tryApplyPostings(balances, postings);
+  if (!next) throw new RangeError('the balances would leave the safe integer range');
   return next;
 }
 
@@ -29,6 +50,23 @@ export function computeBalances(
   let balances: Balances = new Map();
   for (const tx of transactions) balances = applyPostings(balances, tx.postings);
   return balances;
+}
+
+/**
+ * N5: balances after the given transactions, skipping those that would leave the safe integer range
+ * (as checkLedger does), with the index of each one skipped.
+ */
+export function computeBalancesSkippingUnsafe(
+  transactions: readonly { postings: readonly Posting[] }[],
+): { balances: Balances; skipped: number[] } {
+  let balances: Balances = new Map();
+  const skipped: number[] = [];
+  transactions.forEach((tx, i) => {
+    const next = tryApplyPostings(balances, tx.postings);
+    if (next) balances = next;
+    else skipped.push(i);
+  });
+  return { balances, skipped };
 }
 
 /** 2.5: a group's balances as people read them. */

@@ -41,9 +41,15 @@ export function formatReport(result: ExportVerification): string {
 
 /**
  * Runs the tool. Exit codes: 0 the export is intact (warnings about its current state included),
- * 1 problems were found, 2 the file could not be read or is not JSON.
+ * 1 problems were found, 2 the file could not be read, is not JSON, or could not be verified at all
+ * (N5: an unexpected error never escapes as a crash). `verify` is replaceable for tests only.
  */
-export function runVerify(args: readonly string[], out: Output, readStdin?: () => string): number {
+export function runVerify(
+  args: readonly string[],
+  out: Output,
+  readStdin?: () => string,
+  verify: (data: unknown) => ExportVerification = verifyLedgerExport,
+): number {
   const path = args[0];
   if (!path || args.length > 1) {
     out.stderr(USAGE);
@@ -63,7 +69,13 @@ export function runVerify(args: readonly string[], out: Output, readStdin?: () =
     out.stderr(`${path} is not valid JSON.\n`);
     return 2;
   }
-  const result = verifyLedgerExport(data);
+  let result: ExportVerification;
+  try {
+    result = verify(data);
+  } catch (error) {
+    out.stderr(`${path} could not be verified: ${(error as Error).message}\n`);
+    return 2;
+  }
   out.stdout(formatReport(result));
   return result.ok ? 0 : 1;
 }

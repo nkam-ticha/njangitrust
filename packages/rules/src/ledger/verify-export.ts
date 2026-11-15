@@ -2,7 +2,7 @@
 // recomputed from the transactions alone. Used by tools/verify-ledger and by tests.
 
 import { parseAccount } from './accounts';
-import { computeBalances, summarizeBalances, type BalanceSummary } from './balances';
+import { computeBalancesSkippingUnsafe, summarizeBalances, type BalanceSummary } from './balances';
 import { coverageWarnings } from './coverage';
 import {
   drawProblems,
@@ -155,7 +155,8 @@ export function verifyLedgerExport(data: unknown): ExportVerification {
       detail: 'the last transaction is not the recorded head (missing or extra entries)',
     });
   }
-  const balances = computeBalances(validPostings(txs));
+  // N5: transactions that would leave the safe integer range are skipped, as checkLedger reports.
+  const { balances } = computeBalancesSkippingUnsafe(validPostings(txs));
   general.push(...balanceProblems(exp.balances, balances));
   general.push(...proposalProblems(exp.proposals));
   general.push(...unmaskedPhoneProblems(exp));

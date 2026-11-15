@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { computeBalances, computeTransactionHash } from '@njangi/rules';
 import {
   correctionsExport,
+  hugeExport,
   lendingExport,
   refundExport,
+  releaseExport,
   sampleExport,
 } from './sample-export.test-support';
 import { formatReport, runVerify } from './verify';
@@ -59,6 +61,40 @@ describe('verify-ledger (spec 2.14, 5.2)', () => {
     expect(out.split('\n')[0]).toBe('OK');
     expect(out).toContain('cash:provider 43600'); // 4 × 10 900: the payout came back with its fee
     expect(out).not.toContain('WARNING');
+  });
+
+  it('accepts a returned solidarity payout followed by the clawback release it requires (owner Q1)', () => {
+    const file = releaseExport();
+    expect(file.transactions.map((t) => t.type).slice(-4)).toEqual([
+      'CLAWBACK',
+      'REVERSAL',
+      'DISBURSEMENT_RETURNED',
+      'CLAWBACK_RELEASE',
+    ]);
+    const { code, out } = run([fileWith(file)]);
+    expect(code).toBe(0);
+    expect(out.split('\n')[0]).toBe('OK');
+    expect(out).not.toContain('WARNING'); // the release leaves reserved money covered
+  });
+
+  it('reports a missing clawback release at the return (owner Q1)', () => {
+    const file = releaseExport();
+    const transactions = file.transactions.slice(0, -1);
+    const last = transactions.at(-1)!;
+    const { code, out } = run([
+      fileWith({
+        ...file,
+        transactions,
+        head: { seq: last.seq, hash: last.hash },
+        balances: Object.fromEntries(computeBalances(transactions)),
+      }),
+    ]);
+    expect(code).toBe(1);
+    expect(out).toMatch(
+      new RegExp(
+        `seq ${last.seq} +CORRECTION_MISMATCH +the return at seq ${last.seq} must be followed by the release`,
+      ),
+    );
   });
 
   it('reports a loan of reserved money at its seq (RESERVED_LENT, audit 4 H1)', () => {
@@ -190,6 +226,29 @@ describe('verify-ledger (spec 2.14, 5.2)', () => {
     const bad = run([fileWith('{ not json', 'bad.json')]);
     expect(bad.code).toBe(2);
     expect(bad.err).toContain('not valid JSON');
+  });
+
+  it('exits with code 2 and a short message if the verification itself fails (audit 5 N5)', () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = runVerify(
+      [fileWith(sampleExport())],
+      { stdout: (s) => out.push(s), stderr: (s) => err.push(s) },
+      undefined,
+      () => {
+        throw new RangeError('boom');
+      },
+    );
+    expect(code).toBe(2);
+    expect(out.join('')).toBe('');
+    expect(err.join('')).toContain('could not be verified: boom');
+  });
+
+  it('reports balances beyond the safe integer range as a problem, not a crash (N5)', () => {
+    const file = hugeExport();
+    const { code, out } = run([fileWith(file)]);
+    expect(code).toBe(1);
+    expect(out).toMatch(/MALFORMED_TRANSACTION +the balances would leave the safe integer range/);
   });
 
   it('refuses a JSON file that is not a ledger export', () => {
