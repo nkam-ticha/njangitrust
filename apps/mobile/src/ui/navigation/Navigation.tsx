@@ -158,7 +158,11 @@ export function Navigation({
         accessibilityLabel={t('nav.navigationLabel')}
         style={[
           styles.rail,
-          { borderRightColor: colors.divider, paddingTop: insets.top + space.s4 },
+          {
+            borderRightColor: colors.divider,
+            backgroundColor: colors.canvas,
+            paddingTop: insets.top + space.s4,
+          },
         ]}
       >
         {ORDER.map(item)}
@@ -171,7 +175,11 @@ export function Navigation({
       accessibilityLabel={t('nav.navigationLabel')}
       style={[
         styles.sidebar,
-        { borderRightColor: colors.divider, paddingTop: insets.top + space.s5 },
+        {
+          borderRightColor: colors.divider,
+          backgroundColor: colors.canvas,
+          paddingTop: insets.top + space.s5,
+        },
       ]}
     >
       <View style={styles.brand}>
