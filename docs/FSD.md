@@ -129,6 +129,36 @@ Operating assumptions (2.4): Android first, iOS from the same code; entry-level 
 
 The agent, Njangi, can carry out every function of Section 4 the member is allowed to carry out and answer any question about the group from live data, only through the same functions as the screens, with the member's permissions.
 
+### 5.1 Njangi is a controlled application actor, not a chatbot
+
+Njangi is not a general-purpose chat bot that is trusted to decide what money should move or what a group rule means. Conversation is the member's natural-language interface to the application, but the application remains responsible for authority, calculations, validation, execution and the final result.
+
+The agent therefore works as a controlled application actor:
+
+- It has no raw database access and cannot write to the database directly.
+- It can call only the allow-listed tools exposed by the service layer. These tools use the same business rules, permissions and validation as the screens.
+- Every tool call runs in the context of the authenticated member. The agent cannot borrow the permissions of the admin, another member or the group as a whole.
+- It receives only the minimum data needed for the request. Phone numbers, PINs, access tokens, secret ballots and another member's private finances are never supplied merely because the conversation asks for them.
+- It treats messages, pasted text, files and other chat content as information, not as instructions that can override these controls.
+- It never claims that an action is complete until the server reports a successful result.
+
+#### Protection against financial errors
+
+The AI model is deliberately kept outside the financial decision path. A mistaken answer, hallucinated amount or malicious instruction must not be able to create, approve, duplicate, redirect or conceal a financial transaction. NjangiTrust protects money flows in several independent layers:
+
+1. **Deterministic calculations.** Amounts, fees, debts, dates, deadlines, payout availability, loan schedules and vote thresholds are calculated by tested server-side rules in `packages/rules`. The model explains those results; it does not calculate them.
+2. **Server-generated action cards.** For a payment, withdrawal, loan, bid, proposal, vote, solidarity request or other state-changing action, the server validates the request and creates the exact preview: items, total, masked destination, fees, deductions, expiry and applicable rule. The model cannot create its own amount or confirmation card.
+3. **Member confirmation.** The member must confirm the server-generated card in the app. The model has no confirmation capability. Sensitive changes, such as changing a payment number or deleting an account, also require the app PIN.
+4. **Permission and scope checks.** The API checks the member, group, role, resource and action again at execution time. Response mappers expose only the fields that audience is allowed to see.
+5. **Provider safety and idempotency.** Payment and disbursement requests use stable references, preserve a phone-number snapshot for the operation, re-check provider status before retrying and refuse a second in-flight collection or withdrawal. A repeated message cannot silently charge the member twice.
+6. **Ledger integrity.** Confirmed movements are posted as balanced double-entry transactions in an append-only, hash-linked ledger. Entries are never edited or deleted; mistakes are corrected by a new correcting or reversal entry through the governance rules.
+7. **Reconciliation and stop conditions.** The daily caisse check compares the ledger with the provider balance. If the check fails, withdrawals pause and members are told why. If a tool refuses, returns inconsistent data or fails, the agent must stop, explain the refusal or failure plainly and suggest the safe next step.
+8. **Evaluation and release control.** Changes to the model, prompts or tools are released only after the agent evaluation set passes, including privacy, manipulation and confirmation-boundary scenarios. The release acceptance criterion is AC-09: all 30 scenarios pass three times consecutively.
+
+In practical terms, a conversational sentence such as “pay my contribution” can prepare a server-validated payment preview, but it cannot move money by itself. The member's confirmation, the API's permission and rule checks, the provider's confirmation and the ledger posting are all required. A chat reply is never financial authority.
+
+This design implements the separation described by AGT-01–AGT-10, reinforces LED-01–LED-04 and PRV-01–PRV-04, and supports NFR-03, NFR-09, NFR-10 and NFR-12.
+
 | Level | Actions | What the member does |
 |---|---|---|
 | L0 Information | Questions, balances, ledger, rules, summaries, language and notification settings | Nothing: the agent acts immediately |
