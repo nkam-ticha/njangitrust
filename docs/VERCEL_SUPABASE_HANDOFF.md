@@ -210,3 +210,23 @@ separately provisioned staging project has passed import and integrity checks.
 4. Run the staging verification protocol before importing or routing production
    data: migrations, jobs, rate limits, authorization boundaries, uploads,
    financial balances, ledger hash chain, and login/session flows.
+
+## Vercel API deployment entry points
+
+The API Vercel project is rooted at `apps/api` and deploys from GitHub `main`.
+Its Vercel project Build Command must stay set to
+`pnpm db:generate && node scripts/bundle-vercel.mjs`; its framework preset must
+be unset so Vercel does not auto-detect the Express app and bypass the
+serverless function entry points. Git-triggered deployments are disabled for
+this project, so publish a reviewed commit with the Vercel CLI from a clean
+checkout of `main`.
+
+Vercel discovers function files before running the project build. Therefore,
+`apps/api/api/index.mjs` and `apps/api/api/process-jobs.mjs` are committed
+bundles generated from the committed TypeScript sources by
+`apps/api/scripts/bundle-vercel.mjs`. Keep those entry points in sync whenever
+their source modules change; Prisma generation still runs before the bundle
+step. The previous deployment failure came from Express auto-detection loading
+`src/app.ts` with extensionless imports, after the dashboard Build Command had
+skipped the bundle step. The fix is the framework/build configuration above
+and shipping the entry files in the source revision.

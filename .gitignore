@@ -42,7 +42,6 @@ Thumbs.db
 
 # Generated code
 apps/api/generated/
-apps/api/api/*.mjs
 
 # Local session handoffs (never committed)
 .handoff/
