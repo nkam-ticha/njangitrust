@@ -42,7 +42,6 @@ export function createApp(): Express {
   app.use(accessLog());
   app.use(securityHeaders({ production: env.NODE_ENV === 'production' }));
   app.use(cors(env.WEB_ORIGINS));
-  app.use(rateLimit(floodLimits.global));
   app.use(cookieParser());
 
   const storage = getStorage();
@@ -52,6 +51,7 @@ export function createApp(): Express {
   );
   registerHealthCheck('storage', () => storage.check());
   app.use('/health', healthRoutes());
+  app.use(rateLimit(floodLimits.global));
 
   if (storage instanceof LocalStorage) app.use(LOCAL_STORAGE_ROUTE, localStorageRoutes(storage));
 

@@ -231,4 +231,6 @@ their source modules change; Prisma generation still runs before the bundle
 step. The previous deployment failure came from Express auto-detection loading
 `src/app.ts` with extensionless imports, after the dashboard Build Command had
 skipped the bundle step. The fix is the framework/build configuration above
-and shipping the entry files in the source revision.
+and shipping the entry files in the source revision. `/health` is mounted ahead
+of the PostgreSQL-backed global rate limiter, so it can report database health
+when the rate-limit storage query is failing.

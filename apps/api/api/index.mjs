@@ -14290,7 +14290,6 @@ function createApp() {
   app.use(accessLog());
   app.use(securityHeaders({ production: env.NODE_ENV === "production" }));
   app.use(cors(env.WEB_ORIGINS));
-  app.use(rateLimit(floodLimits.global));
   app.use(cookieParser());
   const storage2 = getStorage();
   registerHealthCheck(
@@ -14299,6 +14298,7 @@ function createApp() {
   );
   registerHealthCheck("storage", () => storage2.check());
   app.use("/health", healthRoutes());
+  app.use(rateLimit(floodLimits.global));
   if (storage2 instanceof LocalStorage) app.use(LOCAL_STORAGE_ROUTE, localStorageRoutes(storage2));
   app.use(express.json({ limit: JSON_LIMIT, strict: true, type: "application/json" }));
   app.use("/v1", v1Router());
