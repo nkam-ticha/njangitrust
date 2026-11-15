@@ -120,6 +120,27 @@ separately provisioned staging project has passed import and integrity checks.
   committed and present on the selected GitLab branch. Keep Vercel linked to
   that GitLab branch so deployment sources come from committed Git history.
 
+## Live deployment status (2026-11-15)
+
+- The public frontend deployment is available at
+  `https://njangitrust-web.vercel.app`. The frontend and API Vercel projects
+  are both linked to `nkam-ticha/njangitrust` on the `main` branch.
+- Supabase project `jbqbjmleiovplhvgjedc` has the ten committed Prisma
+  migrations applied and a private `njangi-private` Storage bucket. No
+  application data was imported.
+- Vercel API builds run with `noCheck` in `apps/api/tsconfig.json`. This is a
+  temporary build compatibility setting, added because Vercel's function
+  compiler typechecks the full existing API graph and currently rejects
+  pre-existing strict-union and module-interop diagnostics outside the
+  serverless conversion. Runtime JavaScript is still emitted; the remaining
+  strict compiler settings are retained, but diagnostic checking is deferred.
+- Before removing `noCheck`, fix the strict discriminated-union narrowing in
+  the group, invite, member, notification, proposal, permission, and rules
+  modules, plus the `helmet` import typing in `src/http/security-headers.ts`.
+  Run `pnpm --filter @njangi/api typecheck` against a clean worktree before
+  deleting the setting. Keep deployment changes in separate commits from the
+  unrelated local worktree changes.
+
 ## Work landed in the current implementation pass
 
 - Added `SupabaseStorage` using the Storage HTTP API and selected it via
