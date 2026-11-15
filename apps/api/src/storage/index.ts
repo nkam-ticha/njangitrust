@@ -2,6 +2,7 @@
 import { getEnv } from '../config/env';
 import { LocalStorage } from './local-driver';
 import { S3Storage } from './s3-driver';
+import { SupabaseStorage } from './supabase-driver';
 import type { StorageProvider } from './storage.types';
 
 let instance: StorageProvider | undefined;
@@ -9,8 +10,13 @@ let instance: StorageProvider | undefined;
 export function getStorage(): StorageProvider {
   if (!instance) {
     const env = getEnv();
-    instance =
-      env.STORAGE_DRIVER === 's3'
+    instance = env.STORAGE_DRIVER === 'supabase'
+      ? new SupabaseStorage({
+          projectUrl: env.SUPABASE_URL!,
+          serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY!,
+          bucket: env.SUPABASE_STORAGE_BUCKET!,
+        })
+      : env.STORAGE_DRIVER === 's3'
         ? new S3Storage({
             endpoint: env.S3_ENDPOINT,
             region: env.S3_REGION,
@@ -26,4 +32,6 @@ export function getStorage(): StorageProvider {
 export { detectFileType, SNIFF_BYTES, type DetectedType } from './file-type';
 export { LocalStorage, LOCAL_STORAGE_ROUTE } from './local-driver';
 export { S3Storage } from './s3-driver';
+export { SupabaseStorage } from './supabase-driver';
+export type { SupabaseStorageSettings } from './supabase-driver';
 export * from './storage.types';

@@ -2,28 +2,20 @@
 import { createServer } from 'node:http';
 import { createApp } from './app';
 import { EnvError, getEnv, listenHost } from './config/env';
-import { registerHealthCheck } from './http/health';
-import { useRedisForRateLimits } from './http/rate-limit';
-import { useJobScheduler } from './jobs/dispatch';
-import { scheduleAt, startJobs, stopJobs } from './jobs/queues';
+import { startJobs, stopJobs } from './jobs/queues';
 import { logger } from './lib/logger';
 import { disconnectPrisma } from './lib/prisma';
-import { closeRedis, getRedis } from './lib/redis';
 import { registerJobs } from './modules/register';
 import { attachRealtimeServer, createRealtimeServer } from './realtime';
 
 async function main(): Promise<void> {
   const env = getEnv();
-  useRedisForRateLimits(getRedis('limits'));
-  registerHealthCheck('redis', async () => (await getRedis('health').ping()) === 'PONG');
-
   const app = createApp();
   const httpServer = createServer(app);
   const io = createRealtimeServer(httpServer, { origins: env.WEB_ORIGINS });
 
   registerJobs();
   await startJobs();
-  useJobScheduler(scheduleAt);
 
   const host = listenHost(env);
   httpServer.listen({ port: env.PORT, host }, () => {
@@ -44,7 +36,6 @@ async function main(): Promise<void> {
     await io.close();
     attachRealtimeServer(null);
     await stopJobs();
-    await closeRedis();
     await disconnectPrisma();
     process.exit(0);
   };

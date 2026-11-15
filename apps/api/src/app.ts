@@ -15,14 +15,23 @@ import { getPrisma } from './lib/prisma';
 import { registerActionHandlers, registerJobs } from './modules/register';
 import { getStorage, LocalStorage, LOCAL_STORAGE_ROUTE } from './storage';
 import { localStorageRoutes } from './storage/local.routes';
+import { attachSupabaseRealtimePublisher } from './realtime/emitter';
+import { scheduleAt } from './jobs/queues';
+import { useJobScheduler } from './jobs/dispatch';
 
 /** JSON bodies are small: the largest request is a chat message or a proposal reason. */
 const JSON_LIMIT = '64kb';
 
 export function createApp(): Express {
   const env = getEnv();
+  attachSupabaseRealtimePublisher(
+    env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY
+      ? { url: env.SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY }
+      : null,
+  );
   registerActionHandlers();
   registerJobs();
+  useJobScheduler(scheduleAt);
 
   const app = express();
   app.disable('x-powered-by');

@@ -1,0 +1,11 @@
+/// Shared counters and temporary PIN lockouts for serverless API instances.
+model RateLimitRecord {
+  key         String    @id @db.VarChar(512)
+  consumed    Int       @default(0)
+  expiresAt   DateTime  @db.Timestamptz(6)
+  blockedUntil DateTime? @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@index([blockedUntil])
+}

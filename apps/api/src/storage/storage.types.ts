@@ -15,7 +15,7 @@ export interface UploadUrl {
 }
 
 export interface StorageProvider {
-  readonly driver: 'local' | 's3';
+  readonly driver: 'local' | 's3' | 'supabase';
   createUploadUrl(input: {
     key: string;
     contentType: string;

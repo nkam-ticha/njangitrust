@@ -27,6 +27,7 @@ export function useProposals(groupId: string | null) {
   useEffect(() => {
     const socket = getSocket();
     if (!socket || !groupId) return;
+    socket.joinGroup(groupId);
     const onUpdate = (p: ProposalUpdatedPayload) => {
       if (p.groupId !== groupId) return;
       qc.setQueryData<ProposalDto[]>(listKey(groupId), (old) =>
@@ -42,6 +43,7 @@ export function useProposals(groupId: string | null) {
     socket.on('proposal.updated', onUpdate);
     return () => {
       socket.off('proposal.updated', onUpdate);
+      socket.leaveGroup(groupId);
     };
   }, [groupId, qc]);
 

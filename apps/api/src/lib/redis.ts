@@ -7,11 +7,13 @@ import { getEnv } from '../config/env';
 export type RedisPurpose = 'limits' | 'jobs' | 'health';
 
 export function createRedis(purpose: RedisPurpose): Redis {
+  const url = getEnv().REDIS_URL;
+  if (!url) throw new Error('REDIS_URL is required only for legacy Redis callers');
   const jobs = purpose === 'jobs';
   // Rate limits must fail fast (the in-memory insurance limiter takes over); other connections
   // queue commands until connected.
   const failFast = purpose === 'limits';
-  return new Redis(getEnv().REDIS_URL, {
+  return new Redis(url, {
     connectionName: `njangitrust-${purpose}`,
     maxRetriesPerRequest: jobs ? null : 1,
     enableOfflineQueue: !failFast,

@@ -1,0 +1,20 @@
+/// Durable, idempotent work items for serverless cron processing.
+model DeploymentJob {
+  id          String    @id @db.Uuid
+  name        String    @db.VarChar(200)
+  jobKey      String    @db.VarChar(200)
+  payload     Json      @db.JsonB
+  runAt       DateTime  @db.Timestamptz(6)
+  status      String    @default("PENDING") @db.VarChar(16)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  leaseUntil  DateTime? @db.Timestamptz(6)
+  leaseToken  String?   @db.Uuid
+  lastError   String?   @db.VarChar(1000)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([name, jobKey])
+  @@index([status, runAt, createdAt])
+  @@index([status, leaseUntil])
+}

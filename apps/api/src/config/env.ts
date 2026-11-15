@@ -45,14 +45,16 @@ const schema = z
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
 
     DATABASE_URL: z.string().url('DATABASE_URL must be a postgresql:// URL'),
-    REDIS_URL: z.string().url('REDIS_URL must be a redis:// URL'),
+    /** Optional during the Vercel transition; production serverless paths must not depend on it. */
+    REDIS_URL: optionalString.pipe(z.string().url('REDIS_URL must be a redis:// URL').optional()),
 
     JWT_SECRET: secret('JWT_SECRET'),
     JWT_REFRESH_SECRET: secret('JWT_REFRESH_SECRET'),
+    CRON_SECRET: optionalString.pipe(z.string().min(32).optional()),
     /** Key for hashing invited phone numbers. Falls back to a key derived from JWT_REFRESH_SECRET. */
     HASH_SECRET: optionalString.pipe(z.string().min(32).optional()),
 
-    STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+    STORAGE_DRIVER: z.enum(['local', 's3', 'supabase']).default('local'),
     STORAGE_LOCAL_DIR: z.string().default('.storage'),
     STORAGE_SIGNING_SECRET: optionalString,
     S3_ENDPOINT: optionalString,
@@ -60,6 +62,11 @@ const schema = z
     S3_BUCKET: optionalString,
     S3_ACCESS_KEY: optionalString,
     S3_SECRET_KEY: optionalString,
+    SUPABASE_URL: optionalString.pipe(z.string().url().optional()),
+    SUPABASE_SERVICE_ROLE_KEY: optionalString,
+    /** Project JWT signing secret used only to mint short-lived Realtime client tokens. */
+    SUPABASE_JWT_SECRET: optionalString.pipe(z.string().min(32).optional()),
+    SUPABASE_STORAGE_BUCKET: optionalString,
 
     PAYMENT_PROVIDER: z.enum(['mock', 'campay']).default('mock'),
     CAMPAY_USERNAME: optionalString,
@@ -139,6 +146,17 @@ const schema = z
             message: 'is required with STORAGE_DRIVER=s3',
           });
       }
+    }
+    if (env.STORAGE_DRIVER === 'supabase') {
+      for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_STORAGE_BUCKET'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required with STORAGE_DRIVER=supabase' });
+      }
+    }
+    if (env.SUPABASE_URL && !env.SUPABASE_JWT_SECRET) {
+      ctx.addIssue({ code: 'custom', path: ['SUPABASE_JWT_SECRET'], message: 'is required when SUPABASE_URL is configured' });
+    }
+    if (env.NODE_ENV === 'production' && !env.CRON_SECRET) {
+      ctx.addIssue({ code: 'custom', path: ['CRON_SECRET'], message: 'is required in production for Vercel Cron' });
     }
     if (env.PAYMENT_PROVIDER === 'campay') {
       for (const key of ['CAMPAY_USERNAME', 'CAMPAY_PASSWORD'] as const) {

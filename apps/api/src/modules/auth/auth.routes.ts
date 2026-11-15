@@ -28,6 +28,7 @@ import {
   type AuthResult,
 } from './auth.service';
 import { completePinReset, previewPinResetLink, requestPinReset } from './pin-reset.service';
+import { signRealtimeToken } from '../../realtime/tokens';
 
 const tokenParams = z.strictObject({ token: z.string().regex(/^[A-Za-z0-9_-]{40,64}$/) });
 
@@ -48,6 +49,17 @@ export function authRoutes(): Router {
       sendAuth(req, res, 201, await signup(body, req.clientKind));
     }),
   );
+
+  router.get('/realtime-token', requireAuth(), handle({}, async (_input, req, res) => {
+    const actor = actorOf(req);
+    const token = await signRealtimeToken(actor);
+    res.json({
+      token: token.token,
+      expiresAt: token.expiresAt.toISOString(),
+      userId: actor.userId,
+      sessionId: actor.sessionId,
+    });
+  }));
 
   router.post(
     '/login',
