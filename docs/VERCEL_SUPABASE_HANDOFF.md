@@ -125,6 +125,15 @@ separately provisioned staging project has passed import and integrity checks.
 - The public frontend deployment is available at
   `https://njangitrust-web.vercel.app`. The frontend and API Vercel projects
   are both linked to `nkam-ticha/njangitrust` on the `main` branch.
+- The API's first successful build failed at runtime because Node could not
+  resolve extensionless ESM imports from the TypeScript entry point. The
+  current deployment build now generates self-contained `api/index.mjs` and
+  `api/process-jobs.mjs` bundles with `apps/api/scripts/bundle-vercel.mjs`.
+  Workspace source packages `@njangi/shared` and `@njangi/rules` are bundled;
+  normal npm dependencies remain external. This was verified locally by
+  importing the generated API handler under production environment settings.
+- `.gitignore` excludes generated `apps/api/api/*.mjs` files. Deployments
+  generate them from committed source as part of the Vercel build.
 - Supabase project `jbqbjmleiovplhvgjedc` has the ten committed Prisma
   migrations applied and a private `njangi-private` Storage bucket. No
   application data was imported.
@@ -140,6 +149,11 @@ separately provisioned staging project has passed import and integrity checks.
   Run `pnpm --filter @njangi/api typecheck` against a clean worktree before
   deleting the setting. Keep deployment changes in separate commits from the
   unrelated local worktree changes.
+- The API health endpoint returned `FUNCTION_INVOCATION_FAILED` before the
+  bundle fix; the Vercel runtime log showed `ERR_MODULE_NOT_FOUND` for
+  `/var/task/apps/api/src/app`. Recheck `https://njangitrust-api.vercel.app/health`
+  after the bundle deployment becomes READY. Do not mark the deployment
+  complete until it returns HTTP 200 and the frontend uses that API origin.
 
 ## Work landed in the current implementation pass
 

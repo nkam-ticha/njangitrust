@@ -1,17 +1,17 @@
 {
   "version": 2,
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm db:generate",
+  "buildCommand": "pnpm db:generate && node scripts/bundle-vercel.mjs",
   "functions": {
-    "api/index.ts": {
+    "api/index.mjs": {
       "maxDuration": 60
     },
-    "api/process-jobs.ts": {
+    "api/process-jobs.mjs": {
       "maxDuration": 60
     }
   },
   "rewrites": [
     { "source": "/api/cron", "destination": "/api/process-jobs" },
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/(.*)", "destination": "/api/index" }
   ]
 }

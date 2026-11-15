@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { registerJobs } from '../src/modules/register';
-import { enqueueDueRepeatables, JOB_BATCH_LIMIT, processDueJobs } from '../src/jobs/queues';
-import { getEnv } from '../src/config/env';
+import { registerJobs } from './modules/register';
+import { enqueueDueRepeatables, JOB_BATCH_LIMIT, processDueJobs } from './jobs/queues';
+import { getEnv } from './config/env';
 
 function authorized(request: IncomingMessage, secret: string): boolean {
   const header = request.headers.authorization;
