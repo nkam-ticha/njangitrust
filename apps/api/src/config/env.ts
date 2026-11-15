@@ -152,9 +152,6 @@ const schema = z
         if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required with STORAGE_DRIVER=supabase' });
       }
     }
-    if (env.SUPABASE_URL && !env.SUPABASE_JWT_SECRET) {
-      ctx.addIssue({ code: 'custom', path: ['SUPABASE_JWT_SECRET'], message: 'is required when SUPABASE_URL is configured' });
-    }
     if (env.NODE_ENV === 'production' && !env.CRON_SECRET) {
       ctx.addIssue({ code: 'custom', path: ['CRON_SECRET'], message: 'is required in production for Vercel Cron' });
     }

@@ -114,7 +114,6 @@ export function getSocket(): RealtimeEventClient | null {
 export async function connectSocket(): Promise<RealtimeEventClient | null> {
   if (client) return client;
   if (!realtime) {
-    useConnectivity.getState().markOffline();
     return null;
   }
 
