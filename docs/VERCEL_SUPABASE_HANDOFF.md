@@ -234,3 +234,13 @@ skipped the bundle step. The fix is the framework/build configuration above
 and shipping the entry files in the source revision. `/health` is mounted ahead
 of the PostgreSQL-backed global rate limiter, so it can report database health
 when the rate-limit storage query is failing.
+
+The production `DATABASE_URL` must use Supabase's encrypted connection mode
+with `sslmode=require&uselibpqcompat=true`. Without the compatibility flag,
+the installed Node PostgreSQL driver treats `require` as certificate
+verification and rejects Supabase's pooler certificate chain. This was the
+cause of the production database health failure; the Vercel production value
+has been corrected and `/health` now reports the database as up. Apply the
+same parameters to any replacement production URL. See Supabase's
+[PostgreSQL connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres)
+for SSL modes and certificate options.
