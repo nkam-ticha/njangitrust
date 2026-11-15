@@ -115,6 +115,52 @@ export function maskPhonesInText(text: string, allowedE164: readonly string[]): 
 const DIGIT_SEPARATORS = /(?<=\d)[^\p{L}\p{N}]{1,3}(?=\d)/gu;
 const NATIONAL_MOBILE = /6\d{8}/;
 
+// A valid calendar date, optionally followed by a two-digit time, such as "16/11/2026 18:00".
+// Joined into one digit chain it reaches twelve digits and can contain "6" plus eight digits,
+// so it is set aside before the digits are joined. Only real dates qualify: day 1-31, month
+// 1-12, year 2024-2035, hour 00-23, minute 00-59.
+const DAY = '(?:0?[1-9]|[12]\\d|3[01])';
+const MONTH = '(?:0?[1-9]|1[0-2])';
+const YEAR = '20(?:2[4-9]|3[0-5])';
+const CLOCK = '(?:[01]\\d|2[0-3])[:hH][0-5]\\d';
+const DATE_WITH_TIME = new RegExp(
+  `(?:${DAY}[/.\\-]${MONTH}[/.\\-]${YEAR}|${YEAR}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01]))(?:[ T]+${CLOCK})?(?!\\d)`,
+  'giu',
+);
+/** Digits directly before a position, possibly through up to three separators (a list comma does not count). */
+const DIGIT_CHAIN_BEFORE = /\d[^\p{L}\p{N},;]{0,3}$/u;
+/** The start of a number just before a position, joined across any separators, commas included. */
+const NUMBER_START_BEFORE = /6\d{3,7}[^\p{L}\p{N}]{0,3}$/u;
+/** Eight or more digits right after a position, through up to three separators between them. */
+const NUMBER_BODY_AFTER = /^[^\p{L}\p{N}]{0,3}\d(?:[^\p{L}\p{N}]{0,3}\d){7}/u;
+
+/** True when the digits just before a position run into it as part of one number. */
+function continuesNumber(before: string): boolean {
+  return (
+    DIGIT_CHAIN_BEFORE.test(before) ||
+    NUMBER_START_BEFORE.test(before.replace(DIGIT_SEPARATORS, ''))
+  );
+}
+
+/**
+ * Replaces each date by a letter, which ends a digit chain, unless a number could run into it:
+ * digits before it that continue into the date ("677 123 45, 6/11/2026": the 6 may end a number),
+ * or the body of a number right after it ("16/11/2026, 77 12 34 56": the 6 of 2026 may start one).
+ */
+function setAsideDates(text: string): string {
+  return text.replace(DATE_WITH_TIME, (match: string, offset: number) =>
+    continuesNumber(text.slice(0, offset)) ||
+    NUMBER_BODY_AFTER.test(text.slice(offset + match.length))
+      ? match
+      : 'x',
+  );
+}
+
+/** The text with ordinary dates (and their times) set aside, so they are never read as a number. */
+export function withoutDates(text: string): string {
+  return setAsideDates(text.replace(/\p{Cf}/gu, ''));
+}
+
 /**
  * Strict check for member-visible text (names, reasons, notes, corrections; spec 2.11): true when
  * the text carries a Cameroon mobile number in any disguise. Digits of any script are folded,
@@ -124,8 +170,6 @@ const NATIONAL_MOBILE = /6\d{8}/;
  * Unlike `findPhoneNumbers` it does not say which number, and it errs on the side of refusing.
  */
 export function looksLikePhoneNumber(text: string): boolean {
-  const joined = foldDigits(text)
-    .folded.replace(/\p{Cf}/gu, '')
-    .replace(DIGIT_SEPARATORS, '');
-  return NATIONAL_MOBILE.test(joined);
+  const cleaned = foldDigits(text).folded.replace(/\p{Cf}/gu, '');
+  return NATIONAL_MOBILE.test(setAsideDates(cleaned).replace(DIGIT_SEPARATORS, ''));
 }

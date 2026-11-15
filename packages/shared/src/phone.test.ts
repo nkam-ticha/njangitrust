@@ -125,6 +125,38 @@ describe('looksLikePhoneNumber: member text with a number in any disguise (priva
     expect(looksLikePhoneNumber(text)).toBe(false);
   });
 
+  it.each([
+    '16/11/2026 12:00',
+    'Assemblée le 16/11/2026 18h00',
+    'Vote clos le 2026-11-16 12:00',
+    'Échéance : 5.11.2026 14:30, tour 6',
+    'Tour 6, 16/11/2026 18:00',
+    'Tour 6 le 16/11/2026',
+    '16/11/2026 12:00, 250 000 FCFA',
+    'Cotisation 25 000 FCFA, amende 1 500 F, solde 600 000 FCFA',
+  ])('accepts a date with a time and amounts that end in a unit: %s', (text) => {
+    expect(looksLikePhoneNumber(text)).toBe(false);
+  });
+
+  it.each([
+    ['699 12 34 56 F', 'a number with a trailing unit letter'],
+    ['699, 12, 34, 56 FCFA', 'a number split by commas'],
+    ['677 123 456 16/11/2026 18:00', 'a number written before a date'],
+    ['677 123 45 6/11/2026 18:00', 'a number whose last digit sits next to a date'],
+    ['6/5/2026 677 123 456', 'a number written after a date'],
+    ['600 000, 250 000', 'bare amounts without a unit'],
+    ['2026-11-16-677-123-456', 'a number written after an ISO date'],
+    ['677 123 45, 6/11/2026', 'the last digit written as the day of a date after a comma'],
+    ['677/12/34/5; 6/11/2026', 'the same with slashes and a semicolon'],
+    ['6771234, 15/11/2026', 'the last two digits written as the day of a date'],
+    ['1/1/2026 7712345, 6/1/2026', 'a number between two dates'],
+    ['16/11/2026, 77 12 34 56', 'a date supplying the leading 6'],
+    ['2026-11-16; 77/12/34/56', 'an ISO date supplying the leading 6'],
+    ['16/11/2026 - 77 12 34 56', 'a date supplying the leading 6 through a dash'],
+  ])('still refuses %s (%s)', (text) => {
+    expect(looksLikePhoneNumber(text)).toBe(true);
+  });
+
   it('does not change what findPhoneNumbers reports', () => {
     expect(findPhoneNumbers('677/123/456')).toEqual([]);
     expect(findPhoneNumbers('677 12 34 56')).toEqual(['+237677123456']);

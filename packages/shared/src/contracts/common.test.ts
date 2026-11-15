@@ -29,6 +29,26 @@ describe('member-visible text never carries a phone number (spec 2.11, privacy-g
     expect(textSchema(200).safeParse(text).success).toBe(true);
   });
 
+  it.each([
+    'Réunion le 16/11/2026 12:00',
+    'Échéance 16.11.2026 18:00',
+    'Vote clos le 16-11-2026 18h00',
+    'Tour 6, 16/11/2026 18:00',
+    'Début le 2026-11-16 12:00, cotisation 25 000 FCFA',
+  ])('accepts a date with a time in free text: %s', (text) => {
+    expect(containsPhoneNumber(text)).toBe(false);
+    expect(textSchema(200).safeParse(text).success).toBe(true);
+  });
+
+  it.each([
+    '677 123 45, 6.11.2026',
+    '677-123-45-6-11-2026 18:00',
+    '16.11.2026, 77 12 34 56',
+    'Rappel 677 12 34 56 le 16/11/2026 18:00',
+  ])('still refuses a number next to a date: %s', (text) => {
+    expect(containsPhoneNumber(text)).toBe(true);
+  });
+
   it('folds compatibility characters before storing', () => {
     expect(textSchema(50).parse('  ｃａｉｓｓｅ  ')).toBe('caisse');
   });

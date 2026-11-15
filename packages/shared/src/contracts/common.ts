@@ -1,7 +1,12 @@
 // Primitives shared by every API contract. Request schemas are strict: unknown keys are refused.
 import { z } from 'zod';
 import { LANGS } from '../lang';
-import { findPhoneNumbers, looksLikePhoneNumber, normalizeCameroonPhone } from '../phone';
+import {
+  findPhoneNumbers,
+  looksLikePhoneNumber,
+  normalizeCameroonPhone,
+  withoutDates,
+} from '../phone';
 
 /** Stable codes put in `issue.message` by custom checks, so the app can show the right text. */
 export const FIELD_CODES = {
@@ -44,7 +49,8 @@ const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 export function containsPhoneNumber(text: string): boolean {
   const folded = text.normalize('NFKC');
   if (/[^\P{Nd}0-9]/u.test(folded)) return true;
-  return findPhoneNumbers(folded).length > 0 || looksLikePhoneNumber(folded);
+  const scanned = withoutDates(folded);
+  return findPhoneNumbers(scanned).length > 0 || looksLikePhoneNumber(scanned);
 }
 
 /**
