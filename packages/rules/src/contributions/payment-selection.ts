@@ -2,6 +2,7 @@
 
 import {
   collectionFeeShares,
+  feesNeverDecrease,
   scheduleFee,
   type FeeSchedule,
   type PaymentPart,
@@ -61,11 +62,12 @@ function oldestFirst(a: OpenObligation, b: OpenObligation): number {
  * R3.3, R3.6: the round the confirmation card proposes first, the oldest one the member still owes,
  * with its contribution and solidarity; optionally with the member's due debts (never an
  * installment not yet due, nor one of a loan still in flight, L2). Null when nothing is owed. The
- * member can change the choice.
+ * member can change the choice. N2 (audit 5), R4.5: `total` is priced exactly like preparePayment,
+ * so a CORRECTION debt includes its fee (D22.2) and `feeSchedule` is then required.
  */
 export function proposeRoundToPay(
   obligations: readonly OpenObligation[],
-  options: { now: Date; includeDueDebts?: boolean },
+  options: { now: Date; includeDueDebts?: boolean; feeSchedule?: FeeSchedule },
 ): { roundId: string; roundNumber: number | null; obligationIds: string[]; total: Fcfa } | null {
   const now = assertDate(options.now, 'now');
   const roundItems = obligations
@@ -83,11 +85,12 @@ export function proposeRoundToPay(
         .sort(oldestFirst),
     );
   }
+  const parts = pricedParts(chosen, options.feeSchedule);
   return {
     roundId: oldest.roundId!,
     roundNumber: oldest.roundNumber,
     obligationIds: chosen.map((o) => o.id),
-    total: sumFcfa(chosen.map((o) => o.amount)),
+    total: sumFcfa(parts.map((p) => p.amount)),
   };
 }
 
@@ -104,15 +107,21 @@ function partKind(kind: ObligationKind): PaymentPartKind {
   }
 }
 
-/** Most rounds of the D22.2 surcharge search before giving up (a sane fee schedule needs 2 or 3). */
-const MAX_SURCHARGE_ROUNDS = 64;
+/** Most rounds of the D22.2 surcharge search before giving up (a sane fee schedule needs a few). */
+const MAX_SURCHARGE_ROUNDS = 256;
 
 /**
- * D22.2: the fee each correction part's payer adds so that, at the schedule's fee for the whole card,
- * the part's R4.2 share is covered: start at 0, raise each surcharge to its share of the fee on the
- * card that includes the surcharges, until no share is above what is charged.
+ * D22.2, owner Q4, N4 (audit 5): the fee each correction part's payer adds, its R4.2 share of the
+ * schedule fee on the whole card (surcharges included). The search starts at 0 and raises each
+ * surcharge below its share to max(surcharge + 1, share − 1) until no share is above what is
+ * charged. With fees that never decrease, a part's share can only fall by the largest-remainder franc
+ * as the card grows, so no smaller surcharge can cover its share: for one correction debt this is
+ * the least surcharge that covers it (its exact share whenever one exists). It never charges less
+ * than the share, so the general fund never pays a correction's fee.
  */
 function correctionSurcharges(parts: PaymentPart[], corrections: number[], schedule: FeeSchedule) {
+  if (!feesNeverDecrease(schedule, 'COLLECTION'))
+    throw new RangeError('the collection fee schedule decreases as the amount grows (N4)');
   const charged = parts.map(() => 0);
   for (let round = 0; round < MAX_SURCHARGE_ROUNDS; round++) {
     const amounts = parts.map((p, i) => ({ ...p, amount: p.amount + charged[i]! }));
@@ -128,7 +137,7 @@ function correctionSurcharges(parts: PaymentPart[], corrections: number[], sched
     let raised = false;
     for (const i of corrections) {
       if (shares[i]! > charged[i]!) {
-        charged[i] = shares[i]!;
+        charged[i] = Math.max(charged[i]! + 1, shares[i]! - 1);
         raised = true;
       }
     }
@@ -172,7 +181,19 @@ export function preparePayment(input: {
       return { ok: false, code: 'PAYMENT_ALREADY_PENDING', obligationId: o.id };
     if (o.loanInFlight === true) return { ok: false, code: 'LOAN_IN_FLIGHT', obligationId: o.id };
   }
-  const parts: PaymentPart[] = input.obligations.map((o) => {
+  const parts = pricedParts(input.obligations, input.feeSchedule);
+  return { ok: true, total: sumFcfa(parts.map((p) => p.amount)), parts };
+}
+
+/**
+ * The payment parts of the given obligations, a CORRECTION debt with its fee on top (D22.2), so
+ * the proposed card and the payment show the same total (N2).
+ */
+function pricedParts(
+  obligations: readonly OpenObligation[],
+  feeSchedule: FeeSchedule | undefined,
+): PaymentPart[] {
+  const parts: PaymentPart[] = obligations.map((o) => {
     const kind = partKind(o.kind);
     return {
       kind,
@@ -182,11 +203,10 @@ export function preparePayment(input: {
       ref: o.id,
     };
   });
-  const corrections = input.obligations.flatMap((o, i) => (o.kind === 'CORRECTION' ? [i] : []));
+  const corrections = obligations.flatMap((o, i) => (o.kind === 'CORRECTION' ? [i] : []));
   if (corrections.length > 0) {
-    if (!input.feeSchedule)
-      throw new RangeError('a correction debt needs the fee schedule (D22.2)');
-    const charged = correctionSurcharges(parts, corrections, input.feeSchedule);
+    if (!feeSchedule) throw new RangeError('a correction debt needs the fee schedule (D22.2)');
+    const charged = correctionSurcharges(parts, corrections, feeSchedule);
     for (const i of corrections) {
       if (charged[i]! > 0)
         parts[i] = {
@@ -196,5 +216,5 @@ export function preparePayment(input: {
         };
     }
   }
-  return { ok: true, total: sumFcfa(parts.map((p) => p.amount)), parts };
+  return parts;
 }

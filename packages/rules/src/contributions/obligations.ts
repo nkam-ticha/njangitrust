@@ -11,7 +11,12 @@ export type ObligationKind =
   | 'LOAN_INSTALLMENT'
   | 'BID'
   | 'SHORTFALL_SHARE'
-  /** D15: what a bid winner owes after a pot payment was reversed (POT_CORRECTION). */
+  /**
+   * A correction debt: money already paid out whose payment was reversed (the receivable line of a
+   * correction entry): a bid winner's POT_CORRECTION (D15), a payable CLAWBACK (D16.1, D17.1) or a
+   * solidarity CLAWBACK owed by a recent recipient or the payer (D17.2, D18.3). Repaid by request
+   * with its fee on top (D22.2); released by a CLAWBACK_RELEASE when the money comes back (Q1, Q3).
+   */
   | 'CORRECTION';
 
 /** Spec 2.4 Obligation.status. */

@@ -40,7 +40,29 @@ function tiersProblem(tiers: unknown): string | null {
     if (!last && (tier.upTo as number) <= previous) return 'tiers must be in increasing order';
     if (!last) previous = tier.upTo as number;
   }
+  return decreasingAt(tiers as FeeTier[]) === null
+    ? null
+    : 'the fee must never decrease as the amount grows';
+}
+
+/**
+ * N4 (audit 5): the first tier boundary where the fee goes down (the next tier charges less for
+ * upTo + 1 than this tier for upTo), or null. Within a tier the fee never decreases.
+ */
+function decreasingAt(tiers: readonly FeeTier[]): number | null {
+  for (let i = 0; i + 1 < tiers.length; i++) {
+    const upTo = tiers[i]!.upTo!;
+    if (tierFee(tiers[i + 1]!, upTo + 1) < tierFee(tiers[i]!, upTo)) return upTo;
+  }
   return null;
+}
+
+/**
+ * N4: true when the schedule's fees never decrease as the amount grows, so a larger card never
+ * costs less (needed to price a correction debt's fee, D22.2). validateFeeSchedule checks it too.
+ */
+export function feesNeverDecrease(schedule: FeeSchedule, kind: FeeKind): boolean {
+  return decreasingAt(kind === 'COLLECTION' ? schedule.collection : schedule.disbursement) === null;
 }
 
 /** R4.4: checks a fee schedule (from the FEE_SCHEDULE setting) before it is used. */

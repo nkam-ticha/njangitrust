@@ -2,13 +2,15 @@
 // exact seq where it first appears.
 
 import { parseAccount } from './accounts';
-import { applyPostings, type Balances } from './balances';
+import { tryApplyPostings, type Balances } from './balances';
 import { createBidTracker } from './bid-checks';
 import { createCorrectionTracker } from './correction-checks';
 import { inspectChain, sortPostings } from './hash-chain';
 import { createInFlightTracker, DISBURSEMENT_TYPES } from './inflight-checks';
 import { reservedLentProblem } from './lending-checks';
 import { createPotTracker } from './pot-checks';
+import { createReleaseTracker } from './release-checks';
+import { createSolidarityHistory } from './solidarity-history';
 import type { LedgerTransaction, Posting } from './types';
 import { entryProblems, type LedgerProblem } from './validation';
 
@@ -59,6 +61,15 @@ function reversalProblem(
   if (original.type === 'EVENT') return 'an EVENT cannot be reversed';
   if (DISBURSEMENT_TYPES.includes(original.type))
     return `a ${original.type} is never reversed: a failed send is returned (DISBURSEMENT_RETURNED), an operator reversal refunded (DISBURSEMENT_REFUNDED)`;
+  if (original.type === 'CLAWBACK_RELEASE')
+    return 'a CLAWBACK_RELEASE is never reversed: it follows the money that came back to the solidarity fund';
+  if (original.type === 'REVERSAL') {
+    // N1 (audit 5): re-applying any other entry through a reversal would skip its own checks
+    // (reserved money, bids, pots); a LEDGER_CORRECTION posts a fresh corrected entry instead.
+    const first = bySeq.get(original.metadata.reversesSeq as number);
+    if (first?.type !== 'PAYMENT_RECEIVED')
+      return 'only the reversal of a payment can itself be reversed (L2); post a fresh corrected entry instead';
+  }
   if (reversed.has(target)) return `seq ${target} is already reversed`;
   if (tx.refId !== original.id) return 'refId must be the reversed transaction ID';
   const negated = original.postings.map((p) => ({ account: p.account, amount: 0 - p.amount }));
@@ -74,7 +85,9 @@ function reversalProblem(
  * after any transaction, bidding pots assigned exactly once to the recorded winner (D10, M3), winning
  * bids assessed as published, in-flight disbursements opened once and closed once (D18.1), and
  * corrections exactly as the balances require (D15–D18), completed disbursements refunded at most
- * once and exactly (D22.1), and no reserved money lent, refunded to a leaver or distributed
+ * once and exactly (D22.1, a loan's repaid installments credited back, Q2), the clawback releases a
+ * returned or refunded solidarity payout requires right after it (Q1, Q3), only a payment's reversal
+ * reversed again (N1), and no reserved money lent, refunded to a leaver or distributed
  * (RESERVED_LENT, H1). Returns every problem in ledger order; empty when the ledger is sound.
  * Reserved-money coverage is current state, not integrity: see coverageGaps and reservedShortfall.
  */
@@ -89,7 +102,9 @@ export function checkLedger(
   const reversed = new Set<number>();
   const negative = new Set<string>();
   const pots = createPotTracker();
-  const corrections = createCorrectionTracker(pots);
+  const history = createSolidarityHistory();
+  const corrections = createCorrectionTracker(pots, history);
+  const releases = createReleaseTracker(history);
   const inFlight = createInFlightTracker();
   const bids = createBidTracker();
   let balances: Balances = new Map();
@@ -106,6 +121,8 @@ export function checkLedger(
       if (issue) problems.push({ seq, code: 'REVERSAL_MISMATCH', detail: issue });
     }
     if (entryIssues.length === 0) {
+      // The release checks read the solidarity history before the correction checks observe tx.
+      problems.push(...releases.check(tx, seq));
       problems.push(...corrections.check(tx, seq, balances, bySeq));
       problems.push(...pots.check(tx, seq, balances, bySeq));
       problems.push(...inFlight.check(tx, seq, balances));
@@ -117,7 +134,15 @@ export function checkLedger(
     const postings = Array.isArray(tx.postings)
       ? tx.postings.filter((p) => parseAccount(p?.account ?? '') && Number.isSafeInteger(p.amount))
       : [];
-    balances = applyPostings(balances, postings);
+    const next = tryApplyPostings(balances, postings);
+    if (next) balances = next;
+    else
+      problems.push({
+        seq,
+        code: 'MALFORMED_TRANSACTION',
+        detail:
+          'the balances would leave the safe integer range (2^53): the transaction is skipped',
+      });
     const nowNegative = negativeAccounts(balances);
     for (const { account, value } of nowNegative) {
       if (!negative.has(account)) {
@@ -127,6 +152,11 @@ export function checkLedger(
     negative.clear();
     for (const { account } of nowNegative) negative.add(account);
   });
-  problems.push(...corrections.finish(), ...pots.finish(balances), ...bids.finish());
+  problems.push(
+    ...corrections.finish(),
+    ...releases.finish(),
+    ...pots.finish(balances),
+    ...bids.finish(),
+  );
   return problems;
 }

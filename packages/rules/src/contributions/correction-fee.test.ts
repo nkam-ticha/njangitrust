@@ -1,5 +1,12 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { MOCK_FEE_SCHEDULE, type FeeSchedule } from '../fees';
+import {
+  collectionFeeShares,
+  MOCK_FEE_SCHEDULE,
+  scheduleFee,
+  validateFeeSchedule,
+  type FeeSchedule,
+} from '../fees';
 import { preparePayment, proposeRoundToPay, type OpenObligation } from './payment-selection';
 
 const now = new Date('2026-12-01T09:00:00.000Z');
@@ -104,4 +111,100 @@ describe('a correction debt smaller than the fee (D22.2)', () => {
   it('still covers the whole fee: debt 1 + fee 100', () => {
     expect(pay([ob('k4', 'CORRECTION', 1)])).toMatchObject({ ok: true, total: 101 });
   });
+});
+
+describe('the proposed card prices a correction debt like the payment (audit 5 N2, R4.5)', () => {
+  const round = [
+    ob('c4', 'CONTRIBUTION', 10_000, { roundId: 'r4', creditorMembershipId: 'M2' }),
+    ob('s4', 'SOLIDARITY', 1_000, { roundId: 'r4' }),
+  ];
+  const debt = ob('k2', 'CORRECTION', 1_000);
+
+  it('shows the same total as preparePayment, the fee included', () => {
+    const proposal = proposeRoundToPay([...round, debt], {
+      now,
+      includeDueDebts: true,
+      feeSchedule: MOCK_FEE_SCHEDULE,
+    });
+    expect(proposal).toMatchObject({ obligationIds: ['c4', 's4', 'k2'], total: 12_009 });
+    expect(pay([...round, debt])).toMatchObject({ ok: true, total: 12_009 });
+  });
+
+  it('needs the fee schedule only when a correction debt is proposed', () => {
+    expect(() => proposeRoundToPay([...round, debt], { now, includeDueDebts: true })).toThrow(
+      RangeError,
+    );
+    expect(proposeRoundToPay([...round, debt], { now })).toMatchObject({ total: 11_000 });
+  });
+});
+
+const decreasing: FeeSchedule = {
+  ...MOCK_FEE_SCHEDULE,
+  collection: [
+    { upTo: 10_000, fixed: 300, ratePermille: 0 },
+    { upTo: null, fixed: 100, ratePermille: 0 },
+  ],
+};
+
+describe('the correction fee is its share of the whole card fee (audit 5 N4, owner Q4)', () => {
+  it('refuses a fee schedule whose fee goes down as the amount grows', () => {
+    expect(validateFeeSchedule(decreasing)).toEqual({
+      ok: false,
+      code: 'INVALID_FEE_SCHEDULE',
+      reason: expect.stringContaining('never decrease'),
+    });
+    // With it, a 9 800 debt would be charged 300 while the card's fee is only 100.
+    expect(() => pay([ob('k5', 'CORRECTION', 9_800)], decreasing)).toThrow(RangeError);
+  });
+
+  it('charges the least surcharge that covers its own share (property, brute force)', () => {
+    const tiers = fc.record({
+      first: fc.record({
+        upTo: fc.integer({ min: 1, max: 30_000 }),
+        fixed: fc.integer({ min: 0, max: 300 }),
+        ratePermille: fc.integer({ min: 0, max: 40 }),
+      }),
+      extraFixed: fc.integer({ min: 0, max: 300 }),
+      ratePermille: fc.integer({ min: 0, max: 40 }),
+    });
+    fc.assert(
+      fc.property(
+        tiers,
+        fc.integer({ min: 1, max: 40_000 }),
+        fc.array(fc.integer({ min: 1, max: 20_000 }), { maxLength: 3 }),
+        (t, debt, others) => {
+          // Non-decreasing by construction: the second tier starts at least at the first's top fee.
+          const top =
+            t.first.fixed + Math.floor((t.first.upTo * t.first.ratePermille + 500) / 1000);
+          const schedule: FeeSchedule = {
+            ...MOCK_FEE_SCHEDULE,
+            collection: [
+              t.first,
+              { upTo: null, fixed: top + t.extraFixed, ratePermille: t.ratePermille },
+            ],
+          };
+          const obligations = [
+            ...others.map((amount, i) => ob(`f${i}`, 'FINE', amount)),
+            ob('k', 'CORRECTION', debt),
+          ];
+          const result = pay(obligations, schedule);
+          if (!result.ok) throw new Error('refused');
+          const charged = result.parts.at(-1)!.feeCharged ?? 0;
+          const shareAt = (c: number) => {
+            const amounts = [...others, debt + c];
+            const total = amounts.reduce((s, a) => s + a, 0);
+            const fee = scheduleFee(schedule, 'COLLECTION', total);
+            if (fee > total) return Number.POSITIVE_INFINITY;
+            return collectionFeeShares(
+              amounts.map((amount, i) => ({ kind: 'DEBT' as const, amount, tieOrder: i })),
+              fee,
+            ).at(-1)!;
+          };
+          expect(shareAt(charged)).toBeLessThanOrEqual(charged);
+          for (let c = 0; c < charged; c++) expect(shareAt(c), `surcharge ${c}`).toBeGreaterThan(c);
+        },
+      ),
+      { numRuns: 200 },
+    );
+  }, 60_000);
 });
