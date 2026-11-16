@@ -55,8 +55,14 @@ export * from './payment-number';
 // Reliability score (R14)
 export * from './reliability';
 
+// Provider operations: status checks, provider answers, retries (spec 2.6)
+export * from './operations';
+
 // Ledger: accounts, postings, hash chain, balances, invariants, reconciliation, export (2.5, 2.14)
 export * from './ledger';
 
 // Official rule texts in French and English for explain_rule (4.9)
 export * from './registry';
+
+// Member statements: lines, totals, periods and the verification code (2.14)
+export * from './statements';
