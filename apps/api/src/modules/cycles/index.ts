@@ -1,2 +1,8 @@
-export { startFirstCycle, openRound, openDueRounds } from './cycles.service';
+export {
+  applyRotationChange,
+  currentRotation,
+  openDueRounds,
+  openRound,
+  startFirstCycle,
+} from './cycles.service';
 export { registerCycleJobs } from './cycles.jobs';

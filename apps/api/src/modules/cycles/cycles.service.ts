@@ -9,7 +9,7 @@ import {
   type LedgerEvent,
 } from '@njangi/rules';
 import type { Bilingual } from '@njangi/shared';
-import { getPrisma, type Prisma } from '../../lib/prisma';
+import { getPrisma, type Db, type Prisma } from '../../lib/prisma';
 import { clock } from '../../lib/clock';
 import { getCurrentParams } from '../rulesets';
 import { appendLedgerEntry, ledgerHead } from '../ledger';
@@ -229,4 +229,60 @@ export async function openDueRounds(now = clock.now()): Promise<number> {
   let opened = 0;
   for (const round of due) if (await openRound(round.id, now)) opened += 1;
   return opened;
+}
+
+/** The group's current cycle rotation and the round in progress (0 before round 1), or null. */
+export async function currentRotation(db: Db, groupId: string) {
+  const group = await db.group.findUnique({
+    where: { id: groupId },
+    select: { currentCycleId: true },
+  });
+  if (!group?.currentCycleId) return null;
+  const cycle = await db.cycle.findUniqueOrThrow({
+    where: { id: group.currentCycleId },
+    select: {
+      id: true,
+      number: true,
+      rotation: true,
+      rounds: { where: { status: { not: 'SCHEDULED' } }, select: { number: true } },
+    },
+  });
+  return {
+    cycleId: cycle.id,
+    cycleNumber: cycle.number,
+    rotation: cycle.rotation,
+    currentRound: cycle.rounds.reduce((latest, round) => Math.max(latest, round.number), 0),
+  };
+}
+
+/**
+ * R2.4: a voted rotation change applies from the next round. Rounds already opened keep their
+ * beneficiary; each round still scheduled takes the member at its position in the new order.
+ */
+export async function applyRotationChange(
+  tx: Tx,
+  input: { groupId: string; newOrder: string[]; proposalId: string },
+): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${input.groupId}::uuid FOR UPDATE`;
+  const current = await currentRotation(tx, input.groupId);
+  if (!current) throw cycleError('CYCLE_START_UNAVAILABLE');
+  const cycle = await tx.cycle.findUniqueOrThrow({
+    where: { id: current.cycleId },
+    select: { mode: true, rounds: { select: { id: true, number: true, status: true } } },
+  });
+  const same =
+    input.newOrder.length === current.rotation.length &&
+    [...input.newOrder].sort().join() === [...current.rotation].sort().join();
+  const servedKept = current.rotation
+    .slice(0, current.currentRound)
+    .every((id, index) => input.newOrder[index] === id);
+  if (cycle.mode !== 'FIXED' || !same || !servedKept) throw cycleError('CYCLE_START_UNAVAILABLE');
+  await tx.cycle.update({ where: { id: current.cycleId }, data: { rotation: input.newOrder } });
+  for (const round of cycle.rounds) {
+    if (round.status !== 'SCHEDULED') continue;
+    await tx.round.update({
+      where: { id: round.id },
+      data: { beneficiaryMembershipId: input.newOrder[round.number - 1]! },
+    });
+  }
 }

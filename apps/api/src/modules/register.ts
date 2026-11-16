@@ -25,7 +25,7 @@ import { payHandler, pollPaymentIntent, registerPaymentJobs } from './payments';
 import { pollDisbursement } from './payouts/withdrawals.service';
 import { registerCampayRechecks } from './providers';
 import { withdrawHandler, registerDisbursementJobs, registerPayoutJobs } from './payouts';
-import { registerCycleJobs, startFirstCycle } from './cycles';
+import { applyRotationChange, currentRotation, registerCycleJobs, startFirstCycle } from './cycles';
 import {
   configuredFeeSchedule,
   decideAdminLoanByVote,
@@ -116,6 +116,8 @@ function registerMoneyLedgerEvents(): void {
     // the governance that needs them stays "not available".
     money: {
       startCycle: startFirstCycle,
+      currentRotation,
+      applyRotationChange,
       feeSchedule: configuredFeeSchedule,
       async decideAdminLoan(tx, input, effects) {
         await decideAdminLoanByVote(tx, input);

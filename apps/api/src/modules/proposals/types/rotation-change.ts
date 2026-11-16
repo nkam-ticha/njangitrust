@@ -3,7 +3,7 @@
 import { validateRotationSwap } from '@njangi/rules';
 import { z } from 'zod';
 import { ui } from '../../../lib/texts';
-import { ledgerEventsPort, moneyPort } from '../governance-ports';
+import { ledgerEventsPort, moneyOperation } from '../governance-ports';
 import { proposalError } from '../proposals.errors';
 import { defineProposal, memberRef, nameOf } from './definition';
 
@@ -21,9 +21,10 @@ export const rotationChange = defineProposal({
   payload,
 
   async plan(ctx, args) {
-    const port = moneyPort();
-    if (!port) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
-    const current = await port.currentRotation(ctx.db, ctx.group.id);
+    const read = moneyOperation('currentRotation');
+    if (!read || !moneyOperation('applyRotationChange'))
+      throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
+    const current = await read(ctx.db, ctx.group.id);
     if (!current) throw proposalError('ROTATION_NOT_STARTED');
     const check = validateRotationSwap({
       rotation: current.rotation,
@@ -55,9 +56,9 @@ export const rotationChange = defineProposal({
   },
 
   async apply(ctx, p) {
-    const port = moneyPort();
-    const current = port ? await port.currentRotation(ctx.tx, ctx.group.id) : null;
-    if (!port || !current) return ui((c) => c.votes.card.effect.none);
+    const change = moneyOperation('applyRotationChange');
+    const current = (await moneyOperation('currentRotation')?.(ctx.tx, ctx.group.id)) ?? null;
+    if (!change || !current) return ui((c) => c.votes.card.effect.none);
     // The rotation may have moved on since the vote opened: re-check, and change nothing if invalid.
     const check = validateRotationSwap({
       rotation: current.rotation,
@@ -66,7 +67,7 @@ export const rotationChange = defineProposal({
       second: p.swap[1],
     });
     if (!check.ok) return ui((c) => c.votes.card.effect.none);
-    await port.applyRotationChange(ctx.tx, {
+    await change(ctx.tx, {
       groupId: ctx.group.id,
       newOrder: check.newOrder,
       proposalId: ctx.proposal.id,
