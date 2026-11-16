@@ -130,7 +130,7 @@ const DATE_WITH_TIME = new RegExp(
 /** Digits directly before a position, possibly through up to three separators (a list comma does not count). */
 const DIGIT_CHAIN_BEFORE = /\d[^\p{L}\p{N},;]{0,3}$/u;
 /** The start of a number just before a position, joined across any separators, commas included. */
-const NUMBER_START_BEFORE = /6\d{3,7}[^\p{L}\p{N}]{0,3}$/u;
+const NUMBER_START_BEFORE = /6\d{2,7}[^\p{L}\p{N}]{0,3}$/u;
 /** Eight or more digits right after a position, through up to three separators between them. */
 const NUMBER_BODY_AFTER = /^[^\p{L}\p{N}]{0,3}\d(?:[^\p{L}\p{N}]{0,3}\d){7}/u;
 

@@ -142,6 +142,7 @@ describe('looksLikePhoneNumber: member text with a number in any disguise (priva
     ['699 12 34 56 F', 'a number with a trailing unit letter'],
     ['699, 12, 34, 56 FCFA', 'a number split by commas'],
     ['677 123 456 16/11/2026 18:00', 'a number written before a date'],
+    ['677,1/2/2026', 'a number whose last digits are written as a date after a comma'],
     ['677 123 45 6/11/2026 18:00', 'a number whose last digit sits next to a date'],
     ['6/5/2026 677 123 456', 'a number written after a date'],
     ['600 000, 250 000', 'bare amounts without a unit'],

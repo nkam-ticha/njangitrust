@@ -1,6 +1,7 @@
 // Socket.IO events (spec 2.8). Rooms: `group:<id>` and `user:<id>`; a client joins only rooms it
 // is authorised for. The access token goes in the handshake: `io(url, { auth: { token } })`.
-import type { MessageDto } from './chat';
+import type { AgentServerEvents } from './agent';
+import type { ChatMessageDto } from './chat-messages';
 import type { NotificationDto } from './notifications';
 import type { PendingActionDto } from './pending-actions';
 import type { ProposalDto } from './proposals';
@@ -22,8 +23,8 @@ export interface ProposalUpdatedPayload {
   tally: ProposalDto['tally'];
 }
 
-export interface ServerToClientEvents {
-  'message.created': (message: MessageDto) => void;
+export interface ServerToClientEvents extends AgentServerEvents {
+  'message.created': (message: ChatMessageDto) => void;
   'message.deleted': (payload: { id: string; groupId: string }) => void;
   'message.hidden': (payload: { id: string; groupId: string }) => void;
   'proposal.updated': (payload: ProposalUpdatedPayload) => void;
@@ -53,5 +54,6 @@ export const REALTIME_EVENTS = [
   'notification.created',
   'pendingAction.updated',
   'agent.delta',
+  'agent.activity',
   'agent.done',
 ] as const;
