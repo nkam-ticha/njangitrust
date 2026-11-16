@@ -1,0 +1,16 @@
+{
+  "name": "@njangi/agent-eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Runs the 30 scenarios of spec 5.4 against the agent Njangi, three times each.",
+  "scripts": {
+    "eval": "tsx --env-file=../../apps/api/.env src/cli.ts",
+    "smoke": "tsx src/smoke.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@njangi/shared": "workspace:*"
+  }
+}
