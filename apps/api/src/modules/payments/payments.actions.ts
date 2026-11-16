@@ -56,6 +56,7 @@ export const payHandler = defineActionHandler({
       obligationIds: a.obligationIds,
       phone: fresh.phone,
       amount: fresh.prepared.total,
+      parts: fresh.prepared.parts,
       provider: getEnv().PAYMENT_PROVIDER,
     });
     ctx.afterCommit(() => submitPaymentIntent(intent.id));

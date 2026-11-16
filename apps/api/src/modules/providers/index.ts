@@ -1,4 +1,5 @@
 export type { PaymentProvider, ProviderStatus } from './payment-provider';
+export { isSendClaim, providerRefused, sendClaim } from './payment-provider';
 export { MockProvider } from './mock-provider';
 
 import { getEnv } from '../../config/env';
@@ -48,6 +49,12 @@ export function getPaymentProvider(): PaymentProvider {
     });
   }
   return provider;
+}
+
+/** Tests only: a provider double (a lost answer, a refusal). */
+export function setPaymentProviderForTests(next: PaymentProvider): void {
+  if (process.env.NODE_ENV !== 'test') throw new Error('test only');
+  provider = next;
 }
 
 export function resetPaymentProviderForTests(): void {

@@ -130,6 +130,9 @@ model PaymentIntent {
   membershipId  String        @db.Uuid
   membership    Membership    @relation(fields: [membershipId], references: [id], onDelete: Restrict)
   obligationIds String[]      @db.Uuid
+  /// What the member was charged per obligation when the card was confirmed: `[{ ref, amount,
+  /// feeCharged? }]` (D22.2: a correction debt carries its collection fee). Settlement books these.
+  parts         Json?
   amount        Int
   /// E.164 number used for this operation (R13.3: operations in progress keep the old number).
   phoneSnapshot String

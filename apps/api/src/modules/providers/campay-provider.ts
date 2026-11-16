@@ -21,11 +21,19 @@ export interface CampayConfig {
 
 /** A refusal or failure of a CamPay call. Carries a code only: never a body, number or token. */
 export class CampayError extends Error {
+  readonly refused: boolean;
+
   constructor(
     readonly code: string,
     readonly httpStatus: number | null,
   ) {
     super(`CamPay ${code}`);
+    // A 4xx answer (other than an authentication, timeout or rate-limit one) or a value we
+    // refused to send: nothing was started. A timeout or a 5xx leaves the outcome unknown.
+    this.refused =
+      httpStatus === null
+        ? code === 'INVALID_PHONE' || code === 'INVALID_AMOUNT'
+        : httpStatus >= 400 && httpStatus < 500 && ![401, 408, 429].includes(httpStatus);
     this.name = 'CampayError';
   }
 }

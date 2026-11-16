@@ -21,7 +21,7 @@ import { ui } from '../../lib/texts';
 import { authorizeGroup, type AuthActor } from '../../permissions';
 import { appendLedgerEntry } from '../ledger';
 import { completePendingAction, createPendingAction, type ActionOrigin } from '../pending-actions';
-import { getPaymentProvider } from '../providers';
+import { getPaymentProvider, isSendClaim, providerRefused, sendClaim } from '../providers';
 import { dispatchJob } from '../../jobs/dispatch';
 import { settleDueDebts } from './payouts.settlement';
 import { payoutError } from './payouts.errors';
@@ -369,7 +369,15 @@ export async function createLoanDisbursement(
 export async function submitDisbursement(id: string): Promise<void> {
   const db = getPrisma();
   const row = await db.disbursement.findUnique({ where: { id } });
-  if (!row || row.status !== 'CREATED') return;
+  if (!row || row.status !== 'CREATED' || row.providerRef) return;
+  // Rule 8: money is sent once. The row is claimed first, so a second run of this job never
+  // reaches the operator, and a send whose answer was lost is never repeated blindly.
+  const claim = sendClaim();
+  const claimed = await db.disbursement.updateMany({
+    where: { id, status: 'CREATED', providerRef: null },
+    data: { providerRef: claim },
+  });
+  if (claimed.count !== 1) return;
   try {
     const started = await getPaymentProvider().disburse({
       amount: row.amount,
@@ -378,12 +386,21 @@ export async function submitDisbursement(id: string): Promise<void> {
       description: `NjangiTrust withdrawal ${row.id}`,
     });
     await db.disbursement.updateMany({
-      where: { id, status: 'CREATED' },
+      where: { id, providerRef: claim },
       data: { providerRef: started.providerRef, status: 'PENDING' },
     });
     await scheduleDisbursementPoll(id, 5_000);
-  } catch {
-    await scheduleDisbursementPoll(id, 30_000);
+  } catch (error) {
+    if (providerRefused(error)) {
+      // The operator said no before sending anything: the money goes back to the member.
+      await returnFailedDisbursement(id);
+      return;
+    }
+    log.error(
+      { disbursementId: id, errorName: error instanceof Error ? error.name : 'Error' },
+      'send requested but its answer was lost; not sent again, needs a check with the operator',
+    );
+    await scheduleDisbursementPoll(id, 10 * 60_000);
   }
 }
 
@@ -393,6 +410,14 @@ export async function pollDisbursement(id: string): Promise<void> {
   if (!row || !['CREATED', 'PENDING', 'EXPIRED'].includes(row.status)) return;
   if (!row.providerRef) {
     await submitDisbursement(id);
+    return;
+  }
+  if (isSendClaim(row.providerRef)) {
+    // Sent, answer lost: the money stays in flight (never sent twice) until a manual check.
+    await db.disbursement.updateMany({
+      where: { id, status: 'CREATED' },
+      data: { status: 'EXPIRED' },
+    });
     return;
   }
   let providerStatus: Awaited<

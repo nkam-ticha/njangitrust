@@ -17,7 +17,7 @@ import { scheduleFee } from '@njangi/rules';
 import { appendLedgerEntry } from '../ledger';
 import { authorizeGroup, type AuthActor } from '../../permissions';
 import { completePendingAction, createPendingAction, type ActionOrigin } from '../pending-actions';
-import { getPaymentProvider } from '../providers';
+import { getPaymentProvider, isSendClaim, providerRefused, sendClaim } from '../providers';
 import { paymentError } from './payments.errors';
 import { markLoanRepaidWhenClear } from '../loans';
 import { settleDueDebts } from '../payouts/payouts.settlement';
@@ -156,6 +156,8 @@ export async function createPaymentIntent(
     phone: string;
     amount: number;
     provider: string;
+    /** The priced parts of the card (rules `preparePayment`). */
+    parts: readonly { ref?: string; amount: number; feeCharged?: number }[];
   },
 ) {
   const id = randomUUID();
@@ -165,6 +167,13 @@ export async function createPaymentIntent(
       groupId: input.groupId,
       membershipId: input.membershipId,
       obligationIds: input.obligationIds,
+      parts: input.parts
+        .flatMap((part) => (part.ref ? [part] : []))
+        .map((part) => ({
+          ref: part.ref,
+          amount: part.amount,
+          ...(part.feeCharged ? { feeCharged: part.feeCharged } : {}),
+        })),
       amount: input.amount,
       phoneSnapshot: input.phone,
       provider: input.provider,
@@ -174,8 +183,17 @@ export async function createPaymentIntent(
 }
 
 export async function submitPaymentIntent(id: string): Promise<void> {
-  const intent = await getPrisma().paymentIntent.findUnique({ where: { id } });
-  if (!intent || intent.status !== 'CREATED') return;
+  const db = getPrisma();
+  const intent = await db.paymentIntent.findUnique({ where: { id } });
+  if (!intent || intent.status !== 'CREATED' || intent.providerRef) return;
+  // Rule 8: the request is sent once. The row is claimed first, so a second run of this job never
+  // reaches the operator, and a request whose answer was lost is never repeated blindly.
+  const claim = sendClaim();
+  const claimed = await db.paymentIntent.updateMany({
+    where: { id, status: 'CREATED', providerRef: null },
+    data: { providerRef: claim },
+  });
+  if (claimed.count !== 1) return;
   try {
     const result = await getPaymentProvider().requestPayment({
       amount: intent.amount,
@@ -183,18 +201,46 @@ export async function submitPaymentIntent(id: string): Promise<void> {
       externalRef: intent.id,
       description: `NjangiTrust payment ${intent.id}`,
     });
-    await getPrisma().paymentIntent.updateMany({
-      where: { id, status: 'CREATED' },
+    await db.paymentIntent.updateMany({
+      where: { id, providerRef: claim },
       data: { providerRef: result.providerRef, status: 'PENDING' },
     });
     await schedulePaymentPoll(id, 5_000);
   } catch (error) {
-    log.warn(
+    if (providerRefused(error)) {
+      // The operator said no before taking anything: the payment has failed.
+      await failPaymentIntent(id);
+      return;
+    }
+    log.error(
       { paymentIntentId: id, errorName: error instanceof Error ? error.name : 'Error' },
-      'provider collection request failed; retrying with the same idempotency reference',
+      'collection request sent but its answer was lost; not sent again, needs a check with the operator',
     );
-    await schedulePaymentPoll(id, 10_000);
+    await schedulePaymentPoll(id, 10 * 60_000);
   }
+}
+
+/** The operator refused or failed the collection: nothing is paid, the member is told. */
+async function failPaymentIntent(id: string): Promise<void> {
+  const db = getPrisma();
+  const changed = await db.paymentIntent.updateMany({
+    where: { id, status: { in: ['CREATED', 'PENDING', 'EXPIRED'] } },
+    data: { status: 'FAILED' },
+  });
+  if (changed.count !== 1) return;
+  const action = await db.pendingAction.findFirst({
+    where: { resultRef: id, status: 'CONFIRMED' },
+    select: { id: true },
+  });
+  if (action)
+    await completePendingAction(action.id, {
+      status: 'FAILED',
+      failureCode: 'PAYMENT_REQUEST_FAILED',
+      failureText: {
+        fr: 'Paiement refusé par l’opérateur. Vérifie ton solde puis réessaie.',
+        en: 'The operator declined the payment. Check your balance and try again.',
+      },
+    });
 }
 
 export async function pollPaymentIntent(id: string): Promise<void> {
@@ -203,6 +249,14 @@ export async function pollPaymentIntent(id: string): Promise<void> {
   if (!intent || !['CREATED', 'PENDING', 'EXPIRED'].includes(intent.status)) return;
   if (!intent.providerRef) {
     await submitPaymentIntent(id);
+    return;
+  }
+  if (isSendClaim(intent.providerRef)) {
+    // Sent, answer lost: it stays reserved (never asked twice) and is marked for a manual check.
+    await db.paymentIntent.updateMany({
+      where: { id, status: 'CREATED' },
+      data: { status: 'EXPIRED' },
+    });
     return;
   }
   let status: Awaited<ReturnType<ReturnType<typeof getPaymentProvider>['getPaymentStatus']>>;
@@ -309,6 +363,8 @@ async function settleSuccessfulPayment(
             feeSource: 'SCHEDULE' as const,
           }
         : { fee: providerResult.fee, feeSource: 'PROVIDER' as const };
+    // The amounts are those of the confirmed card (a correction debt includes its fee, D22.2).
+    const priced = pricedPartsOf(intent.parts);
     const parts = obligations.map((o) => ({
       kind:
         o.kind === 'CONTRIBUTION'
@@ -318,7 +374,8 @@ async function settleSuccessfulPayment(
             : o.kind === 'SHORTFALL_SHARE'
               ? ('SHORTFALL' as const)
               : ('DEBT' as const),
-      amount: o.amount,
+      amount: priced.get(o.id)?.amount ?? o.amount,
+      ...(priced.get(o.id)?.feeCharged ? { feeCharged: priced.get(o.id)!.feeCharged! } : {}),
       roundId: o.kind === 'CONTRIBUTION' ? o.roundId : null,
       creditorMembershipId: o.kind === 'SHORTFALL_SHARE' ? o.creditorMembershipId : null,
       ref: o.id,
@@ -442,6 +499,22 @@ export async function pendingActionResult(intentId: string) {
     where: { id: intentId },
     select: { status: true },
   });
+}
+
+/** The stored card amounts of a payment by obligation id; empty for a payment made before them. */
+function pricedPartsOf(stored: unknown): Map<string, { amount: number; feeCharged?: number }> {
+  const priced = new Map<string, { amount: number; feeCharged?: number }>();
+  if (!Array.isArray(stored)) return priced;
+  for (const value of stored) {
+    if (!value || typeof value !== 'object') continue;
+    const part = value as Record<string, unknown>;
+    if (typeof part.ref !== 'string' || !Number.isSafeInteger(part.amount)) continue;
+    priced.set(part.ref, {
+      amount: part.amount as number,
+      ...(Number.isSafeInteger(part.feeCharged) ? { feeCharged: part.feeCharged as number } : {}),
+    });
+  }
+  return priced;
 }
 
 /** What the member owes in the group today, oldest first: the choices of a payment (spec 2.6). */
