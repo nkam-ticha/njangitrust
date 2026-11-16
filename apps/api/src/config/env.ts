@@ -31,6 +31,9 @@ function isBareOrigin(value: string): boolean {
 const feeScheduleSchema = z.strictObject({
   collection: z.number().int().min(0),
   disbursement: z.number().int().min(0),
+  /** Per-thousand part of the fee, on top of the fixed part (CamPay: 20 collection, 15 withdrawal). */
+  collectionPermille: z.number().int().min(0).max(1000).default(0),
+  disbursementPermille: z.number().int().min(0).max(1000).default(0),
 });
 
 const schema = z

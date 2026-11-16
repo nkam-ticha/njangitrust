@@ -39,7 +39,16 @@ async function mockSettledBalance(providerAccount: string): Promise<number> {
 export function getPaymentProvider(): PaymentProvider {
   if (provider) return provider;
   const env = getEnv();
-  if (env.PAYMENT_PROVIDER === 'mock') provider = new MockProvider(mockSettledBalance);
+  if (env.PAYMENT_PROVIDER === 'mock')
+    provider = new MockProvider(mockSettledBalance, () => {
+      const fees = getEnv().FEE_SCHEDULE;
+      return {
+        collection: [{ upTo: null, fixed: fees.collection, ratePermille: fees.collectionPermille }],
+        disbursement: [
+          { upTo: null, fixed: fees.disbursement, ratePermille: fees.disbursementPermille },
+        ],
+      };
+    });
   else {
     provider = new CampayProvider({
       baseUrl: CAMPAY_BASE_URLS[env.CAMPAY_ENV],

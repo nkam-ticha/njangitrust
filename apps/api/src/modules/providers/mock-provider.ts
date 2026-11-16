@@ -2,7 +2,7 @@
 // request that starts an operation and the job that checks it run in different processes, so the
 // reference itself carries what the status needs (kind, outcome, start time, amount). The balance
 // is read through `settledBalance`, which the module wires to the operations already settled.
-import { MOCK_FEE_SCHEDULE, scheduleFee } from '@njangi/rules';
+import { MOCK_FEE_SCHEDULE, scheduleFee, type FeeSchedule } from '@njangi/rules';
 import { clock } from '../../lib/clock';
 import type { PaymentProvider, ProviderStatus } from './payment-provider';
 
@@ -68,6 +68,8 @@ export class MockProvider implements PaymentProvider {
   constructor(
     private readonly settledBalance: (providerAccount: string) => Promise<number> = () =>
       Promise.resolve(0),
+    /** The fees this operator charges: the app's configured schedule, so estimates match. */
+    private readonly fees: () => FeeSchedule = () => MOCK_FEE_SCHEDULE,
   ) {}
 
   requestPayment(input: Parameters<PaymentProvider['requestPayment']>[0]) {
@@ -84,7 +86,7 @@ export class MockProvider implements PaymentProvider {
         ? {
             operator: operation.operator,
             operatorRef: providerRef,
-            fee: scheduleFee(MOCK_FEE_SCHEDULE, 'COLLECTION', operation.amount),
+            fee: scheduleFee(this.fees(), 'COLLECTION', operation.amount),
           }
         : {}),
     });
@@ -104,7 +106,7 @@ export class MockProvider implements PaymentProvider {
     return Promise.resolve({
       status,
       ...(status === 'SUCCESSFUL'
-        ? { fee: scheduleFee(MOCK_FEE_SCHEDULE, 'DISBURSEMENT', operation.amount) }
+        ? { fee: scheduleFee(this.fees(), 'DISBURSEMENT', operation.amount) }
         : {}),
     });
   }

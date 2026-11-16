@@ -20,8 +20,12 @@ import { loanError } from './loans.errors';
 export const configuredFeeSchedule = (): FeeSchedule => {
   const configured = getEnv().FEE_SCHEDULE;
   return {
-    collection: [{ upTo: null, fixed: configured.collection, ratePermille: 0 }],
-    disbursement: [{ upTo: null, fixed: configured.disbursement, ratePermille: 0 }],
+    collection: [
+      { upTo: null, fixed: configured.collection, ratePermille: configured.collectionPermille },
+    ],
+    disbursement: [
+      { upTo: null, fixed: configured.disbursement, ratePermille: configured.disbursementPermille },
+    ],
   };
 };
 

@@ -19,7 +19,12 @@ describe('environment (spec 2.16)', () => {
     expect(env.APP_TIMEZONE).toBe('Africa/Douala');
     expect(env.PUBLIC_APP_URL).toBeUndefined();
     expect(env.WEB_ORIGINS).toEqual(['http://localhost:8081', 'https://app.example.com']);
-    expect(env.FEE_SCHEDULE).toEqual({ collection: 100, disbursement: 500 });
+    expect(env.FEE_SCHEDULE).toEqual({
+      collection: 100,
+      disbursement: 500,
+      collectionPermille: 0,
+      disbursementPermille: 0,
+    });
   });
 
   it('fails fast, naming every bad variable but never printing a value', () => {
@@ -101,5 +106,31 @@ describe('environment (spec 2.16)', () => {
     expect(listenHost({ NODE_ENV: 'production', HOST: undefined })).toBe('127.0.0.1');
     expect(listenHost({ NODE_ENV: 'production', HOST: '0.0.0.0' })).toBe('0.0.0.0');
     expect(listenHost(parseEnv({ ...valid, HOST: ' 127.0.0.1 ' }))).toBe('127.0.0.1');
+  });
+});
+
+describe('FEE_SCHEDULE with a per-thousand part', () => {
+  it('keeps fixed-only schedules working and accepts percentages', () => {
+    expect(parseEnv({ ...valid }).FEE_SCHEDULE).toMatchObject({
+      collectionPermille: 0,
+      disbursementPermille: 0,
+    });
+    const campay = parseEnv({
+      ...valid,
+      FEE_SCHEDULE:
+        '{"collection":0,"disbursement":0,"collectionPermille":20,"disbursementPermille":15}',
+    }).FEE_SCHEDULE;
+    expect(campay).toEqual({
+      collection: 0,
+      disbursement: 0,
+      collectionPermille: 20,
+      disbursementPermille: 15,
+    });
+    expect(() =>
+      parseEnv({
+        ...valid,
+        FEE_SCHEDULE: '{"collection":0,"disbursement":0,"collectionPermille":2.5}',
+      }),
+    ).toThrow();
   });
 });

@@ -154,8 +154,12 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
   }
   const configured = getEnv().FEE_SCHEDULE;
   const feeSchedule = {
-    collection: [{ upTo: null, fixed: configured.collection, ratePermille: 0 }],
-    disbursement: [{ upTo: null, fixed: configured.disbursement, ratePermille: 0 }],
+    collection: [
+      { upTo: null, fixed: configured.collection, ratePermille: configured.collectionPermille },
+    ],
+    disbursement: [
+      { upTo: null, fixed: configured.disbursement, ratePermille: configured.disbursementPermille },
+    ],
   };
   const breakdown = payoutBreakdown({ contributions, deductions, withdrawals, feeSchedule });
   const holds = round.obligations.filter(

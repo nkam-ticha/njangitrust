@@ -27,8 +27,8 @@ const log = componentLogger('payments');
 function feeSchedule() {
   const raw = getEnv().FEE_SCHEDULE;
   return {
-    collection: [{ upTo: null, fixed: raw.collection, ratePermille: 0 }],
-    disbursement: [{ upTo: null, fixed: raw.disbursement, ratePermille: 0 }],
+    collection: [{ upTo: null, fixed: raw.collection, ratePermille: raw.collectionPermille }],
+    disbursement: [{ upTo: null, fixed: raw.disbursement, ratePermille: raw.disbursementPermille }],
   };
 }
 
