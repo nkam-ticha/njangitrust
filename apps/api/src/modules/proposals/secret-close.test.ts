@@ -8,6 +8,7 @@ import { getJobDefinition } from '../../jobs/registry';
 import { hashPhone } from '../../lib/crypto';
 import { getPrisma } from '../../lib/prisma';
 import { recordRealtimeEvents, stopRecording, type RecordedEvent } from '../../realtime/emitter';
+import { testApp } from '../../../test/helpers/app';
 import { api, type TestUser } from '../../../test/helpers/client';
 import {
   addMember,
@@ -27,6 +28,8 @@ const ledger: LedgerEventInput[] = [];
 let events: RecordedEvent[] = [];
 
 beforeAll(() => {
+  // The app registers the real ledger port when it is created: create it first.
+  testApp();
   registerGovernancePorts({
     ledgerEvents: { appendEvent: (_tx, e) => Promise.resolve(void ledger.push(e)) },
   });

@@ -1,6 +1,7 @@
 // A recording stand-in for the money modules' governance port, until the real one exists. It
 // keeps a rotation per group and records every call, so tests can check what governance asked for.
 import { MOCK_FEE_SCHEDULE } from '@njangi/rules';
+import { testApp } from './app';
 import type {
   FineDescription,
   LedgerEventInput,
@@ -21,6 +22,8 @@ export interface FakeMoney {
 }
 
 export function installFakeMoney(): FakeMoney {
+  // The app registers the real ports when it is created: create it first so the fake replaces them.
+  testApp();
   const fake: FakeMoney = {
     calls: [],
     ledger: [],

@@ -71,6 +71,10 @@ const schema = z
     PAYMENT_PROVIDER: z.enum(['mock', 'campay']).default('mock'),
     CAMPAY_USERNAME: optionalString,
     CAMPAY_PASSWORD: optionalString,
+    /** The app's permanent access token (CamPay dashboard), used instead of username/password. */
+    CAMPAY_ACCESS_TOKEN: optionalString,
+    /** Checks the signature of CamPay's callbacks. */
+    CAMPAY_WEBHOOK_KEY: optionalString,
     CAMPAY_ENV: z.enum(['DEV', 'PROD']).default('DEV'),
     FEE_SCHEDULE: z
       .string()
@@ -92,6 +96,10 @@ const schema = z
     OPENROUTER_API_KEY: optionalString,
     OPENROUTER_MODEL: optionalString,
     OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
+    /** Spec 4.11: a short first call picks the tool categories. Off unless the model needs it. */
+    AGENT_TOOL_ROUTING: z.enum(['on', 'off']).default('off'),
+    /** Set by tools/agent-eval for its own process only; refused in production (below). */
+    NJANGI_AGENT_EVAL: z.enum(['scripted', 'live']).optional(),
 
     APP_TIMEZONE: z.literal('Africa/Douala').default('Africa/Douala'),
     /** Public mobile/web application origin for links that must open an app route. Falls back to
@@ -148,21 +156,41 @@ const schema = z
       }
     }
     if (env.STORAGE_DRIVER === 'supabase') {
-      for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_STORAGE_BUCKET'] as const) {
-        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'is required with STORAGE_DRIVER=supabase' });
-      }
-    }
-    if (env.NODE_ENV === 'production' && !env.CRON_SECRET) {
-      ctx.addIssue({ code: 'custom', path: ['CRON_SECRET'], message: 'is required in production for Vercel Cron' });
-    }
-    if (env.PAYMENT_PROVIDER === 'campay') {
-      for (const key of ['CAMPAY_USERNAME', 'CAMPAY_PASSWORD'] as const) {
+      for (const key of [
+        'SUPABASE_URL',
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'SUPABASE_STORAGE_BUCKET',
+      ] as const) {
         if (!env[key])
           ctx.addIssue({
             code: 'custom',
             path: [key],
-            message: 'is required with PAYMENT_PROVIDER=campay',
+            message: 'is required with STORAGE_DRIVER=supabase',
           });
+      }
+    }
+    if (env.NODE_ENV === 'production' && env.NJANGI_AGENT_EVAL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['NJANGI_AGENT_EVAL'],
+        message: 'is not allowed in production',
+      });
+    }
+    if (env.NODE_ENV === 'production' && !env.CRON_SECRET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CRON_SECRET'],
+        message: 'is required in production for Vercel Cron',
+      });
+    }
+    if (env.PAYMENT_PROVIDER === 'campay') {
+      if (!env.CAMPAY_ACCESS_TOKEN && !(env.CAMPAY_USERNAME && env.CAMPAY_PASSWORD)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CAMPAY_ACCESS_TOKEN'],
+          message:
+            'PAYMENT_PROVIDER=campay needs CAMPAY_ACCESS_TOKEN, or CAMPAY_USERNAME and CAMPAY_PASSWORD',
+        });
       }
     }
     if (env.NODE_ENV === 'production') {

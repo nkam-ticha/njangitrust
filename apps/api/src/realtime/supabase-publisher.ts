@@ -1,10 +1,18 @@
+import { componentLogger } from '../lib/logger';
+
+const log = componentLogger('realtime');
+
 /** Server-side publisher for Supabase Realtime private Broadcast channels. */
 export class SupabaseRealtimePublisher {
   private readonly endpoint: string;
 
   constructor(private readonly config: { url: string; serviceRoleKey: string }) {
     const base = new URL(config.url);
-    if (base.protocol !== 'https:' && base.hostname !== 'localhost' && base.hostname !== '127.0.0.1') {
+    if (
+      base.protocol !== 'https:' &&
+      base.hostname !== 'localhost' &&
+      base.hostname !== '127.0.0.1'
+    ) {
       throw new Error('Supabase Realtime requires HTTPS outside localhost');
     }
     if (!config.serviceRoleKey.trim()) throw new Error('Supabase server key is required');
@@ -27,10 +35,13 @@ export class SupabaseRealtimePublisher {
       });
       if (!response.ok) {
         // Do not log response bodies: provider errors can contain operational details.
-        console.error(`Supabase Realtime broadcast failed (${response.status})`);
+        log.error({ status: response.status }, 'Supabase Realtime broadcast failed');
       }
     } catch (error) {
-      console.error('Supabase Realtime broadcast failed', error instanceof Error ? error.message : 'unknown error');
+      log.error(
+        { errorName: error instanceof Error ? error.name : 'Error' },
+        'Supabase Realtime broadcast failed',
+      );
     }
   }
 }

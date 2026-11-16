@@ -3,6 +3,8 @@
 // this module are "opened" (sealed args and previews decrypted) and must never be stored back.
 import type { Lang } from '@njangi/shared';
 import { actionPreviewSchema } from '@njangi/shared/contracts/pending-actions';
+import type { PendingActionUpdatedPayload } from '@njangi/shared/contracts/realtime';
+import { trackPendingWork } from '../../lib/pending-work';
 import { clock } from '../../lib/clock';
 import { getPrisma, type PendingAction } from '../../lib/prisma';
 import { authorizeOwner } from '../../permissions';
@@ -27,7 +29,24 @@ export interface CreateActionInput {
 
 /** `pendingAction.updated` to the owner's room (status and result only, never args). */
 export function announce(action: PendingAction): void {
-  emitToUser(action.userId, 'pendingAction.updated', toPendingActionUpdate(action));
+  const update = toPendingActionUpdate(action);
+  emitToUser(action.userId, 'pendingAction.updated', update);
+  // Tracked like a broadcast: the request waits for it before a serverless function is frozen.
+  if (announceListener) trackPendingWork(Promise.resolve(announceListener(action.userId, update)));
+}
+
+type AnnounceListener = (
+  userId: string,
+  update: PendingActionUpdatedPayload,
+) => Promise<void> | void;
+let announceListener: AnnounceListener | null = null;
+
+/**
+ * Start-up: one listener hears every `pendingAction.updated` (the agent, which then tells the
+ * member the result, spec 4.5 step 5). A hook, so this module never imports the agent.
+ */
+export function onPendingActionAnnounced(listener: AnnounceListener | null): void {
+  announceListener = listener;
 }
 
 async function reload(id: string): Promise<PendingAction> {

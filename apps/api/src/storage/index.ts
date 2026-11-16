@@ -10,21 +10,26 @@ let instance: StorageProvider | undefined;
 export function getStorage(): StorageProvider {
   if (!instance) {
     const env = getEnv();
-    instance = env.STORAGE_DRIVER === 'supabase'
-      ? new SupabaseStorage({
-          projectUrl: env.SUPABASE_URL!,
-          serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY!,
-          bucket: env.SUPABASE_STORAGE_BUCKET!,
-        })
-      : env.STORAGE_DRIVER === 's3'
-        ? new S3Storage({
-            endpoint: env.S3_ENDPOINT,
-            region: env.S3_REGION,
-            bucket: env.S3_BUCKET!,
-            accessKey: env.S3_ACCESS_KEY!,
-            secretKey: env.S3_SECRET_KEY!,
+    instance =
+      env.STORAGE_DRIVER === 'supabase'
+        ? new SupabaseStorage({
+            projectUrl: env.SUPABASE_URL!,
+            serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY!,
+            bucket: env.SUPABASE_STORAGE_BUCKET!,
           })
-        : new LocalStorage(env.STORAGE_LOCAL_DIR, env.STORAGE_SIGNING_SECRET!, env.PUBLIC_BASE_URL);
+        : env.STORAGE_DRIVER === 's3'
+          ? new S3Storage({
+              endpoint: env.S3_ENDPOINT,
+              region: env.S3_REGION,
+              bucket: env.S3_BUCKET!,
+              accessKey: env.S3_ACCESS_KEY!,
+              secretKey: env.S3_SECRET_KEY!,
+            })
+          : new LocalStorage(
+              env.STORAGE_LOCAL_DIR,
+              env.STORAGE_SIGNING_SECRET!,
+              env.PUBLIC_BASE_URL,
+            );
   }
   return instance;
 }

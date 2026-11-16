@@ -9,7 +9,7 @@ import { ui } from '../../lib/texts';
 import { authorizeGroup } from '../../permissions';
 import { audit } from '../audit';
 import { defineActionHandler } from '../pending-actions';
-import { moneyPort } from '../proposals';
+import { moneyOperation } from '../proposals';
 
 const cycleError = defineErrors({
   CYCLE_ALREADY_STARTED: { status: 409, text: groupErrorTexts.CYCLE_ALREADY_STARTED },
@@ -73,9 +73,9 @@ export const startCycleHandler = defineActionHandler({
 
   async execute(ctx, a) {
     await check(ctx.db, ctx.userId, a.groupId);
-    const port = moneyPort();
-    if (!port) throw cycleError('CYCLE_START_UNAVAILABLE');
-    const started = await port.startCycle(ctx.db, {
+    const startCycle = moneyOperation('startCycle');
+    if (!startCycle) throw cycleError('CYCLE_START_UNAVAILABLE');
+    const started = await startCycle(ctx.db, {
       groupId: a.groupId,
       startedByUserId: ctx.userId,
     });

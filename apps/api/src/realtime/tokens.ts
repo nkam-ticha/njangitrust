@@ -13,7 +13,7 @@ export async function signRealtimeToken(input: {
 }): Promise<{ token: string; expiresAt: Date }> {
   const issuedAt = Math.floor(clock.nowMs() / 1000);
   const expiresAtSeconds = issuedAt + REALTIME_TOKEN_TTL_SECONDS;
-  const secret = new TextEncoder().encode(getEnv().SUPABASE_JWT_SECRET!);
+  const secret = new TextEncoder().encode(getEnv().SUPABASE_JWT_SECRET);
   const token = await new SignJWT({ role: 'authenticated', sid: input.sessionId })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(input.userId)

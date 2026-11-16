@@ -50,16 +50,20 @@ export function authRoutes(): Router {
     }),
   );
 
-  router.get('/realtime-token', requireAuth(), handle({}, async (_input, req, res) => {
-    const actor = actorOf(req);
-    const token = await signRealtimeToken(actor);
-    res.json({
-      token: token.token,
-      expiresAt: token.expiresAt.toISOString(),
-      userId: actor.userId,
-      sessionId: actor.sessionId,
-    });
-  }));
+  router.get(
+    '/realtime-token',
+    requireAuth(),
+    handle({}, async (_input, req, res) => {
+      const actor = actorOf(req);
+      const token = await signRealtimeToken(actor);
+      res.json({
+        token: token.token,
+        expiresAt: token.expiresAt.toISOString(),
+        userId: actor.userId,
+        sessionId: actor.sessionId,
+      });
+    }),
+  );
 
   router.post(
     '/login',

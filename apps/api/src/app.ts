@@ -11,8 +11,11 @@ import { floodLimits, rateLimit } from './http/rate-limit';
 import { requestId } from './http/request-id';
 import { v1Router } from './http/router';
 import { securityHeaders } from './http/security-headers';
+import { settleBeforeResponse } from './http/settle';
+import { agentHealth } from './agent';
 import { getPrisma } from './lib/prisma';
 import { registerActionHandlers, registerJobs } from './modules/register';
+import { campayWebhookRoutes } from './modules/providers';
 import { getStorage, LocalStorage, LOCAL_STORAGE_ROUTE } from './storage';
 import { localStorageRoutes } from './storage/local.routes';
 import { attachSupabaseRealtimePublisher } from './realtime/emitter';
@@ -39,6 +42,7 @@ export function createApp(): Express {
   app.set('query parser', 'simple');
 
   app.use(requestId());
+  app.use(settleBeforeResponse());
   app.use(accessLog());
   app.use(securityHeaders({ production: env.NODE_ENV === 'production' }));
   app.use(cors(env.WEB_ORIGINS));
@@ -50,12 +54,16 @@ export function createApp(): Express {
     async () => (await getPrisma().$queryRaw<{ ok: number }[]>`SELECT 1 AS ok`).length === 1,
   );
   registerHealthCheck('storage', () => storage.check());
+  // "up" or "not_configured": the app works without the agent, so it never degrades /health.
+  registerHealthCheck('agent', agentHealth);
   app.use('/health', healthRoutes());
   app.use(rateLimit(floodLimits.global));
 
   if (storage instanceof LocalStorage) app.use(LOCAL_STORAGE_ROUTE, localStorageRoutes(storage));
 
   app.use(express.json({ limit: JSON_LIMIT, strict: true, type: 'application/json' }));
+  // Spec 2.6.4: the payment provider's callback (signed; it only triggers a status check).
+  app.use('/webhooks/payments/campay', campayWebhookRoutes());
   app.use('/v1', v1Router());
 
   app.use(notFound());

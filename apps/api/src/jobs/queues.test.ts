@@ -34,7 +34,7 @@ vi.mock('bullmq', () => {
 });
 
 vi.mock('../lib/logger', () => ({
-  componentLogger: () => ({ error: vi.fn(), info: vi.fn() }),
+  componentLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
 vi.mock('../lib/redis', () => ({ getRedis: () => ({}) }));
@@ -57,13 +57,8 @@ describe('job queues', () => {
     state.events.length = 0;
   });
 
-  it('reconciles repeat schedules before workers can claim stale iterations', async () => {
+  it('does not start long-running workers in the serverless queue', async () => {
     await startJobs();
-
-    expect(state.events).toEqual([
-      'queue:maintenance.scan',
-      'schedule:maintenance.scan.hourly',
-      'worker:maintenance.scan',
-    ]);
+    expect(state.events).toEqual([]);
   });
 });

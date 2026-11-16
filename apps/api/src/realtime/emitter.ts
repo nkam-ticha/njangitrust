@@ -2,6 +2,7 @@
 // (unit tests, scripts) events go to an optional recorder instead.
 import type { Server } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@njangi/shared/contracts/realtime';
+import { trackPendingWork } from '../lib/pending-work';
 import { SupabaseRealtimePublisher } from './supabase-publisher';
 
 export type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -51,7 +52,9 @@ export function stopRecording(recorder: RecordedEvent[]): void {
 function emit<E extends EventName>(room: string, event: E, payload: EventPayload<E>): void {
   for (const recorder of recorders) recorder.push({ room, event, payload });
   if (supabasePublisher) {
-    void supabasePublisher.broadcast(room, event, payload);
+    // Each broadcast is an HTTP call: tracked so the request (or the cron run) that caused it
+    // waits for it before a serverless function is frozen (lib/pending-work.ts).
+    trackPendingWork(supabasePublisher.broadcast(room, event, payload));
   }
   if (!io || supabasePublisher) return;
   // Socket.IO's typed emit takes the listener's parameters.

@@ -12,6 +12,8 @@ export {
 export { closeDueProposals, settleProposal } from './proposals.tally';
 export { registerProposalJobs, remindDueVoters, remindVoters } from './proposals.jobs';
 export {
+  ledgerEventsPort,
+  moneyOperation,
   moneyPort,
   registerGovernancePorts,
   type LedgerEventInput,

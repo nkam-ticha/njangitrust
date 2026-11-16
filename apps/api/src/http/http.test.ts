@@ -16,6 +16,8 @@ describe('HTTP foundations', () => {
         redis: 'not_configured',
         storage: 'up',
         provider: 'not_configured',
+        // The agent is optional: without a key it is "not_configured", never "down".
+        agent: 'not_configured',
       },
     });
   });

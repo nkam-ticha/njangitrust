@@ -1,8 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
-    "noCheck": true
+    "types": ["node"]
   },
   "include": ["src", "test", "prisma", "scripts", "prisma.config.ts", "vitest.config.ts"]
 }

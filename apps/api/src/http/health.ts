@@ -5,7 +5,8 @@ import { Router } from 'express';
 import { componentLogger } from '../lib/logger';
 
 export type CheckStatus = 'up' | 'down' | 'not_configured';
-export type HealthCheck = () => Promise<boolean>;
+/** True or false, or a status of its own (an optional part answers "not_configured"). */
+export type HealthCheck = () => Promise<boolean | CheckStatus>;
 
 const log = componentLogger('health');
 const checks = new Map<string, HealthCheck>();
@@ -24,7 +25,9 @@ async function run(name: string): Promise<CheckStatus> {
     const timeout = new Promise<boolean>((resolve) => {
       timer = setTimeout(() => resolve(false), CHECK_TIMEOUT_MS);
     });
-    return (await Promise.race([check(), timeout])) ? 'up' : 'down';
+    const result = await Promise.race([check(), timeout]);
+    if (typeof result === 'string') return result;
+    return result ? 'up' : 'down';
   } catch (error) {
     log.warn({ check: name, err: error }, 'health check failed');
     return 'down';

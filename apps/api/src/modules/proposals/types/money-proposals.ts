@@ -4,10 +4,10 @@ import { formatXAF, type Bilingual } from '@njangi/shared';
 import { textSchema } from '@njangi/shared/contracts/common';
 import { z } from 'zod';
 import { ui } from '../../../lib/texts';
-import { moneyPort } from '../governance-ports';
+import { moneyOperation, moneyPort } from '../governance-ports';
 import { proposalError } from '../proposals.errors';
 import { appliedOn, defineProposal, memberRef, nameOf } from './definition';
-import { assertNoOpenProposalAbout, requireMoneyPort } from './membership-end';
+import { assertNoOpenProposalAbout } from './membership-end';
 
 export function amountText(amount: number): Bilingual {
   return { fr: formatXAF(amount, 'fr'), en: formatXAF(amount, 'en') };
@@ -17,6 +17,13 @@ function port() {
   const p = moneyPort();
   if (!p) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
   return p;
+}
+
+/** The loans module's decision for an ADMIN_LOAN vote. */
+function loans() {
+  const decide = moneyOperation('decideAdminLoan');
+  if (!decide) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
+  return decide;
 }
 
 const adminLoanPayload = z.strictObject({
@@ -33,7 +40,7 @@ export const adminLoan = defineProposal({
   payload: adminLoanPayload,
 
   plan(ctx, args) {
-    requireMoneyPort();
+    loans();
     if (args.membershipId !== ctx.proposer.id || ctx.proposer.role !== 'ADMIN') {
       throw proposalError('ADMIN_LOAN_NOT_PROPOSABLE');
     }
@@ -62,22 +69,32 @@ export const adminLoan = defineProposal({
   },
 
   async apply(ctx, p) {
-    await port().decideAdminLoan(ctx.tx, {
-      groupId: ctx.group.id,
-      loanId: p.loanId,
-      approved: true,
-      proposalId: ctx.proposal.id,
-    });
+    await loans()(
+      ctx.tx,
+      {
+        groupId: ctx.group.id,
+        loanId: p.loanId,
+        approved: true,
+        proposalId: ctx.proposal.id,
+        now: ctx.now,
+      },
+      ctx.effects,
+    );
     return appliedOn(ctx.now);
   },
 
   async onNotPassed(ctx, p) {
-    await moneyPort()?.decideAdminLoan(ctx.tx, {
-      groupId: ctx.group.id,
-      loanId: p.loanId,
-      approved: false,
-      proposalId: ctx.proposal.id,
-    });
+    await moneyOperation('decideAdminLoan')?.(
+      ctx.tx,
+      {
+        groupId: ctx.group.id,
+        loanId: p.loanId,
+        approved: false,
+        proposalId: ctx.proposal.id,
+        now: ctx.now,
+      },
+      ctx.effects,
+    );
   },
 });
 

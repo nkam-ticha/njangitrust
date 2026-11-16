@@ -76,6 +76,11 @@ describe('Socket.IO rooms (spec 2.8)', () => {
       systemText: { fr: 'Bonjour', en: 'Hello' },
       author: null,
       createdAt: new Date(0).toISOString(),
+      attachment: null,
+      replyTo: null,
+      mentions: [],
+      isAnnouncement: false,
+      removed: null,
     });
     await expect(received).resolves.toMatchObject({ groupId });
   });

@@ -92,7 +92,9 @@ export class SupabaseStorage implements StorageProvider {
 
   async stat(key: string): Promise<{ sizeBytes: number } | null> {
     assertStorageKey(key);
-    const response = await this.request(`${this.baseUrl}/object/info/${encodeURIComponent(this.bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`);
+    const response = await this.request(
+      `${this.baseUrl}/object/info/${encodeURIComponent(this.bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`,
+    );
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`Supabase Storage stat failed (${response.status})`);
     const data = (await response.json()) as { metadata?: { size?: unknown }; size?: unknown };
@@ -122,7 +124,9 @@ export class SupabaseStorage implements StorageProvider {
 
   async check(): Promise<boolean> {
     try {
-      const response = await this.request(`${this.baseUrl}/bucket/${encodeURIComponent(this.bucket)}`);
+      const response = await this.request(
+        `${this.baseUrl}/bucket/${encodeURIComponent(this.bucket)}`,
+      );
       return response.ok;
     } catch {
       return false;

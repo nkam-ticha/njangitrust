@@ -17,6 +17,7 @@ export {
   createPendingAction,
   expireDuePendingActions,
   getOwnPendingAction,
+  onPendingActionAnnounced,
   type CreateActionInput,
 } from './pending-actions.service';
 export { actionError } from './pending-actions.errors';

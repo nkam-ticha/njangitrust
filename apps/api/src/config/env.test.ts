@@ -6,6 +6,7 @@ const valid = {
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'a'.repeat(48),
   JWT_REFRESH_SECRET: 'b'.repeat(48),
+  CRON_SECRET: 'd'.repeat(48),
   STORAGE_SIGNING_SECRET: 'c'.repeat(32),
   PUBLIC_BASE_URL: 'http://localhost:3000',
   WEB_ORIGINS: 'http://localhost:8081, https://app.example.com/',

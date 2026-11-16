@@ -4,6 +4,7 @@
 // itself: it decides, then calls these inside the same database transaction.
 import type { FeeSchedule, GovernanceEvent, RuleSetParams } from '@njangi/rules';
 import type { Bilingual } from '@njangi/shared';
+import type { EffectSink } from '../../lib/after-commit';
 import type { Db, Prisma } from '../../lib/prisma';
 import { componentLogger } from '../../lib/logger';
 
@@ -15,7 +16,7 @@ export interface LedgerEventInput {
   event: GovernanceEvent;
   description: Bilingual;
   membershipId?: string | null;
-  refType: 'Proposal' | 'Membership';
+  refType: 'Proposal' | 'Membership' | 'Meeting';
   refId: string;
   occurredAt: Date;
 }
@@ -109,10 +110,14 @@ export interface MoneyGovernancePort {
     tx: Tx,
     input: { groupId: string; solidarityRequestId: string; proposalId: string },
   ): Promise<void>;
-  /** R7.4: the ADMIN_LOAN vote's result for the loan. */
+  /**
+   * R7.4: the ADMIN_LOAN vote's result for the loan. Work that must wait for the commit (asking
+   * for the disbursement) goes to `effects`.
+   */
   decideAdminLoan(
     tx: Tx,
-    input: { groupId: string; loanId: string; approved: boolean; proposalId: string },
+    input: { groupId: string; loanId: string; approved: boolean; proposalId: string; now: Date },
+    effects: EffectSink,
   ): Promise<void>;
 }
 
@@ -130,14 +135,35 @@ const loggingLedgerEvents: LedgerEventsPort = {
 };
 
 let ledgerEvents: LedgerEventsPort = loggingLedgerEvents;
-let money: MoneyGovernancePort | null = null;
+let money: Partial<MoneyGovernancePort> = {};
 
+const MONEY_OPERATIONS = [
+  'currentRotation',
+  'applyRuleSet',
+  'startCycle',
+  'applyRotationChange',
+  'settleExit',
+  'describeFine',
+  'waiveFine',
+  'describeLedgerEntry',
+  'correctLedger',
+  'feeSchedule',
+  'solidarityFund',
+  'paySolidarity',
+  'decideAdminLoan',
+] as const satisfies readonly (keyof MoneyGovernancePort)[];
+
+/**
+ * The money modules register the operations they have built; a later registration replaces the
+ * same operation. Governance that needs the whole port (`moneyPort()`) stays unavailable until
+ * every operation is there.
+ */
 export function registerGovernancePorts(ports: {
   ledgerEvents?: LedgerEventsPort;
-  money?: MoneyGovernancePort;
+  money?: Partial<MoneyGovernancePort>;
 }): void {
   if (ports.ledgerEvents) ledgerEvents = ports.ledgerEvents;
-  if (ports.money) money = ports.money;
+  if (ports.money) money = { ...money, ...ports.money };
 }
 
 const recorders = new Set<LedgerEventInput[]>();
@@ -166,13 +192,22 @@ export function stopRecordingLedgerEvents(recorded: LedgerEventInput[]): void {
   recorders.delete(recorded);
 }
 
-/** The money port, or null while the money modules are not registered. */
+/** The whole money port, or null while any of its operations is not registered. */
 export function moneyPort(): MoneyGovernancePort | null {
-  return money;
+  return MONEY_OPERATIONS.every((name) => money[name] !== undefined)
+    ? (money as MoneyGovernancePort)
+    : null;
+}
+
+/** One money operation, or null while the money modules have not registered it. */
+export function moneyOperation<K extends keyof MoneyGovernancePort>(
+  name: K,
+): MoneyGovernancePort[K] | null {
+  return money[name] ?? null;
 }
 
 /** Tests only: back to the defaults. */
 export function resetGovernancePortsForTests(): void {
   ledgerEvents = loggingLedgerEvents;
-  money = null;
+  money = {};
 }
