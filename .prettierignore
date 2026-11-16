@@ -9,3 +9,4 @@ apps/api/generated
 docs
 .claude
 *.md
+tools/agent-eval/reports

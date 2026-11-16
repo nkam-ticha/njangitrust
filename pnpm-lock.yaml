@@ -253,6 +253,12 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  tools/agent-eval:
+    dependencies:
+      '@njangi/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+
   tools/demo-seed: {}
 
   tools/verify-ledger:

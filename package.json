@@ -24,6 +24,8 @@
     "demo:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demo.ps1 stop",
     "demo:seed": "tsx tools/demo-seed/src/index.ts",
     "agent:eval": "pnpm --filter @njangi/agent-eval eval",
+    "campay:check": "pnpm --filter @njangi/api exec tsx --env-file=.env scripts/campay-check.ts",
+    "agent:smoke": "pnpm --filter @njangi/agent-eval smoke",
     "verify-ledger": "pnpm --filter @njangi/verify-ledger verify"
   },
   "devDependencies": {
