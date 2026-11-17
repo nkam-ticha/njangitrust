@@ -1,5 +1,6 @@
 // Start-up registration of every module's PendingAction handlers and jobs. Add a module's
 // handlers and jobs here (the money modules register PAY, WITHDRAW, ... the same way).
+import { changePaymentNumberHandler, deleteAccountHandler } from './account';
 import { pinResetApproveHandler } from './auth';
 import { startCycleHandler } from './groups';
 import { inviteCreateHandler } from './invites';
@@ -26,6 +27,18 @@ import { pollDisbursement } from './payouts/withdrawals.service';
 import { registerCampayRechecks } from './providers';
 import { withdrawHandler, registerDisbursementJobs, registerPayoutJobs } from './payouts';
 import { applyRotationChange, currentRotation, registerCycleJobs, startFirstCycle } from './cycles';
+import { applyRuleSet, settleExit } from './cycles/cycles.governance';
+import {
+  correctLedger,
+  describeFine,
+  describeLedgerEntry,
+  waiveFine,
+} from './ledger/ledger.correction';
+import {
+  paySolidarity,
+  registerSolidarityJobs,
+  solidarityFund,
+} from './solidarity/solidarity.money';
 import {
   configuredFeeSchedule,
   decideAdminLoanByVote,
@@ -68,6 +81,8 @@ export function registerActionHandlers(): void {
   if (registered) return;
   registered = true;
   registerActionHandler(inviteCreateHandler);
+  registerActionHandler(changePaymentNumberHandler);
+  registerActionHandler(deleteAccountHandler);
   registerActionHandler(pinResetApproveHandler);
   registerActionHandler(proposalCreateHandler);
   registerActionHandler(voteCastHandler);
@@ -112,13 +127,19 @@ function registerMoneyLedgerEvents(): void {
         });
       },
     },
-    // The operations the money modules have built. The others (rule re-dating, rotation change,
-    // exit settlement, fine waiver, ledger correction, solidarity payout) are not written yet, so
-    // the governance that needs them stays "not available".
+    // Every operation governance asks of the money modules.
     money: {
       startCycle: startFirstCycle,
       currentRotation,
       applyRotationChange,
+      applyRuleSet,
+      settleExit,
+      describeFine,
+      waiveFine,
+      describeLedgerEntry,
+      correctLedger,
+      solidarityFund,
+      paySolidarity,
       feeSchedule: configuredFeeSchedule,
       async decideAdminLoan(tx, input, effects) {
         await decideAdminLoanByVote(tx, input);
@@ -151,5 +172,6 @@ export function registerJobs(): void {
   registerFineJobs();
   registerBiddingJobs();
   registerReconciliationJobs();
+  registerSolidarityJobs();
   registerStatementJobs();
 }
