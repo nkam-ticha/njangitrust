@@ -72,6 +72,17 @@ describe('media limits (spec 2.12)', () => {
     expect(realTypeAccepted('DOCUMENT', null)).toBe(false);
   });
 
+  it('accepts a browser recording: a WebM voice note (web, D24)', () => {
+    const voice = ask({ kind: 'VOICE', mime: 'audio/webm', sizeBytes: 1 * MB, durationSec: 12 });
+    expect(ticketRefusal(voice)).toBeNull();
+    expect(ticketRefusal({ ...voice, mime: 'video/webm' })).toBeNull();
+    // The bytes of a WebM file read as video/webm; only a voice note or a video may be one.
+    expect(realTypeAccepted('VOICE', 'video/webm')).toBe(true);
+    expect(realTypeAccepted('IMAGE', 'video/webm')).toBe(false);
+    expect(realTypeAccepted('DOCUMENT', 'video/webm')).toBe(false);
+    expect(extensionFor('audio/webm')).toBe('webm');
+  });
+
   it('picks the storage extension from the type, never from a name', () => {
     expect(extensionFor('image/jpeg')).toBe('jpg');
     expect(extensionFor('audio/mp4')).toBe('m4a');

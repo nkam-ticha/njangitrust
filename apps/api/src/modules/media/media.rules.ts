@@ -63,7 +63,15 @@ export function ticketRefusal(request: CreateUploadTicketRequest): MediaRefusal 
 const REAL_TYPES: Record<AttachmentKind, readonly DetectedType[]> = {
   IMAGE: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
   VIDEO: ['video/mp4', 'video/quicktime', 'video/3gpp', 'video/webm'],
-  VOICE: ['audio/mp4', 'audio/aac', 'audio/mpeg', 'audio/ogg', 'video/mp4', 'video/3gpp'],
+  VOICE: [
+    'audio/mp4',
+    'audio/aac',
+    'audio/mpeg',
+    'audio/ogg',
+    'video/mp4',
+    'video/3gpp',
+    'video/webm',
+  ],
   DOCUMENT: ['application/pdf'],
 };
 
@@ -89,6 +97,7 @@ const EXTENSIONS: Record<string, string> = {
   'audio/aac': 'aac',
   'audio/mpeg': 'mp3',
   'audio/ogg': 'ogg',
+  'audio/webm': 'webm',
 };
 
 /** The file extension of a storage key for a declared type (never taken from a file name). */

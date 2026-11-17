@@ -23,13 +23,22 @@ export const THUMBNAIL_MAX_BYTES = 300 * 1024;
 
 /**
  * Types the phone may declare, by kind. A voice note can arrive in an MP4 or 3GP container whose
- * brand reads as video, so those are accepted for VOICE too; the declared type is never trusted,
+ * brand reads as video, and a browser records WebM (which also reads as video), so those are accepted for VOICE too; the declared type is never trusted,
  * the server reads the real one from the file's bytes.
  */
 export const ACCEPTED_MIME = {
   IMAGE: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'],
   VIDEO: ['video/mp4', 'video/quicktime', 'video/3gpp', 'video/webm'],
-  VOICE: ['audio/mp4', 'audio/aac', 'audio/mpeg', 'audio/ogg', 'video/mp4', 'video/3gpp'],
+  VOICE: [
+    'audio/mp4',
+    'audio/aac',
+    'audio/mpeg',
+    'audio/ogg',
+    'audio/webm',
+    'video/mp4',
+    'video/3gpp',
+    'video/webm',
+  ],
   DOCUMENT: ['application/pdf'],
 } as const satisfies Record<AttachmentKind, readonly string[]>;
 

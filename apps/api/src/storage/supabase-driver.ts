@@ -52,10 +52,25 @@ export class SupabaseStorage implements StorageProvider {
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`Supabase Storage signing failed (${response.status})`);
-    const data = (await response.json()) as { signedURL?: unknown; signedUrl?: unknown };
-    const raw = data.signedURL ?? data.signedUrl;
+    // A signed download answers { signedURL }, a signed upload { url, token }.
+    const data = (await response.json()) as {
+      signedURL?: unknown;
+      signedUrl?: unknown;
+      url?: unknown;
+    };
+    const raw = data.signedURL ?? data.signedUrl ?? data.url;
     if (typeof raw !== 'string' || !raw) throw new Error('Supabase Storage returned no signed URL');
-    return new URL(raw, `${this.baseUrl}/`).toString();
+    return this.absolute(raw);
+  }
+
+  /**
+   * The signed path Supabase returns is relative to /storage/v1 ("/object/sign/..."): resolving it
+   * against the host would drop that prefix, so it is joined to the storage base instead.
+   */
+  private absolute(raw: string): string {
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith('/storage/v1/')) return `${new URL(this.baseUrl).origin}${raw}`;
+    return `${this.baseUrl}${raw.startsWith('/') ? '' : '/'}${raw}`;
   }
 
   async createUploadUrl(input: {
