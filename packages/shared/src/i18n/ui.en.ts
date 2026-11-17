@@ -13,6 +13,8 @@ export const uiEn: UiCopyShape = {
     agentName: 'Njangi',
     you: 'You',
     youSuffix: '{{name}} (you)',
+    labelValue: '{{label}}: {{value}}',
+    labelOnly: '{{label}}:',
     actions: {
       cancel: 'Cancel',
       confirm: 'Confirm',
@@ -1220,6 +1222,19 @@ export const uiEn: UiCopyShape = {
       ledger: 'Records',
     },
     segmentsA11y: 'Funds sections',
+    dues: {
+      kinds: {
+        CONTRIBUTION: 'Contribution',
+        SOLIDARITY: 'Solidarity fund',
+        FINE: 'Fine',
+        LOAN_INSTALLMENT: 'Loan repayment',
+        BID: 'Winning bid',
+        SHORTFALL_SHARE: 'Share of a shortfall',
+        CORRECTION: 'Ledger correction',
+      },
+      dueBy: 'Due before {{date}}',
+      none: 'Nothing to pay for now.',
+    },
     tour: {
       beneficiary: '{{name}} receives {{date}}',
       beneficiaryYou: 'You receive {{date}}',
@@ -1243,6 +1258,8 @@ export const uiEn: UiCopyShape = {
       nobodyPaid: 'Nobody has paid this round yet.',
       previousRounds: 'Previous rounds',
       roundPicker: 'Choose a round',
+      youPayHelp:
+        'Njangi prepares the card with the exact amount and fees. You confirm before any payment.',
     },
     breakdown: {
       title: 'Round {{round}} details',
@@ -1252,6 +1269,8 @@ export const uiEn: UiCopyShape = {
       deductionFine: 'Fine, round {{round}}',
       deductionInstallment: 'Loan repayment, {{n}} of {{total}}',
       deductionBid: 'Winning bid',
+      deductionLoan: 'Loan repayment',
+      deductionOther: 'Other deduction',
       net: 'Net for {{name}}',
       netYou: 'Net for you',
       withdrawn: 'Already withdrawn',
@@ -1370,6 +1389,7 @@ export const uiEn: UiCopyShape = {
         receivable: 'Debt of {{name}}',
         fundGeneral: 'General fund',
         fundSolidarity: 'Solidarity fund',
+        other: 'Other account',
       },
       hash: 'Fingerprint',
       prevHash: 'Previous fingerprint',
@@ -1745,6 +1765,9 @@ export const uiEn: UiCopyShape = {
       scheduleRow: 'Round {{round}}, {{date}}',
       prepare: 'Prepare the request',
       adminDecides: 'The admin decides within 72 hours.',
+      quote: 'See the calculation',
+      installmentRow: 'Instalment {{n}}',
+      nextCycle: 'In the next cycle',
     },
     notEligible: {
       activeLoan: 'You already have a loan in progress. Repay it before asking for another.',
@@ -1795,6 +1818,7 @@ export const uiEn: UiCopyShape = {
       reasonHelp: 'The member will see it.',
       reasonRequired: 'Give a reason to reject.',
       ownLoan: 'Your own request goes to a members’ vote. You can’t decide it.',
+      approveReason: 'Approved by the admin.',
     },
   },
 
@@ -1830,6 +1854,13 @@ export const uiEn: UiCopyShape = {
 
   meetings: {
     title: 'Meetings',
+    upcoming: 'Upcoming',
+    past: 'Past',
+    status: {
+      SCHEDULED: 'Scheduled',
+      HELD: 'Held',
+      CANCELLED: 'Cancelled',
+    },
     next: 'Next meeting',
     none: 'No meeting planned.',
     noneAdmin: 'No meeting planned. Schedule the next one.',

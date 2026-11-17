@@ -1,14 +1,19 @@
-// Caisse tab (SCREENS.md S-12 to S-17), Phase 0: the four segments with their designed empty
-// states; before the first cycle the admin is sent to the founding members screen (S-08).
+// Caisse tab (SCREENS.md S-12 to S-17; spec 1.4): the round, the general fund, the solidarity fund and
+// the ledger. Each segment is its own section; the money figures and every change are the server's,
+// and every money action is a card the member confirms (spec 4.5).
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { HeartHandshake, Landmark, ScrollText, Wallet } from 'lucide-react-native';
+import { Wallet } from 'lucide-react-native';
 import { space } from '@/theme';
-import { DailyCheckStrip, EmptyState, SegmentedControl } from '@/ui';
+import { EmptyState, SegmentedControl } from '@/ui';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import { TabScreen } from '../shell/TabScreen';
+import { FundSection } from './FundSection';
+import { LedgerSection } from './LedgerSection';
+import { SolidaritySection } from './SolidaritySection';
+import { TourSection } from './TourSection';
 
 type Segment = 'tour' | 'fund' | 'solidarity' | 'ledger';
 
@@ -17,8 +22,20 @@ export function CaisseTab() {
   const router = useRouter();
   const { group } = useActiveGroup();
   const [segment, setSegment] = useState<Segment>('tour');
-  const admin = group?.role === 'ADMIN';
-  const forming = !group || group.status === 'FORMING';
+
+  if (!group) {
+    return (
+      <TabScreen>
+        <EmptyState
+          icon={Wallet}
+          title={t('caisse.segments.tour')}
+          body={t('emptyStates.noGroup.body')}
+          actionLabel={t('welcome.create')}
+          onAction={() => router.push('/create-group')}
+        />
+      </TabScreen>
+    );
+  }
 
   return (
     <TabScreen>
@@ -33,47 +50,10 @@ export function CaisseTab() {
           }))}
         />
       </View>
-      {segment === 'tour' ? (
-        <EmptyState
-          icon={Wallet}
-          title={t('caisse.segments.tour')}
-          body={
-            forming
-              ? admin
-                ? t('caisse.tour.noCycleAdmin')
-                : t('caisse.tour.noCycle')
-              : t('caisse.tour.nobodyPaid')
-          }
-          actionLabel={forming && admin ? t('invite.founding.add') : undefined}
-          onAction={forming && admin ? () => router.push('/founding') : undefined}
-        />
-      ) : null}
-      {segment === 'fund' ? (
-        <EmptyState
-          icon={Landmark}
-          title={t('caisse.fund.title')}
-          body={t('caisse.fund.emptyLoans')}
-        />
-      ) : null}
-      {segment === 'solidarity' ? (
-        <EmptyState
-          icon={HeartHandshake}
-          title={t('caisse.solidarity.title')}
-          body={t('caisse.solidarity.empty')}
-        />
-      ) : null}
-      {segment === 'ledger' ? (
-        <>
-          <View style={{ marginHorizontal: -space.s4 }}>
-            <DailyCheckStrip status="NOT_YET" onPress={() => {}} />
-          </View>
-          <EmptyState
-            icon={ScrollText}
-            title={t('caisse.ledger.title')}
-            body={t('caisse.ledger.emptyAll')}
-          />
-        </>
-      ) : null}
+      {segment === 'tour' ? <TourSection group={group} /> : null}
+      {segment === 'fund' ? <FundSection group={group} /> : null}
+      {segment === 'solidarity' ? <SolidaritySection group={group} /> : null}
+      {segment === 'ledger' ? <LedgerSection group={group} /> : null}
     </TabScreen>
   );
 }

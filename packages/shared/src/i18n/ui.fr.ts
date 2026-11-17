@@ -15,6 +15,8 @@ export const uiFr = {
     agentName: 'Njangi',
     you: 'Toi',
     youSuffix: '{{name}} (toi)',
+    labelValue: '{{label}} : {{value}}',
+    labelOnly: '{{label}} :',
     actions: {
       cancel: 'Annuler',
       confirm: 'Confirmer',
@@ -1254,6 +1256,19 @@ export const uiFr = {
       ledger: 'Registre',
     },
     segmentsA11y: 'Sections de la caisse',
+    dues: {
+      kinds: {
+        CONTRIBUTION: 'Cotisation',
+        SOLIDARITY: 'Caisse de secours',
+        FINE: 'Amende',
+        LOAN_INSTALLMENT: 'Remboursement de prêt',
+        BID: 'Enchère gagnée',
+        SHORTFALL_SHARE: 'Part d’un manque',
+        CORRECTION: 'Correction du registre',
+      },
+      dueBy: 'À payer avant le {{date}}',
+      none: 'Rien à payer pour le moment.',
+    },
     tour: {
       beneficiary: '{{name}} reçoit {{date}}',
       beneficiaryYou: 'Tu reçois {{date}}',
@@ -1277,6 +1292,8 @@ export const uiFr = {
       nobodyPaid: 'Personne n’a encore payé ce tour.',
       previousRounds: 'Tours précédents',
       roundPicker: 'Choisir un tour',
+      youPayHelp:
+        'Njangi prépare la carte avec le montant exact et les frais. Tu confirmes avant tout paiement.',
     },
     breakdown: {
       title: 'Détail du tour {{round}}',
@@ -1286,6 +1303,8 @@ export const uiFr = {
       deductionFine: 'Amende, tour {{round}}',
       deductionInstallment: 'Remboursement de prêt, {{n}} sur {{total}}',
       deductionBid: 'Enchère gagnée',
+      deductionLoan: 'Remboursement de prêt',
+      deductionOther: 'Autre retenue',
       net: 'Net pour {{name}}',
       netYou: 'Net pour toi',
       withdrawn: 'Déjà retiré',
@@ -1405,6 +1424,7 @@ export const uiFr = {
         receivable: 'Dette de {{name}}',
         fundGeneral: 'Caisse générale',
         fundSolidarity: 'Caisse de secours',
+        other: 'Autre compte',
       },
       hash: 'Empreinte',
       prevHash: 'Empreinte précédente',
@@ -1780,6 +1800,9 @@ export const uiFr = {
       scheduleRow: 'Tour {{round}}, {{date}}',
       prepare: 'Préparer la demande',
       adminDecides: 'L’admin décide sous 72 h.',
+      quote: 'Voir le calcul',
+      installmentRow: 'Échéance {{n}}',
+      nextCycle: 'Au prochain cycle',
     },
     notEligible: {
       activeLoan: 'Tu as déjà un prêt en cours. Rembourse-le avant d’en demander un autre.',
@@ -1831,6 +1854,7 @@ export const uiFr = {
       reasonHelp: 'Visible par le membre.',
       reasonRequired: 'Indique un motif pour refuser.',
       ownLoan: 'Ta propre demande passe par un vote des membres. Tu ne peux pas la décider.',
+      approveReason: 'Approuvé par l’admin.',
     },
   },
 
@@ -1867,6 +1891,13 @@ export const uiFr = {
 
   meetings: {
     title: 'Réunions',
+    upcoming: 'À venir',
+    past: 'Passées',
+    status: {
+      SCHEDULED: 'Prévue',
+      HELD: 'Tenue',
+      CANCELLED: 'Annulée',
+    },
     next: 'Prochaine réunion',
     none: 'Aucune réunion prévue.',
     noneAdmin: 'Aucune réunion prévue. Planifie la prochaine.',

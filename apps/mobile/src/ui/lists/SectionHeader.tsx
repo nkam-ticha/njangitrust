@@ -8,11 +8,13 @@ interface SectionHeaderProps {
   title: string;
   actionLabel?: string;
   onAction?: () => void;
+  /** False when the header sits in a column that already has the screen gutter. */
+  inset?: boolean;
 }
 
-export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderProps) {
+export function SectionHeader({ title, actionLabel, onAction, inset = true }: SectionHeaderProps) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, inset ? styles.inset : null]}>
       <Txt variant="sectionTitle" accessibilityRole="header" style={styles.title}>
         {title}
       </Txt>
@@ -28,10 +30,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: space.s4,
     paddingTop: space.s6,
     paddingBottom: space.s2,
     gap: space.s2,
   },
+  inset: { paddingHorizontal: space.s4 },
   title: { flex: 1 },
 });

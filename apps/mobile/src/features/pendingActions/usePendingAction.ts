@@ -1,7 +1,7 @@
 // PendingAction lifecycle (spec 4.5): the server prepares the card, the member confirms or cancels
 // it here, and `pendingAction.updated` moves it to processing, done or failed. The agent is never
 // involved in confirming.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import type { PendingActionUpdatedPayload } from '@njangi/shared/contracts/realtime';
@@ -58,11 +58,16 @@ export function usePendingAction(initial: PendingActionDto): UsePendingAction {
     };
   }, [id, qc]);
 
+  // The PIN travels in a ref, never as the mutation's variables: those stay in the query cache.
+  const pinRef = useRef<string | undefined>(undefined);
   const confirmM = useMutation({
-    mutationFn: (pin?: string) =>
-      api.post(`/v1/pending-actions/${id}/confirm`, pin ? { pin } : {}, {
+    mutationFn: () => {
+      const pin = pinRef.current;
+      pinRef.current = undefined;
+      return api.post(`/v1/pending-actions/${id}/confirm`, pin ? { pin } : {}, {
         schema: confirmActionResponseSchema,
-      }),
+      });
+    },
     onSuccess: ({ action }) => qc.setQueryData(key(id), action),
   });
   const cancelM = useMutation({
@@ -73,7 +78,10 @@ export function usePendingAction(initial: PendingActionDto): UsePendingAction {
 
   return {
     action: data ?? initial,
-    confirm: async (pin) => resultData.parse((await confirmM.mutateAsync(pin)).data),
+    confirm: async (pin) => {
+      pinRef.current = pin;
+      return resultData.parse((await confirmM.mutateAsync()).data);
+    },
     cancel: async () => {
       await cancelM.mutateAsync();
     },

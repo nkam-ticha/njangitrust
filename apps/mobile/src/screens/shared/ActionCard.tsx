@@ -2,6 +2,7 @@
 // realtime updates. Used inline in the Njangi tab and in sheets on screens (DESIGN_SYSTEM.md 5.21).
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { pick } from '@njangi/shared';
 import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
@@ -13,8 +14,11 @@ import { errorCode, errorDetails, errorMessage, unlockTime } from '@/features/er
 
 interface ActionCardProps {
   action: PendingActionDto;
-  /** Called once with the confirmation's result data (for example an invite link). */
-  onConfirmed?: (data: Record<string, unknown> | null) => void;
+  /**
+   * Called once with the confirmation's result data (for example an invite link), and with the
+   * confirmed action (its `result.ref` is the payment or withdrawal to follow).
+   */
+  onConfirmed?: (data: Record<string, unknown> | null, action?: PendingActionDto) => void;
   onCancelled?: () => void;
   onRetry?: () => void;
   onClose?: () => void;
@@ -38,6 +42,7 @@ export function ActionCard({
   const lang = useLang();
   const online = useConnectivity((s) => s.online);
   const { action, confirm, cancel, confirming, error, resetError } = usePendingAction(initial);
+  const qc = useQueryClient();
   const [pinOpen, setPinOpen] = useState(false);
 
   const code = errorCode(error);
@@ -50,7 +55,9 @@ export function ActionCard({
     try {
       const data = await confirm(pin);
       setPinOpen(false);
-      onConfirmed?.(data);
+      // The confirmed action is in the cache by now (usePendingAction stores it on success).
+      const confirmed = qc.getQueryData<PendingActionDto>(['pendingAction', initial.id]);
+      onConfirmed?.(data, confirmed);
     } catch (e) {
       // Shown below the card, or in the PIN sheet for PIN errors.
       onError?.(errorCode(e));
