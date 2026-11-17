@@ -201,7 +201,7 @@ export async function runAllDailyReconciliations() {
 export async function latestGroupReconciliation(userId: string, groupId: string) {
   const db = getPrisma();
   const membership = await db.membership.findFirst({
-    where: { groupId, userId, status: { in: ['ACTIVE', 'LEAVING', 'INVITED', 'LEFT', 'REMOVED'] } },
+    where: { groupId, userId, status: { in: ['ACTIVE', 'LEAVING', 'INVITED'] } },
     select: { id: true },
   });
   if (!membership) return null;

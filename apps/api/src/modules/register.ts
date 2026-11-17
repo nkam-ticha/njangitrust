@@ -35,6 +35,7 @@ import {
   scheduleApprovedLoanDisbursement,
 } from './loans';
 import { registerFineJobs } from './fines';
+import { registerReconciliationJobs } from './reconciliation';
 import { placeBidHandler, registerBiddingJobs } from './bids';
 import { registerGovernancePorts } from './proposals';
 import { appendLedgerEntry } from './ledger';
@@ -149,5 +150,6 @@ export function registerJobs(): void {
   registerLoanDisbursementJob();
   registerFineJobs();
   registerBiddingJobs();
+  registerReconciliationJobs();
   registerStatementJobs();
 }

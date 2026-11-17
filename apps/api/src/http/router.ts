@@ -21,6 +21,7 @@ import { payoutRoutes, withdrawalRoutes } from '../modules/payouts';
 import { loanGroupRoutes, loanDecisionRoutes } from '../modules/loans';
 import { bidsRoutes } from '../modules/bids';
 import { ledgerRoutes } from '../modules/ledger';
+import { reconciliationRoutes } from '../modules/reconciliation';
 import { chatGroupRoutes, chatMessageRoutes, chatUnreadRoutes } from '../modules/chat';
 import { attachmentRoutes, mediaGroupRoutes } from '../modules/media';
 import { meetingRoutes, meetingsGroupRoutes } from '../modules/meetings';
@@ -59,6 +60,7 @@ export function v1Router(): Router {
   v1.use('/groups', loanGroupRoutes());
   v1.use('/groups', bidsRoutes());
   v1.use('/groups', ledgerRoutes());
+  v1.use('/groups', reconciliationRoutes());
   v1.use('/groups', membersRoutes());
   v1.use('/groups', rulesetsRoutes());
   v1.use('/groups', inviteGroupRoutes());
