@@ -2,7 +2,7 @@
 // comes complete in the HTTP response and is streamed while it is written. Any action it prepares
 // comes back as a PendingAction card that only the member can confirm (spec 4.5). When the agent is
 // not configured on the server, the screen says so and the rest of the app keeps working.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
@@ -20,6 +20,7 @@ import { newRoute } from '../shared/routes';
 import {
   AgentActivityLine,
   AgentMessage,
+  AgentOrb,
   Button,
   Chip,
   ChipRow,
@@ -30,10 +31,10 @@ import {
   SystemEvent,
   Touchable,
   Txt,
-  TypingDots,
   useLang,
 } from '@/ui';
 import { useConnectivity } from '@/state/connectivity';
+import { useAgentActivity } from '@/state/agentActivity';
 import { useSession } from '@/state/session';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import { useCurrentRound, useMyDues } from '@/features/money/queries';
@@ -80,6 +81,15 @@ export function NjangiTab() {
   const [cards, setCards] = useState<PendingActionDto[]>([]);
   const [failure, setFailure] = useState<unknown>(null);
   const scroll = useRef<ScrollViewInstance>(null);
+
+  // The whole app shows what the agent is doing: the floating orb and the glow around the screen.
+  const setMode = useAgentActivity((s) => s.setMode);
+  const answering = send.isPending;
+  const writing = answering && streamText(stream).length > 0;
+  useEffect(() => {
+    setMode(!answering ? 'idle' : writing ? 'speaking' : 'thinking');
+  }, [answering, writing, setMode]);
+  useEffect(() => () => setMode('idle'), [setMode]);
 
   if (loading) {
     return (
@@ -249,6 +259,14 @@ export function NjangiTab() {
           />
         ) : null}
         {empty && configured && conversation.isSuccess ? (
+          <View style={styles.hero}>
+            <AgentOrb size={120} mode="idle" />
+            <Txt variant="sectionTitle" align="center">
+              {t('agent.hero.tagline')}
+            </Txt>
+          </View>
+        ) : null}
+        {empty && configured && conversation.isSuccess ? (
           <AgentMessage
             text={t('agent.greeting.firstRun', {
               name: user?.name.split(' ')[0] ?? '',
@@ -265,9 +283,11 @@ export function NjangiTab() {
         {send.isPending ? (
           <View style={styles.streaming}>
             {streamText(stream) ? (
-              <AgentMessage text={streamText(stream)} streaming startOfTurn={false} />
+              <AgentMessage text={streamText(stream)} streaming speaking />
             ) : (
-              <TypingDots />
+              <View style={styles.thinking} accessible accessibilityLabel={t('agent.typing')}>
+                <AgentOrb size={30} mode="thinking" />
+              </View>
             )}
             <AgentActivityLine tool={stream?.tool ?? null} />
           </View>
@@ -345,5 +365,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   conversation: { gap: space.s3, paddingVertical: space.s3 },
   streaming: { gap: space.s2 },
+  hero: { alignItems: 'center', gap: space.s6, paddingVertical: space.s8 },
+  thinking: { paddingLeft: space.s4, paddingVertical: space.s3 },
   footer: { gap: space.s3 },
 });

@@ -764,6 +764,11 @@ export const uiFr = {
       tooLong: 'Message trop long : 1 000 caractères au plus.',
     },
     typing: 'Njangi écrit…',
+    orb: {
+      open: 'Parler à Njangi',
+      hint: 'Touche pour ouvrir la conversation. Fais glisser pour le déplacer.',
+    },
+    hero: { tagline: 'Demande-moi tout sur ton njangi.' },
     activity: {
       default: 'Je vérifie…',
       get_my_overview: 'Je regarde ta situation…',
@@ -1196,6 +1201,7 @@ export const uiFr = {
       documentA11y: 'Document {{file}}, {{size}}',
       open: 'Ouvrir',
       sendCaption: 'Ajouter une légende',
+      sending: 'Envoi…',
     },
     message: {
       deleted: 'Message supprimé',

@@ -1,10 +1,12 @@
 // Agent reply in the Njangi tab (DESIGN_SYSTEM.md 5.24, DD-13): no bubble, plain text across the
 // column, a 16 dp RingMark at the start of each turn, a static caret while streaming.
 // Renders bold (**…**) and simple "- " bullet lines; nothing else.
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { space, useTheme } from '@/theme';
+import { duration, easing, space, useReduceMotion, useTheme } from '@/theme';
 import { RingMark } from '../brand/RingMark';
+import { AgentOrb } from './AgentOrb';
 import { Txt } from '../primitives/Txt';
 
 interface AgentMessageProps {
@@ -12,6 +14,8 @@ interface AgentMessageProps {
   /** First message of an agent turn: shows the RingMark. */
   startOfTurn?: boolean;
   streaming?: boolean;
+  /** While the reply is written, a small orb takes the place of the ring and speaks with it. */
+  speaking?: boolean;
 }
 
 function inline(line: string) {
@@ -26,19 +30,45 @@ function inline(line: string) {
   );
 }
 
-export function AgentMessage({ text, startOfTurn = true, streaming }: AgentMessageProps) {
+export function AgentMessage({ text, startOfTurn = true, streaming, speaking }: AgentMessageProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
+  const reduce = useReduceMotion();
+  // The reply rises into place and fades in, instead of appearing all at once.
+  const entrance = useState(() => new Animated.Value(reduce ? 1 : 0))[0];
+  useEffect(() => {
+    if (reduce) return;
+    Animated.timing(entrance, {
+      toValue: 1,
+      duration: duration.sheetIn,
+      easing: easing.out,
+      useNativeDriver: true,
+    }).start();
+  }, [entrance, reduce]);
   const lines = text.split('\n').filter((l) => l.trim().length > 0);
   return (
-    <View
-      style={styles.row}
+    <Animated.View
+      style={[
+        styles.row,
+        {
+          opacity: entrance,
+          transform: [
+            { translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+          ],
+        },
+      ]}
       accessible
       accessibilityLabel={t('agent.a11y.agentMessage', { text: text.replace(/\*\*/g, '') })}
       accessibilityState={{ busy: !!streaming }}
     >
       <View style={styles.mark}>
-        {startOfTurn ? <RingMark size={16} color={colors.iconActive} /> : null}
+        {startOfTurn ? (
+          speaking ? (
+            <AgentOrb size={16} mode="speaking" />
+          ) : (
+            <RingMark size={16} color={colors.iconActive} />
+          )
+        ) : null}
       </View>
       <View style={styles.body}>
         {lines.map((line, i) => {
@@ -55,7 +85,7 @@ export function AgentMessage({ text, startOfTurn = true, streaming }: AgentMessa
           );
         })}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

@@ -2,25 +2,39 @@
 // Messages page back in time; system events (payments, votes, rules, meetings) are compact rows; removed
 // messages keep a placeholder. The unread line is captured before the read marker is sent.
 import { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import { CircleAlert, Info, MessagesSquare } from 'lucide-react-native';
+import {
+  Camera,
+  CircleAlert,
+  FileText,
+  Image as ImageIcon,
+  Info,
+  MessagesSquare,
+  Video,
+} from 'lucide-react-native';
 import { formatClock, formatDateShort, pick } from '@njangi/shared';
 import type { ChatMessageDto } from '@njangi/shared/contracts/chat-messages';
-import { space } from '@/theme';
+import { space, useTheme } from '@/theme';
 import {
   BottomSheet,
   Button,
   Composer,
   DateSeparator,
   EmptyState,
+  GroupedList,
+  ListRow,
   MessageBubble,
+  RecordingBar,
   SkeletonRows,
   SystemEvent,
   Txt,
   UnreadDivider,
   useLang,
 } from '@/ui';
+import { ApiError } from '@/api/client';
 import { useConnectivity } from '@/state/connectivity';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import {
@@ -32,6 +46,10 @@ import {
   useSendMessage,
 } from '@/features/chat/useChat';
 import { errorMessage } from '@/features/errors/errorMessage';
+import { useSendFile, type PickedFile } from '@/features/chat/useAttachments';
+import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder';
+import { baseMime, kindForMime } from '@/features/chat/media';
+import { ChatAttachment } from './ChatAttachment';
 import { TabScreen } from '../shell/TabScreen';
 
 type Row =
@@ -82,9 +100,10 @@ function buildRows(
 
 export function GroupeTab() {
   const { t } = useTranslation();
+  const { colors } = useTheme();
   const lang = useLang();
   const online = useConnectivity((s) => s.online);
-  const { group } = useActiveGroup();
+  const { group, loading } = useActiveGroup();
   const groupId = group?.groupId ?? null;
   const left =
     !!group && (group.membershipStatus === 'LEFT' || group.membershipStatus === 'REMOVED');
@@ -95,6 +114,10 @@ export function GroupeTab() {
   const markRead = useMarkRead(groupId);
   const [draft, setDraft] = useState('');
   const [deleting, setDeleting] = useState<ChatMessageDto | null>(null);
+  const sendFile = useSendFile(groupId);
+  const voice = useVoiceRecorder();
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useChatRealtime(groupId);
 
@@ -117,6 +140,14 @@ export function GroupeTab() {
     if (captured && !left && groupId) markAsRead();
   }, [captured, left, groupId, markAsRead]);
 
+  // The groups are still loading: a skeleton, not "no group yet".
+  if (!group && loading) {
+    return (
+      <TabScreen>
+        <SkeletonRows rows={4} />
+      </TabScreen>
+    );
+  }
   if (!group) {
     return (
       <TabScreen>
@@ -140,16 +171,105 @@ export function GroupeTab() {
     send.mutate(text, { onError: () => setDraft(text) });
   };
 
+  /** A photo, a video or a PDF chosen on the phone (or in the browser): sent as a message. */
+  const pickAndSend = async (source: 'photo' | 'camera' | 'video' | 'document') => {
+    setAttachOpen(false);
+    setNotice(null);
+    sendFile.reset();
+    try {
+      let file: PickedFile | null = null;
+      if (source === 'document') {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: 'application/pdf',
+          copyToCacheDirectory: true,
+          multiple: false,
+        });
+        const asset = result.canceled ? null : result.assets[0];
+        if (!asset) return;
+        const mime = baseMime(asset.mimeType) || 'application/pdf';
+        if (kindForMime(mime) !== 'DOCUMENT') {
+          setNotice(t('errors.media.documentType'));
+          return;
+        }
+        file = { uri: asset.uri, kind: 'DOCUMENT', mime };
+      } else {
+        const camera = source === 'camera';
+        if (camera) {
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permission.granted) {
+            setNotice(t('errors.permissions.camera'));
+            return;
+          }
+        }
+        const options: ImagePicker.ImagePickerOptions = {
+          mediaTypes: source === 'video' ? ['videos'] : ['images'],
+          quality: 0.8,
+        };
+        const result = camera
+          ? await ImagePicker.launchCameraAsync(options)
+          : await ImagePicker.launchImageLibraryAsync(options);
+        const asset = result.canceled ? null : result.assets[0];
+        if (!asset) return;
+        const video = source === 'video' || asset.type === 'video';
+        const mime = baseMime(asset.mimeType) || (video ? 'video/mp4' : 'image/jpeg');
+        const kind = kindForMime(mime);
+        if (kind !== 'IMAGE' && kind !== 'VIDEO') {
+          setNotice(t('errors.media.documentType'));
+          return;
+        }
+        file = {
+          uri: asset.uri,
+          kind,
+          mime,
+          width: asset.width,
+          height: asset.height,
+          ...(kind === 'VIDEO' && asset.duration
+            ? { durationSec: Math.ceil(asset.duration / 1000) }
+            : {}),
+        };
+      }
+      sendFile.mutate(file);
+    } catch {
+      setNotice(t('errors.media.uploadFailed'));
+    }
+  };
+
+  const startVoice = async () => {
+    setNotice(null);
+    sendFile.reset();
+    const result = await voice.start();
+    if (result === 'denied') setNotice(t('errors.permissions.microphone'));
+    else if (result === 'failed') setNotice(t('errors.media.uploadFailed'));
+  };
+
+  const sendVoice = async () => {
+    const { file, tooShort } = await voice.stop();
+    if (tooShort || !file) {
+      setNotice(t('chat.voice.tooShort'));
+      return;
+    }
+    sendFile.mutate(file);
+  };
+
   return (
     <TabScreen
       scroll={false}
       footer={
-        left ? undefined : (
+        left ? undefined : voice.phase !== 'idle' ? (
+          <RecordingBar
+            seconds={voice.seconds}
+            ready={voice.phase === 'ready'}
+            onCancel={() => void voice.cancel()}
+            onSend={() => void sendVoice()}
+          />
+        ) : (
           <Composer
             kind="chat"
             value={draft}
             onChange={setDraft}
             onSend={submit}
+            onAttach={() => setAttachOpen(true)}
+            onVoice={() => void startVoice()}
             disabledReason={online ? null : t('common.status.connectionRequired')}
           />
         )
@@ -196,6 +316,58 @@ export function GroupeTab() {
           {t('agent.errors.notSent')}
         </Txt>
       ) : null}
+      {sendFile.isPending ? (
+        <Txt variant="secondary" color="textSecondary" accessibilityLiveRegion="polite">
+          {t('chat.media.sending')}
+        </Txt>
+      ) : null}
+      {sendFile.error ? (
+        <Txt variant="secondary" color="textDanger" accessibilityLiveRegion="assertive">
+          {sendFile.error instanceof ApiError
+            ? errorMessage(sendFile.error, t, lang)
+            : t('errors.media.uploadFailed')}
+        </Txt>
+      ) : null}
+      {notice ? (
+        <Txt variant="secondary" color="textDanger" accessibilityLiveRegion="assertive">
+          {notice}
+        </Txt>
+      ) : null}
+
+      <BottomSheet
+        visible={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        title={t('chat.attachMenu.title')}
+      >
+        <GroupedList>
+          <ListRow
+            title={t('chat.attachMenu.photo')}
+            titleWeight="regular"
+            leading={<ImageIcon size={24} color={colors.iconPrimary} strokeWidth={2} />}
+            onPress={() => void pickAndSend('photo')}
+          />
+          {Platform.OS !== 'web' ? (
+            <ListRow
+              title={t('chat.attachMenu.camera')}
+              titleWeight="regular"
+              leading={<Camera size={24} color={colors.iconPrimary} strokeWidth={2} />}
+              onPress={() => void pickAndSend('camera')}
+            />
+          ) : null}
+          <ListRow
+            title={t('chat.attachMenu.video')}
+            titleWeight="regular"
+            leading={<Video size={24} color={colors.iconPrimary} strokeWidth={2} />}
+            onPress={() => void pickAndSend('video')}
+          />
+          <ListRow
+            title={t('chat.attachMenu.document')}
+            titleWeight="regular"
+            leading={<FileText size={24} color={colors.iconPrimary} strokeWidth={2} />}
+            onPress={() => void pickAndSend('document')}
+          />
+        </GroupedList>
+      </BottomSheet>
 
       <BottomSheet
         visible={!!deleting}
@@ -246,6 +418,14 @@ function RowView({
       firstOfRun={row.firstOfRun}
       time={formatClock(m.createdAt, lang)}
       parts={m.text ? [m.text] : []}
+      media={
+        m.attachment && !removed ? (
+          <ChatAttachment
+            attachment={m.attachment}
+            from={row.own ? null : (m.author?.name ?? t('common.agentName'))}
+          />
+        ) : undefined
+      }
       deleted={removed === 'DELETED'}
       hidden={removed === 'HIDDEN'}
       delivery="sent"

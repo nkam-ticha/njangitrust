@@ -755,6 +755,11 @@ export const uiEn: UiCopyShape = {
       tooLong: 'Message too long: 1,000 characters at most.',
     },
     typing: 'Njangi is writing…',
+    orb: {
+      open: 'Talk to Njangi',
+      hint: 'Tap to open the conversation. Drag to move it.',
+    },
+    hero: { tagline: 'Ask me anything about your njangi.' },
     activity: {
       default: 'Checking…',
       get_my_overview: 'Looking at your situation…',
@@ -1161,6 +1166,7 @@ export const uiEn: UiCopyShape = {
       documentA11y: 'Document {{file}}, {{size}}',
       open: 'Open',
       sendCaption: 'Add a caption',
+      sending: 'Sending…',
     },
     message: {
       deleted: 'Message deleted',

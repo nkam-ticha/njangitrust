@@ -73,8 +73,12 @@ export { VoiceNote, type VoiceSpeed } from './chat/VoiceNote';
 export { VisualMedia, DocumentAttachment, type MediaState } from './chat/MediaBlock';
 export { SystemEvent, DateSeparator, UnreadDivider } from './chat/SystemEvent';
 export { Composer } from './chat/Composer';
+export { RecordingBar } from './chat/RecordingBar';
 
 export { AgentMessage } from './agent/AgentMessage';
+export { AgentOrb, type OrbMode } from './agent/AgentOrb';
+export { AgentGlow } from './agent/AgentGlow';
+export { VoiceBars } from './agent/VoiceBars';
 export { TypingDots, AgentActivityLine } from './agent/AgentActivity';
 export { StatusHeader, type ContributionStatus } from './agent/StatusHeader';
 
