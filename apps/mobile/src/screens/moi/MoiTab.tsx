@@ -24,8 +24,9 @@ import { useActiveGroup } from '@/features/groups/useGroups';
 import { useChangeLanguage } from '@/features/me/useMe';
 import { progressCopy } from '@/dev/progress';
 import { TabScreen } from '../shell/TabScreen';
+import { ChangeNumberSheet, DeleteAccountSheet } from './AccountSheets';
 
-type Sheet = 'language' | 'logout' | 'logoutAll' | null;
+type Sheet = 'language' | 'logout' | 'logoutAll' | 'number' | 'delete' | null;
 
 export function MoiTab() {
   const { t } = useTranslation();
@@ -69,6 +70,8 @@ export function MoiTab() {
                 />
               ) : undefined
             }
+            chevron
+            onPress={() => setSheet('number')}
           />
           <ListRow
             title={t('moi.language')}
@@ -190,6 +193,12 @@ export function MoiTab() {
         label={t('moi.logout')}
         onPress={() => setSheet('logout')}
       />
+      <Button
+        variant="text"
+        fullWidth
+        label={t('privacy.delete.title')}
+        onPress={() => setSheet('delete')}
+      />
       <Txt variant="caption" color="textSecondary" align="center">
         {t('moi.version', { version: '0.1.0' })}
       </Txt>
@@ -212,6 +221,20 @@ export function MoiTab() {
         <Txt variant="secondary" color="textSecondary">
           {t('language.note')}
         </Txt>
+      </BottomSheet>
+      <BottomSheet
+        visible={sheet === 'number'}
+        onClose={() => setSheet(null)}
+        title={t('paymentNumber.title')}
+      >
+        {sheet === 'number' ? <ChangeNumberSheet onDone={() => setSheet(null)} /> : null}
+      </BottomSheet>
+      <BottomSheet
+        visible={sheet === 'delete'}
+        onClose={() => setSheet(null)}
+        title={t('privacy.delete.title')}
+      >
+        {sheet === 'delete' ? <DeleteAccountSheet onDone={() => setSheet(null)} /> : null}
       </BottomSheet>
       <BottomSheet
         visible={sheet === 'logout' || sheet === 'logoutAll'}

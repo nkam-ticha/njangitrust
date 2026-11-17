@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Wallet } from 'lucide-react-native';
 import { space } from '@/theme';
-import { EmptyState, SegmentedControl } from '@/ui';
+import { EmptyState, SegmentedControl, SkeletonRows } from '@/ui';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import { TabScreen } from '../shell/TabScreen';
 import { FundSection } from './FundSection';
@@ -20,9 +20,17 @@ type Segment = 'tour' | 'fund' | 'solidarity' | 'ledger';
 export function CaisseTab() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { group } = useActiveGroup();
+  const { group, loading } = useActiveGroup();
   const [segment, setSegment] = useState<Segment>('tour');
 
+  // The groups are still loading: a skeleton, not "no group yet".
+  if (!group && loading) {
+    return (
+      <TabScreen>
+        <SkeletonRows rows={4} />
+      </TabScreen>
+    );
+  }
   if (!group) {
     return (
       <TabScreen>

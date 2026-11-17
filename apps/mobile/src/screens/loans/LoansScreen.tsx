@@ -58,13 +58,21 @@ export function LoansScreen() {
   const { t } = useTranslation();
   const lang = useLang();
   const router = useRouter();
-  const { group } = useActiveGroup();
+  const { group, loading } = useActiveGroup();
   const groupId = group?.groupId ?? null;
   const loans = useLoans(groupId);
   const refresh = useRefreshLoans(groupId);
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   const header = <AppHeader kind="pushed" title={t('loans.title')} onBack={back} />;
+  // The groups are still loading: a skeleton, not "no group yet".
+  if (!group && loading) {
+    return (
+      <Screen header={header}>
+        <SkeletonRows rows={4} />
+      </Screen>
+    );
+  }
   if (!group) {
     return (
       <Screen header={header}>

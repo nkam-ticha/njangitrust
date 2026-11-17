@@ -32,7 +32,7 @@ export function VotesTab() {
   const lang = useLang();
   const router = useRouter();
   const online = useConnectivity((s) => s.online);
-  const { group } = useActiveGroup();
+  const { group, loading } = useActiveGroup();
   const groupId = group?.groupId ?? null;
   const proposals = useProposals(groupId);
   const refresh = useRefreshProposals(groupId);
@@ -42,6 +42,14 @@ export function VotesTab() {
     null,
   );
 
+  // The groups are still loading: a skeleton, not "no group yet".
+  if (!group && loading) {
+    return (
+      <TabScreen>
+        <SkeletonRows rows={4} />
+      </TabScreen>
+    );
+  }
   if (!group) {
     return (
       <TabScreen>
