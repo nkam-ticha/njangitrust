@@ -184,7 +184,9 @@ export async function openRound(roundId: string, now = clock.now()): Promise<boo
         : null;
     if (round.number > 1 && (!previous || previous.payoutAt > now)) return false;
     const claimed = await tx.round.updateMany({
-      where: { id: roundId, status: 'SCHEDULED', dueAt: { lte: now } },
+      // Opens once the previous payout is done (checked above), not at its own deadline: members
+      // pay between the two.
+      where: { id: roundId, status: 'SCHEDULED' },
       data: { status: 'OPEN' },
     });
     if (claimed.count !== 1) return false;
