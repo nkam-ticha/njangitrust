@@ -51,6 +51,32 @@ describe('invites (spec 2.10, R1.5, R1.6, R12.1)', () => {
     expect(right.body.me).toMatchObject({ role: 'MEMBER', status: 'ACTIVE' });
   });
 
+  it('locks the link after five wrong phones, even when they are tried at the same moment', async () => {
+    const admin = await signUp();
+    const { groupId } = await createGroup(admin);
+    const person = signupBody();
+    const token = await inviteToken(admin, groupId, person);
+    const tries = await Promise.all(
+      Array.from({ length: 12 }, () => accept(token, signupBody({ name: person.name }))),
+    );
+    // Every wrong phone is refused, and the link is then locked: the right phone waits too.
+    expect(tries.every((res) => res.status === 403)).toBe(true);
+    const locked = await accept(token, person);
+    expect(locked.status).toBe(403);
+    expect(locked.body.code).toBe('INVITE_PHONE_MISMATCH');
+  });
+
+  it('gives the points back when the right phone is used', async () => {
+    const admin = await signUp();
+    const { groupId } = await createGroup(admin);
+    const person = signupBody();
+    const token = await inviteToken(admin, groupId, person);
+    for (let i = 0; i < 3; i += 1) {
+      expect((await accept(token, signupBody({ name: person.name }))).status).toBe(403);
+    }
+    expect((await accept(token, person)).status).toBe(201);
+  });
+
   it('is single use', async () => {
     const admin = await signUp();
     const { groupId } = await createGroup(admin);

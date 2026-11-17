@@ -92,4 +92,16 @@ describe('log redaction (CLAUDE.md rule 11, spec 2.15)', () => {
     log.info({ body: { phone: '+237677123456', note: 'appelle 677123456' } }, 'test');
     expect(lines.join('')).not.toMatch(/677123456|677 12/);
   });
+
+  it('masks a number split by several separators, and leaves amounts and dates alone', () => {
+    for (const text of [
+      '677----12----34----57',
+      '677 .. 12 .. 34 .. 57',
+      '+237 6 | 7 | 7 / 12 34 57',
+    ]) {
+      expect(redactText(`appel ${text} fait`)).not.toMatch(/677|12 .. 34/);
+    }
+    expect(redactText('Paiement de 12 000 FCFA le 17/11/2026 à 07:48')).toContain('12 000 FCFA');
+    expect(redactText('Paiement de 12 000 FCFA le 17/11/2026 à 07:48')).toContain('17/11/2026');
+  });
 });

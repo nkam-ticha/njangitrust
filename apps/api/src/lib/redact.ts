@@ -40,6 +40,11 @@ const BEARER = /\bBearer\s+[\w.~+/=-]+/gi;
 // Long opaque tokens (link tokens, refresh tokens, signatures), e.g. inside a logged URL.
 const OPAQUE_TOKEN = /[A-Za-z0-9_-]{40,}/g;
 
+// A Cameroon number written with up to four separators between its digits ("677 -- 12 -- 34 -- 57"):
+// logs are read by operators, so this errs on the side of masking too much, never too little.
+const LOOSE_PHONE =
+  /(?<![\p{L}\p{N}])(?:\+?2\s?3\s?7[^\p{L}\p{N}]{0,4})?6(?:[^\p{L}\p{N}]{0,4}\p{Nd}){8}/gu;
+
 /** Masks tokens and phone numbers in free text. UUIDs pass through unchanged. */
 export function redactText(text: string): string {
   if (UUID.test(text)) return text;
@@ -49,7 +54,7 @@ export function redactText(text: string): string {
       .replace(BEARER, 'Bearer [redacted]')
       .replace(OPAQUE_TOKEN, '[token]'),
     [],
-  );
+  ).replace(LOOSE_PHONE, '6•• •• •• ••');
 }
 
 const MAX_DEPTH = 8;

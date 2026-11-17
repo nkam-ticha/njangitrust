@@ -71,12 +71,13 @@ export async function login(input: LoginRequest, client: ClientKind): Promise<Au
 
   if (!valid || !user) {
     const failure = await recordFailure(loginAttempts, key);
-    if (user)
-      await audit({
-        action: 'auth.login.failed',
-        actorUserId: user.id,
-        details: { locked: failure.locked },
-      });
+    // Written for an unknown phone too, so the time the answer takes does not tell a phone that
+    // has an account from one that has none (no phone number is recorded either way).
+    await audit({
+      action: 'auth.login.failed',
+      ...(user ? { actorUserId: user.id } : {}),
+      details: { locked: failure.locked },
+    });
     if (failure.locked) {
       throw authError('LOGIN_LOCKED', {
         params: { minutes: lockMinutes(failure.retryAfterSeconds) },

@@ -147,15 +147,21 @@ export async function acceptInvite(
     ).loginPhone;
   }
   const attemptsKey = `i:${invite.id}`;
-  const attempts = await phoneAttempts.get().get(attemptsKey);
-  if (attempts && attempts.consumedPoints >= 5) throw inviteError('INVITE_PHONE_MISMATCH');
-  if (!safeEqual(hashPhone(phone), invite.phoneHash)) {
-    await phoneAttempts
-      .get()
-      .consume(attemptsKey)
-      .catch(() => undefined);
+  // Every try spends a point first, in one step in the database: tries made at the same moment
+  // cannot all pass a "how many so far" check before the first one is counted. The right phone
+  // gets the points back, so a wrong phone is the only thing that uses the link up.
+  try {
+    await phoneAttempts.get().consume(attemptsKey);
+  } catch {
     throw inviteError('INVITE_PHONE_MISMATCH');
   }
+  if (!safeEqual(hashPhone(phone), invite.phoneHash)) {
+    throw inviteError('INVITE_PHONE_MISMATCH');
+  }
+  await phoneAttempts
+    .get()
+    .delete(attemptsKey)
+    .catch(() => undefined);
   const account = input.mode === 'signup' ? await prepareAccount(input) : null;
 
   const effects = new AfterCommit();
