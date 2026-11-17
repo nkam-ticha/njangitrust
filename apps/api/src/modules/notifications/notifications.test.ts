@@ -25,13 +25,17 @@ async function withDevice(): Promise<TestUser & { token: string }> {
   return { ...user, token };
 }
 
-async function send(user: TestUser, category: 'MONEY' | 'SECURITY' | 'GROUP' = 'MONEY') {
+async function send(
+  user: TestUser,
+  category: 'MONEY' | 'SECURITY' | 'GROUP' | 'VOTES' = 'MONEY',
+  body = { fr: 'Corps', en: 'Body' },
+) {
   await notify([
     {
       userId: user.id,
       category,
       title: { fr: 'Titre', en: 'Title' },
-      body: { fr: 'Corps', en: 'Body' },
+      body,
     },
   ]);
   await settleBackground();
@@ -59,6 +63,21 @@ describe('push delivery (spec 2.13)', () => {
     ]);
     const row = await getPrisma().notification.findFirstOrThrow({ where: { userId: user.id } });
     expect(row.pushStatus).toBe('SENT');
+  });
+
+  it('keeps names and amounts off the lock screen for a vote, and in the app', async () => {
+    setTestClock(noon);
+    const user = await withDevice();
+    await send(user, 'VOTES', {
+      fr: 'Exclure Joël Ndi du groupe, 25 000 FCFA dus',
+      en: 'Remove Joël Ndi from the group, 25,000 FCFA owed',
+    });
+    const pushed = sender.sent.filter((m) => m.to === user.token);
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]!.body).not.toMatch(/Joël|25/);
+    expect(pushed[0]!.title).toBe('Titre');
+    const row = await getPrisma().notification.findFirstOrThrow({ where: { userId: user.id } });
+    expect(row.bodyFr).toContain('Joël Ndi');
   });
 
   it('keeps quiet hours and muted categories for pushes, never for SECURITY, and keeps the in-app copy', async () => {

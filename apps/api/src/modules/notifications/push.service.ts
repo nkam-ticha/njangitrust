@@ -1,6 +1,7 @@
 // Push delivery (spec 2.13): after the in-app notification is committed, job `notifications.push`
 // sends it to the user's devices if their preferences allow it now; job `notifications.receipts`
 // checks the receipts later and removes tokens Expo no longer knows.
+import { proposalTexts } from '@njangi/shared/i18n/server/proposals';
 import { clock } from '../../lib/clock';
 import { getPrisma } from '../../lib/prisma';
 import { shouldPush } from './delivery-rules';
@@ -61,7 +62,13 @@ export async function pushNotification(
     devices.map((d) => ({
       to: d.expoPushToken!,
       title: fr ? n.titleFr : n.titleEn,
-      body: fr ? n.bodyFr : n.bodyEn,
+      // A lock screen shows the push: a vote's names and amounts stay in the app (D20.2, L7).
+      body:
+        n.category === 'VOTES'
+          ? proposalTexts.pushNeutralBody[fr ? 'fr' : 'en']
+          : fr
+            ? n.bodyFr
+            : n.bodyEn,
       data: { notificationId: n.id, deepLink: n.deepLink },
     })),
   );

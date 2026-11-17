@@ -117,6 +117,11 @@ export type ProposalErrorCode = keyof typeof proposalErrorTexts;
 /** Texts not covered by the designer’s copy (confirmation.actions.propose / voteYes / voteNo,
  * confirmation.notes.threshold, votes.titles, chat.system.voteOpened / votePassed / voteRejected). */
 export const proposalTexts = {
+  /** The body of a vote's push: a lock screen shows it, so it carries no name and no amount. */
+  pushNeutralBody: {
+    fr: 'Ouvre l’application pour voir les détails.',
+    en: 'Open the app to see the details.',
+  },
   openedTitle: { fr: 'Nouveau vote', en: 'New vote' },
   reminderTitle: { fr: 'Vote bientôt clos', en: 'Vote closing soon' },
   resultTitle: { fr: 'Résultat d’un vote', en: 'Vote result' },
