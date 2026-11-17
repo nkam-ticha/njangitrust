@@ -154,6 +154,17 @@ Confirms the platform engineer's design: proposals can be opened only after the 
 1. **Secret proposals (MEMBER_REMOVE, ADMIN_CHANGE) always run their full window.** While open, members see only participation; the result and the yes/no totals are published together at `closesAt`. Non-secret proposals still close early when the result is certain (FSD GOV-02). Reason: an early close plus live participation reveals choices in small groups (R11.5, GOV-03, AC-07 take precedence over GOV-02 for secret votes).
 2. **Push and lock-screen texts for solidarity requests are neutral** ("Nouvelle demande de soutien dans <groupe>"); the event type (deuil, maladie…) and the note are visible only inside the app.
 
+## D23. 25 FCFA contributions and a custom round period (2026-11-17)
+
+The owner asked for the smallest settings the operator allows, typed by the creator:
+
+1. **`contributionAmount` minimum is 25 FCFA** (was 500; maximum unchanged at 1 000 000). Any whole amount from 25 up can be typed; the screen also offers shortcuts. The 100 FCFA withdrawal minimum (D11, R5.4) is unchanged, so a round pot under 100 FCFA cannot be withdrawn yet.
+2. **New frequency `CUSTOM` with a new rule `customPeriodMinutes`** (whole minutes, 1 to 525 600, default 1 440; read only when the frequency is custom). Round k pays out at the first payout plus (k − 1) × `customPeriodMinutes`. The creator types a number and picks minutes, hours or days. It changes like any rule (RULE_CHANGE vote, next round, D13.1) and re-dates the remaining rounds.
+3. **Deadline for a custom period:** `dueAt` is half a period before `payoutAt` when the period is under 48 hours (24 hours otherwise), so a deadline always falls after the previous payout and before its own. Across cycles, the lead before the first deadline is the shorter of 72 hours and one period (H3).
+4. **A custom group may start within the hour:** its first payout only has to be in the future (the fixed frequencies still need a later day).
+5. **Rule sets saved before this decision** have no `customPeriodMinutes`: it reads as the default 1 440 (`completeRuleSet`); nothing is rewritten.
+6. The monthly payout day (Q1) and payout time of day do not apply to a custom period.
+
 ## Open questions (to confirm before the phase that needs them)
 
 - **Q1 (resolved by D13.2):** monthly frequency. R2.2 says `payoutAt(k) = first + (k − 1) × frequency`, but the example payout time is "last Saturday of the month". Proposed default: monthly rounds keep the **same anchor** as the first payout (if the first payout is the last Saturday, every round is the last Saturday; if it is the 28th, every round is the 28th, clamped to the month's last day). Weekly and two-weekly add 7 or 14 days.

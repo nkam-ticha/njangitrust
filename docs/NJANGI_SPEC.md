@@ -639,11 +639,12 @@ Every parameter below is part of the group's rule set. The creator sets the init
 
 | Parameter | Default | Allowed range |
 |---|---|---|
-| `contributionAmount` | 10 000 FCFA | 500 to 1 000 000 |
+| `contributionAmount` | 10 000 FCFA | 25 to 1 000 000 (D23) |
 | `solidarityContribution` | 1 000 FCFA per round (0 turns the solidarity fund off) | 0 to 50 000 |
-| `frequency` | Monthly | Weekly, every two weeks, monthly |
+| `frequency` | Monthly | Weekly, every two weeks, monthly, custom (D23) |
+| `customPeriodMinutes` | 1 440 (one day; used only when `frequency` is custom) | 1 to 525 600 minutes (D23) |
 | `payoutTime` | Set at creation (example: last Saturday of the month, 18:00) | Any |
-| Payment deadline (`dueAt`) | 24 hours before `payoutAt` | Fixed |
+| Payment deadline (`dueAt`) | 24 hours before `payoutAt` (a custom period under 48 hours: half a period before, D23) | Fixed |
 | `lateFine` | 1 000 FCFA | 0 to 50 000 |
 | `rotationMode` | FIXED (draw) | FIXED or BIDDING |
 | `minBid` | 500 FCFA | 0 to 1 000 000 |
@@ -676,7 +677,7 @@ Every parameter below is part of the group's rule set. The creator sets the init
 ## R2 Cycles and rotation
 
 - **R2.1** A cycle has as many rounds as active members when it starts. Each member is beneficiary exactly once per cycle.
-- **R2.2** Round dates: round k's `payoutAt` is the cycle's first payout time plus (k − 1) times the frequency. `dueAt` is 24 hours before `payoutAt`.
+- **R2.2** Round dates: round k's `payoutAt` is the cycle's first payout time plus (k − 1) times the frequency. `dueAt` is 24 hours before `payoutAt`. With a custom period (D23), `payoutAt` adds `customPeriodMinutes` per round, and `dueAt` is half a period before `payoutAt` when the period is under 48 hours.
 - **R2.3** In FIXED mode the order is drawn when the cycle starts, and anyone can verify the draw:
   - `seed = SHA-256(groupId + "|" + cycleNumber + "|" + latest ledger hash at draw time)`
   - Sort the active membership IDs ascending, then shuffle them with Fisher–Yates: for i from n − 1 down to 1, swap item i with item j, where `j = parseInt(SHA-256(seed + "|" + i).slice(0, 12), 16) mod (i + 1)`.
