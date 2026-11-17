@@ -1,8 +1,9 @@
 // Agent tools for proposals and votes (spec 4.6). Same shape as proposals.routes.ts: validate with
 // the same contracts, call the same services, map with the same DTOs (then the agent allowlist).
-// The member acts as `ctx` only; a secret vote's turn is marked confidential so its choice is never
-// stored (R11.5).
+// The member acts as `ctx` only. A secret ballot is never taken through the conversation: the turn
+// is marked confidential and the member is sent to the vote screen (R11.5).
 import { createProposalRequestSchema } from '@njangi/shared/contracts/proposals';
+import { agentTexts } from '@njangi/shared/i18n/server/agent';
 import { proposalErrorTexts } from '@njangi/shared/i18n/server/proposals';
 import { toAgentProposal } from '../../agent/dto/governance';
 import { ok, prepared, refused } from '../../agent/tools/outcomes';
@@ -68,9 +69,18 @@ export const proposalTools = [
   implement(SPECS.cast_vote, async (ctx, a) => {
     const view = await activeGroupProposal(ctx, a.proposalId);
     if (!view) return notFound(ctx);
+    // A secret ballot is never taken through the conversation: whatever the member typed already
+    // went to the provider with their message, so the agent does not prepare a card with it. The
+    // member votes on the vote screen, where the choice goes to the server only (R11.5, D20).
+    if (view.proposal.secret) {
+      return ok(
+        { secretVote: true, instruction: agentTexts.secretVoteScreen[ctx.lang] },
+        { confidential: true },
+      );
+    }
     const choice = a.choice === 'yes' ? 'YES' : 'NO';
     const action = await requestVote(serviceActor(ctx), a.proposalId, { choice }, 'AGENT');
-    return prepared(action, ctx.lang, { confidential: view.proposal.secret });
+    return prepared(action, ctx.lang);
   }),
   implement(SPECS.propose_rule_change, (ctx, a) =>
     propose(ctx, {

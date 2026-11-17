@@ -111,7 +111,8 @@ export async function runTool(
   } catch {
     return done({ status: 'INVALID', issues: [{ path: '(arguments)', code: 'BAD_JSON' }] });
   }
-  const parsed = tool.args.safeParse(raw);
+  // A number the member typed reaches the tool by its marker only: put the real number back here.
+  const parsed = tool.args.safeParse(ctx.numberSlots ? ctx.numberSlots.resolve(raw) : raw);
   if (!parsed.success) return done({ status: 'INVALID', issues: zodIssues(parsed.error) });
   try {
     return done(await tool.run(ctx, parsed.data), parsed.data);

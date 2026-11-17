@@ -64,7 +64,8 @@ export const statementAndAccountTools = [
   implement(SPECS.change_payment_number, async (ctx, a) => {
     const port = agentPorts().account;
     if (!port) return unavailable('account', ctx.lang);
-    return prepared(await port.prepareChangePaymentNumber(ctx, a), ctx.lang);
+    // The card shows the new number to the member; the model only learns that a card exists.
+    return prepared(await port.prepareChangePaymentNumber(ctx, a), ctx.lang, { titleOnly: true });
   }),
   implement(SPECS.delete_my_account, async (ctx) => {
     const port = agentPorts().account;

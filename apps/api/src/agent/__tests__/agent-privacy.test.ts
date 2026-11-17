@@ -7,14 +7,12 @@ import { io as connect, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { settleBackground } from '../../jobs/dispatch';
 import { getPrisma } from '../../lib/prisma';
-import { attachRealtimeServer, recordRealtimeEvents, stopRecording } from '../../realtime/emitter';
+import { attachRealtimeServer } from '../../realtime/emitter';
 import { createRealtimeServer } from '../../realtime/socket-server';
-import { confirm } from '../../../test/helpers/factories';
 import { installFakeMoney, uninstallFakeMoney } from '../../../test/helpers/fake-money-port';
-import { propose, startedGroup, type Member } from '../../../test/helpers/governance';
+import { propose, startedGroup, vote, type Member } from '../../../test/helpers/governance';
 import { registerAgentPorts, type AgentChatPort } from '../ports';
 import { onGroupMention } from '../service/group';
-import { onPendingActionUpdated } from '../service/events';
 import { agentApi, agentApp, scriptedAgent } from './helpers';
 
 let groupId: string;
@@ -31,7 +29,7 @@ beforeAll(async () => {
 afterAll(() => uninstallFakeMoney());
 
 describe('a secret vote through the agent (R11.5, AC-07)', () => {
-  it('shows only participation, and keeps no trace of the member’s choice', async () => {
+  it('shows only participation, takes no choice in the chat and keeps no trace of it', async () => {
     const [proposer, voter] = members as [Member, Member];
     const proposalId = await propose(proposer, groupId, {
       type: 'MEMBER_REMOVE',
@@ -41,7 +39,7 @@ describe('a secret vote through the agent (R11.5, AC-07)', () => {
     const llm = scriptedAgent([
       { toolCalls: [{ name: 'list_proposals', args: { status: 'OPEN' } }] },
       { toolCalls: [{ name: 'cast_vote', args: { proposalId, choice: 'no' } }] },
-      { text: 'Je prépare ton vote. Confirme-le dans la carte.' },
+      { text: 'Ce vote est secret : vote depuis l’onglet Votes.' },
     ]);
     const res = await agentApi(voter).post('/v1/agent/messages', {
       text: 'Je vote contre l’exclusion, mets non',
@@ -52,25 +50,33 @@ describe('a secret vote through the agent (R11.5, AC-07)', () => {
     expect(listed).toContain('participation');
     expect(listed).not.toMatch(/\\"yes\\":|\\"votes\\":/);
 
-    const action = res.body.turn.actions[0];
-    const events = recordRealtimeEvents();
-    expect((await confirm(voter, action.id)).status).toBe(200);
-    stopRecording(events);
-    for (const e of events.filter((x) => x.event === 'pendingAction.updated')) {
-      await onPendingActionUpdated(voter.id, e.payload as never);
-    }
-    await settleBackground();
+    // No card is prepared: the choice is made on the vote screen, never through the model.
+    expect(res.body.turn.actions).toEqual([]);
+    expect(llm.bodyTexts()[2]!).toContain('secretVote');
+    expect(
+      await getPrisma().pendingAction.count({ where: { userId: voter.id, type: 'VOTE_CAST' } }),
+    ).toBe(0);
+    expect(await getPrisma().voteReceipt.count({ where: { proposalId } })).toBe(0);
 
     const rows = await getPrisma().agentMessage.findMany({
       where: { conversation: { userId: voter.id } },
     });
     const stored = JSON.stringify(rows);
     expect(stored).not.toMatch(/contre|mets non|"no"|NO"|choice/);
-    expect(stored).not.toContain(action.id);
     const audits = await getPrisma().auditLog.findMany({
       where: { actorUserId: voter.id, action: { startsWith: 'agent.' } },
     });
     expect(JSON.stringify(audits)).not.toMatch(/choice|"no"|proposalId/);
+  });
+
+  it('still lets the member vote on the screen, where the choice never meets the model', async () => {
+    const voter = members[1]!;
+    const proposalId = await propose(members[0]!, groupId, {
+      type: 'MEMBER_REMOVE',
+      membershipId: members[2]!.membershipId,
+      reason: 'Autre cas',
+    });
+    expect((await vote(voter, proposalId, 'NO')).status).toBe(200);
   });
 });
 

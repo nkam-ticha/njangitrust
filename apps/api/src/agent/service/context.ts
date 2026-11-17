@@ -7,6 +7,7 @@ import { clock } from '../../lib/clock';
 import { getSelfSource } from '../../modules/me';
 import { authorizeGroup, type AuthActor } from '../../permissions';
 import { detectLanguage } from '../guards/language';
+import { NumberSlots } from '../guards/number-slots';
 import type { AgentCtx } from '../types';
 
 export async function buildCtx(
@@ -42,6 +43,7 @@ export async function buildCtx(
     name: self.user.name,
     firstName: self.user.name.split(/\s+/)[0] ?? self.user.name,
     ownPhones,
+    numberSlots: new NumberSlots(),
     turnId: randomUUID(),
     now: clock.now(),
   });

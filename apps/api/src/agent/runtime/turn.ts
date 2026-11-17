@@ -124,7 +124,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
   const messages: LlmMessage[] = [
     systemMessage(sessionBlock, summary?.text ?? null),
     ...historyMessages(lines, ctx.lang),
-    ...(input.text ? [memberMessage(input.text, ctx.lang, input.fromGroup)] : []),
+    ...(input.text ? [memberMessage(input.text, ctx.lang, input.fromGroup, ctx.numberSlots)] : []),
   ];
   const categories =
     deps.toolRouting && input.text

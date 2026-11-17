@@ -88,8 +88,12 @@ export const agentTexts = {
     en: 'Message about a secret vote, not kept.',
   },
   secretVoteReply: {
-    fr: 'Carte de vote secret préparée. Le contenu de cet échange n’est pas conservé.',
-    en: 'Secret vote card prepared. This exchange is not kept.',
+    fr: 'Vote secret : le choix se fait dans l’écran du vote. Le contenu de cet échange n’est pas conservé.',
+    en: 'Secret vote: the choice is made on the vote screen. The content of this exchange is not kept.',
+  },
+  secretVoteScreen: {
+    fr: 'Ce vote est secret. Je ne prends pas ton choix dans la conversation : ouvre l’onglet Votes, choisis OUI ou NON et confirme avec ton PIN. Ne m’écris pas ton choix.',
+    en: 'This vote is secret. I do not take your choice in the conversation: open the Votes tab, choose YES or NO and confirm with your PIN. Do not write your choice to me.',
   },
 } as const satisfies Record<string, Bilingual>;
 

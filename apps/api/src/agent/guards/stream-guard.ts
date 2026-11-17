@@ -1,6 +1,7 @@
 // Streaming through the output guard (spec 4.2, 4.8 point 5). A phone number can arrive split over
 // several deltas, so text is released only up to the last letter when digits follow it: digit
 // groups never join across a letter, so everything released is final and already masked.
+import { hideMarkers } from './number-slots';
 import { maskForeignPhones } from './phone-guard';
 
 const LETTER = /\p{L}/u;
@@ -31,12 +32,12 @@ export class StreamGuard {
     this.raw += delta;
     const cut = afterLastLetter(this.raw);
     const safeEnd = DIGIT.test(this.raw.slice(cut)) ? cut : this.raw.length;
-    this.release(maskForeignPhones(this.raw.slice(0, safeEnd), this.allowed));
+    this.release(hideMarkers(maskForeignPhones(this.raw.slice(0, safeEnd), this.allowed)));
   }
 
   /** The whole reply, guarded; releases what was held back. */
   finish(): string {
-    const final = maskForeignPhones(this.raw, this.allowed);
+    const final = hideMarkers(maskForeignPhones(this.raw, this.allowed));
     this.release(final);
     return final;
   }

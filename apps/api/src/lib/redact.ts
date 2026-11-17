@@ -45,16 +45,23 @@ const OPAQUE_TOKEN = /[A-Za-z0-9_-]{40,}/g;
 const LOOSE_PHONE =
   /(?<![\p{L}\p{N}])(?:\+?2\s?3\s?7[^\p{L}\p{N}]{0,4})?6(?:[^\p{L}\p{N}]{0,4}\p{Nd}){8}/gu;
 
+/** Masks a number written with up to four separators between its digits. */
+export function maskLoosePhones(text: string): string {
+  return text.replace(LOOSE_PHONE, '6•• •• •• ••');
+}
+
 /** Masks tokens and phone numbers in free text. UUIDs pass through unchanged. */
 export function redactText(text: string): string {
   if (UUID.test(text)) return text;
-  return maskPhonesInText(
-    text
-      .replace(JWT, '[jwt]')
-      .replace(BEARER, 'Bearer [redacted]')
-      .replace(OPAQUE_TOKEN, '[token]'),
-    [],
-  ).replace(LOOSE_PHONE, '6•• •• •• ••');
+  return maskLoosePhones(
+    maskPhonesInText(
+      text
+        .replace(JWT, '[jwt]')
+        .replace(BEARER, 'Bearer [redacted]')
+        .replace(OPAQUE_TOKEN, '[token]'),
+      [],
+    ),
+  );
 }
 
 const MAX_DEPTH = 8;

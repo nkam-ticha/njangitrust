@@ -26,7 +26,7 @@ export function cardSummary(action: Pick<PendingAction, 'preview'>, lang: Lang):
 export function prepared(
   action: Pick<PendingAction, 'id' | 'preview'>,
   lang: Lang,
-  extra: { confidential?: boolean } = {},
+  extra: { confidential?: boolean; titleOnly?: boolean } = {},
 ): ToolOutcome {
   return {
     status: 'OK',
@@ -34,7 +34,11 @@ export function prepared(
     // the choice is never sent back to the provider.
     data: {
       pendingActionId: action.id,
-      summary: extra.confidential ? agentTexts.secretVoteReply[lang] : cardSummary(action, lang),
+      summary: extra.confidential
+        ? agentTexts.secretVoteReply[lang]
+        : extra.titleOnly
+          ? actionPreviewSchema.parse(action.preview).title[lang]
+          : cardSummary(action, lang),
     },
     pendingActionId: action.id,
     ...(extra.confidential ? { confidential: true } : {}),

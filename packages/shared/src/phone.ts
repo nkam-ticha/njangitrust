@@ -111,6 +111,29 @@ export function maskPhonesInText(text: string, allowedE164: readonly string[]): 
   return out + text.slice(copiedTo);
 }
 
+/**
+ * The text with each phone number replaced by what `replace` returns for it (its E.164 form);
+ * `null` keeps the number as written. Numbers are found as maskPhonesInText finds them.
+ */
+export function replacePhonesInText(
+  text: string,
+  replace: (e164: string) => string | null,
+): string {
+  const { folded, starts, ends } = foldDigits(text);
+  let out = '';
+  let copiedTo = 0;
+  for (const match of folded.matchAll(PHONE_PATTERN)) {
+    const normalized = normalizeCameroonPhone(match[0]);
+    const replacement = normalized ? replace(normalized) : FULLY_MASKED;
+    if (replacement === null) continue;
+    const from = starts[match.index] ?? 0;
+    const to = ends[match.index + match[0].length - 1] ?? from;
+    out += text.slice(copiedTo, from) + replacement;
+    copiedTo = to;
+  }
+  return out + text.slice(copiedTo);
+}
+
 /** Up to three characters that are neither letters nor digits, between two digits. */
 const DIGIT_SEPARATORS = /(?<=\d)[^\p{L}\p{N}]{1,3}(?=\d)/gu;
 const NATIONAL_MOBILE = /6\d{8}/;

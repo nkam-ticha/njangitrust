@@ -3,6 +3,7 @@
 // Member text, events and summaries are wrapped so none of them can pass for the server.
 import type { Lang } from '@njangi/shared';
 import { bilingualSchema } from '@njangi/shared/contracts/common';
+import type { NumberSlots } from '../guards/number-slots';
 import { neutralise, wrapEvent, wrapMemberText } from '../guards/wrap';
 import type { LlmMessage } from '../llm/types';
 import { systemPrompt } from '../prompts';
@@ -41,8 +42,27 @@ export function readEvent(
   }
 }
 
-export function memberMessage(text: string, lang: Lang, fromGroup = false): LlmMessage {
-  return { role: 'user', content: (fromGroup ? FROM_GROUP_NOTE[lang] : '') + wrapMemberText(text) };
+const SLOT_NOTE: Record<Lang, string> = {
+  fr: '\n(Les numéros de téléphone de ce message sont remplacés par des repères [phone-N] : passe-les tels quels à l’outil qui en a besoin, sans jamais les écrire dans ta réponse.)',
+  en: '\n(Phone numbers in this message are replaced by [phone-N] markers: pass them as written to the tool that needs them, and never write them in your reply.)',
+};
+
+/**
+ * The member's message for the model. Phone numbers become markers (see guards/number-slots.ts),
+ * so a number typed to the agent is never sent to the provider.
+ */
+export function memberMessage(
+  text: string,
+  lang: Lang,
+  fromGroup = false,
+  slots?: NumberSlots,
+): LlmMessage {
+  const masked = slots ? slots.mask(text) : text;
+  const note = slots?.used ? SLOT_NOTE[lang] : '';
+  return {
+    role: 'user',
+    content: (fromGroup ? FROM_GROUP_NOTE[lang] : '') + wrapMemberText(masked) + note,
+  };
 }
 
 export function historyMessages(lines: StoredMessage[], lang: Lang): LlmMessage[] {

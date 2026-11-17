@@ -12,7 +12,9 @@ const phoneArg = z
   .string()
   .min(8)
   .max(32)
-  .describe('The number exactly as the member typed it. Never repeat it in your reply.');
+  .describe(
+    'The number as written in the member’s message, normally a marker such as [phone-1]: pass it exactly as written. Never repeat it in your reply.',
+  );
 const meetingArg = idArg('meeting').optional().describe('Omit for the next meeting.');
 
 export const actionSpecs = {

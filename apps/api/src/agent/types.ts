@@ -3,6 +3,7 @@
 import type { Lang } from '@njangi/shared';
 import type { AgentChannel } from '@njangi/shared/contracts/agent';
 import type { AuthActor, MembershipRole } from '../permissions';
+import type { NumberSlots } from './guards/number-slots';
 
 export interface AgentCtx {
   /** The verified session of the member; services act as `actor.userId`. */
@@ -21,6 +22,8 @@ export interface AgentCtx {
   readonly firstName: string;
   /** The member's own numbers (login and payment): the only ones the output guard lets through. */
   readonly ownPhones: readonly string[];
+  /** The numbers the member typed in this turn, as markers the model can pass on (never digits). */
+  readonly numberSlots?: NumberSlots;
   readonly turnId: string;
   readonly now: Date;
 }
