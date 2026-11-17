@@ -8,6 +8,7 @@
 import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
 import { registerAgentJobs } from '../index';
 import { agentConfig, setAgentConfigForTests } from '../config';
+import { EVENT_TOOL } from '../store/types';
 import { agentMessageLimiter } from '../guards/rate-limit';
 import { OpenRouterClient } from '../llm/openrouter';
 import { setLlmForTests } from '../llm/provider';
@@ -15,10 +16,13 @@ import type { LlmCallOptions, LlmClient, LlmRequest, LlmResponse } from '../llm/
 import { PROMPT_VERSION } from '../prompts';
 import { handleUserMessage } from '../service/turns';
 import { agentStatus } from '../status';
-import { useJobScheduler } from '../../jobs/dispatch';
+import { settleBackground, useJobScheduler } from '../../jobs/dispatch';
+import { settlePendingWork } from '../../lib/pending-work';
 import { getPrisma } from '../../lib/prisma';
 import { runAsSystem } from '../../lib/request-context';
+import { sendMessage } from '../../modules/chat/chat.messages';
 import { listMyGroups } from '../../modules/me';
+import { completePendingAction } from '../../modules/pending-actions';
 import { registerActionHandlers, registerJobs } from '../../modules/register';
 import * as people from '../../../../../tools/demo-seed/src/people';
 import type { AgentDriver, AgentSession } from '../../../../../tools/agent-eval/src/harness';
@@ -183,13 +187,81 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     },
 
     async open({ member, channel, language }): Promise<AgentSession> {
-      if (channel === 'GROUP') {
-        throw new NotAvailable(
-          'the group-chat driver is not written yet: it posts through the chat port, which is not registered',
-        );
-      }
       const { person, userId, groupId } = await memberOf(member);
       await forget(userId);
+      if (channel === 'GROUP') {
+        if (!groupId) throw new NotAvailable(`${person.name} is in no group`);
+        // The member posts the message in the group chat, as the app does; the chat module calls the
+        // agent (agent port), which answers in the group and may continue in private.
+        return {
+          ownPhones: [person.phone],
+          async say(text, steps): Promise<Omit<TurnEvidence, 'index'>> {
+            const db = getPrisma();
+            model.startTurn(steps);
+            const since = new Date(Date.now() - 1_000);
+            const posted = await sendMessage(userId, groupId, { text });
+            await settlePendingWork();
+            await settleBackground();
+            const groupMessage = await db.message.findFirst({
+              where: { groupId, kind: 'AGENT', createdAt: { gte: since } },
+              orderBy: { createdAt: 'desc' },
+            });
+            const groupText = (groupMessage?.systemText ?? null) as { fr?: string } | null;
+            const privateLine = await db.agentMessage.findFirst({
+              where: {
+                conversation: { userId, channel: 'PRIVATE' },
+                role: 'assistant',
+                createdAt: { gte: since },
+              },
+              orderBy: { createdAt: 'desc' },
+            });
+            const tools = await db.agentMessage.findMany({
+              where: {
+                conversation: { userId },
+                role: 'tool',
+                toolName: { not: EVENT_TOOL },
+                createdAt: { gte: since },
+              },
+              orderBy: { createdAt: 'asc' },
+            });
+            const last = model.exchanges.at(-1);
+            const sent = (last?.request.messages ?? []) as SentMessage[];
+            const evidence = {
+              kind: 'user' as const,
+              said: text,
+              reply: privateLine?.content ?? '',
+              groupReply: groupMessage?.text ?? groupText?.fr ?? '',
+              toolCalls: tools.flatMap((row) =>
+                row.toolName
+                  ? [
+                      {
+                        name: row.toolName,
+                        status: row.toolStatus ?? 'OK',
+                        args: (row.toolArgsRedacted ?? {}) as Record<string, unknown>,
+                      },
+                    ]
+                  : [],
+              ),
+              cards: [],
+              infoCards: [],
+              sessionBlock: sessionBlockOf(sent),
+              toolResults: toolResultsOf(sent).map((r) => r.raw),
+              events: eventsOf(sent),
+            };
+            // The demo group keeps no trace of the evaluation: the question and the answers go.
+            await db.message.deleteMany({
+              where: {
+                groupId,
+                OR: [{ id: posted.message.id }, { kind: 'AGENT', createdAt: { gte: since } }],
+              },
+            });
+            return evidence;
+          },
+          event(): Promise<Omit<TurnEvidence, 'index'>> {
+            throw new NotAvailable('result events belong to the private conversation');
+          },
+        };
+      }
       const actor = { userId, lang: language, sessionId: 'agent-eval', client: 'mobile' as const };
       return {
         ownPhones: [person.phone],
@@ -216,12 +288,59 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
             events: eventsOf(sent),
           };
         },
-        event(): Promise<Omit<TurnEvidence, 'index'>> {
-          // The app confirms through POST /v1/pending-actions/:id/confirm; the harness will do the
-          // same over HTTP, and switch the MockProvider to failure, once payments exist.
-          throw new NotAvailable(
-            'result events are not driven yet: they need the payment services and the MockProvider',
+        async event(status, steps): Promise<Omit<TurnEvidence, 'index'>> {
+          // The card the agent prepared in the turn before. The result is written through the same
+          // service the payment code uses (completePendingAction), which announces it and queues
+          // the agent's follow-up. No money moves: the scenario runs three times on one demo
+          // member, and a real payment could happen once.
+          const prepared = await getPrisma().pendingAction.findFirst({
+            where: { userId, origin: 'AGENT', status: 'PENDING' },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (!prepared) throw new NotAvailable('the turn before did not prepare a card');
+          await getPrisma().pendingAction.update({
+            where: { id: prepared.id },
+            data: { status: 'CONFIRMED', confirmedAt: new Date() },
+          });
+          model.startTurn(steps);
+          await completePendingAction(
+            prepared.id,
+            status === 'DONE'
+              ? {
+                  status: 'DONE',
+                  resultRef: null,
+                  summary: { fr: 'Payé, réf. MP2611EVAL', en: 'Paid, ref. MP2611EVAL' },
+                }
+              : {
+                  status: 'FAILED',
+                  failureCode: 'PAYMENT_FAILED',
+                  failureText: {
+                    fr: 'L’opérateur a refusé le paiement. Rien n’a été débité.',
+                    en: 'The operator refused the payment. Nothing was charged.',
+                  },
+                },
           );
+          // The follow-up is queued after the announcement, then runs as a job.
+          await settlePendingWork();
+          await settleBackground();
+          const last = model.exchanges.at(-1);
+          const sent = (last?.request.messages ?? []) as SentMessage[];
+          const reply = await getPrisma().agentMessage.findFirst({
+            where: { conversation: { userId, channel: 'PRIVATE' }, role: 'assistant' },
+            orderBy: { createdAt: 'desc' },
+          });
+          return {
+            kind: 'event',
+            said: '',
+            reply: reply?.content ?? '',
+            groupReply: null,
+            toolCalls: [],
+            cards: [],
+            infoCards: [],
+            sessionBlock: sessionBlockOf(sent),
+            toolResults: toolResultsOf(sent).map((r) => r.raw),
+            events: eventsOf(sent),
+          };
         },
       };
     },
