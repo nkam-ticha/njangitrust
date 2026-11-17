@@ -38,6 +38,12 @@ function providerWithBalance(getBalance: PaymentProvider['getBalance']): Payment
   };
 }
 
+/** A check a moment after the last one: the test clock stands still between calls. */
+const check = () => {
+  advanceTestClock(1_000);
+  return runDailyReconciliation(providerAccount);
+};
+
 const checkNotices = (userId: string) =>
   getPrisma().notification.count({ where: { userId, groupId, deepLink: '/caisse' } });
 
@@ -78,7 +84,7 @@ describe('reading the last check (GET /groups/:id/reconciliation/latest)', () =>
   });
 
   it('shows the result with no balance, account or amount', async () => {
-    const run = await runDailyReconciliation(providerAccount);
+    const run = await check();
     expect(run.status).toBe('OK');
     const res = await api(member).get(`/v1/groups/${groupId}/reconciliation/latest`);
     expect(res.status).toBe(200);
@@ -97,7 +103,7 @@ describe('the ALERT path (R5.5, D16.2)', () => {
       providerWithBalance(() => Promise.reject(new Error('operator unreachable'))),
     );
     const before = await checkNotices(member.id);
-    const run = await runDailyReconciliation(providerAccount);
+    const run = await check();
     await settleBackground();
     expect(run.status).toBe('ALERT');
     expect(await checkNotices(member.id)).toBe(before + 1);
@@ -115,7 +121,7 @@ describe('the ALERT path (R5.5, D16.2)', () => {
     expect(refused.status).toBeGreaterThanOrEqual(400);
 
     // A second ALERT in a row does not notify again.
-    await runDailyReconciliation(providerAccount);
+    await check();
     await settleBackground();
     expect(await checkNotices(member.id)).toBe(before + 1);
   });
@@ -137,11 +143,11 @@ describe('the ALERT path (R5.5, D16.2)', () => {
     const intent = await getPrisma().paymentIntent.findUniqueOrThrow({ where: { id: intentId } });
     expect(intent.status).toBe('SUCCESSFUL');
     const held = intent.amount - (intent.fee ?? 0);
-    expect((await runDailyReconciliation(providerAccount)).status).toBe('OK');
+    expect((await check()).status).toBe('OK');
 
     const before = await checkNotices(member.id);
     setPaymentProviderForTests(providerWithBalance(() => Promise.resolve({ total: 0 })));
-    const run = await runDailyReconciliation(providerAccount);
+    const run = await check();
     await settleBackground();
     expect(run.status).toBe('ALERT');
     expect(run.difference).not.toBe(0);
@@ -152,7 +158,7 @@ describe('the ALERT path (R5.5, D16.2)', () => {
 
     // Once the operator's balance matches again the pause ends.
     setPaymentProviderForTests(providerWithBalance(() => Promise.resolve({ total: held })));
-    expect((await runDailyReconciliation(providerAccount)).status).not.toBe('ALERT');
+    expect((await check()).status).not.toBe('ALERT');
     const after = await api(member).get(`/v1/groups/${groupId}/reconciliation/latest`);
     expect(after.body.reconciliation.withdrawalsPaused).toBe(false);
   });
