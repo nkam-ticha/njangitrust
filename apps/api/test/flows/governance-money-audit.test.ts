@@ -93,6 +93,33 @@ describe('exits, corrections and releases after the ledger audit', () => {
     await expectSoundLedger(groupId);
   });
 
+  it('keeps an exit vote and a payment from overlapping', async () => {
+    const { groupId, members } = await realGroup();
+    const [paying, leaving] = members as [Member, Member];
+    const dueOf = async (member: Member) =>
+      ((await api(member).get(`/v1/groups/${groupId}/me/dues`)).body.dues as { id: string }[]).map(
+        (due) => due.id,
+      );
+
+    // A payment the operator has not answered yet: no exit vote can open for that member.
+    const card = await api(paying).post(`/v1/groups/${groupId}/payments`, {
+      obligationIds: await dueOf(paying),
+    });
+    expect((await confirm(paying, card.body.action.id)).status).toBe(200);
+    const refused = await api(paying).post(`/v1/groups/${groupId}/proposals`, {
+      type: 'EARLY_EXIT',
+      reason: 'Je pars',
+    });
+    expect(refused.body.code).toBe('EXIT_PAYMENT_IN_PROGRESS');
+
+    // An open exit vote: that member cannot start a payment until it has closed.
+    await propose(leaving, groupId, { type: 'EARLY_EXIT', reason: 'Je pars' });
+    const blocked = await api(leaving).post(`/v1/groups/${groupId}/payments`, {
+      obligationIds: await dueOf(leaving),
+    });
+    expect(blocked.body.code).toBe('PAYMENT_BLOCKED_BY_EXIT_VOTE');
+  });
+
   it('refuses to correct a fine that a payment in progress is paying', async () => {
     const { groupId, admin, members, rounds } = await realGroup();
     const late = members[2]!;

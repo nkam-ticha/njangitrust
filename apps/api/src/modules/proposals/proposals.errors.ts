@@ -9,6 +9,7 @@ export const proposalError = defineErrors({
   ALREADY_VOTED: { status: 409, text: t.ALREADY_VOTED },
   PROPOSAL_TYPE_UNAVAILABLE: { status: 409, text: t.PROPOSAL_TYPE_UNAVAILABLE },
   PROPOSAL_ALREADY_OPEN: { status: 409, text: t.PROPOSAL_ALREADY_OPEN },
+  EXIT_PAYMENT_IN_PROGRESS: { status: 409, text: t.EXIT_PAYMENT_IN_PROGRESS },
   MEMBER_NOT_FOUND: { status: 404, text: t.MEMBER_NOT_FOUND },
   CANNOT_TARGET_SELF: { status: 409, text: t.CANNOT_TARGET_SELF },
   ADMIN_MUST_CHANGE_FIRST: { status: 409, text: t.ADMIN_MUST_CHANGE_FIRST },

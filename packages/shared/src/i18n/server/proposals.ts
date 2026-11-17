@@ -26,6 +26,10 @@ export const proposalErrorTexts = {
     fr: 'Ce type de proposition n’est pas encore disponible. Réessaie après la prochaine mise à jour.',
     en: 'This kind of proposal is not available yet. Try again after the next update.',
   },
+  EXIT_PAYMENT_IN_PROGRESS: {
+    fr: 'Ce membre a un paiement, un retrait ou un prêt en cours. Attends qu’il soit terminé avant d’ouvrir ce vote.',
+    en: 'This member has a payment, withdrawal or loan in progress. Wait until it is finished before opening this vote.',
+  },
   PROPOSAL_ALREADY_OPEN: {
     fr: 'Un vote du même type est déjà ouvert pour ce membre. Attends sa clôture.',
     en: 'A vote of the same kind is already open for this member. Wait until it closes.',

@@ -26,6 +26,13 @@ export const paymentError = defineErrors({
       'A payment request is already pending for this item.',
     ),
   },
+  PAYMENT_BLOCKED_BY_EXIT_VOTE: {
+    status: 409,
+    text: tx(
+      'Un vote sur ton départ est ouvert. Tu pourras payer quand il sera clos.',
+      'A vote on your leaving is open. You will be able to pay once it has closed.',
+    ),
+  },
   PAYMENT_REQUEST_FAILED: {
     status: 503,
     text: tx(

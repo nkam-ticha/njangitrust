@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { ui } from '../../../lib/texts';
 import { proposalError } from '../proposals.errors';
 import { appliedOn, defineProposal, memberRef, nameOf } from './definition';
-import { assertNoOpenProposalAbout, endMembership, requireMoneyPort } from './membership-end';
+import {
+  assertNoOpenProposalAbout,
+  assertNothingInFlight,
+  endMembership,
+  requireMoneyPort,
+} from './membership-end';
 
 const memberPayload = z.strictObject({ membershipId: z.string().uuid() });
 
@@ -25,7 +30,10 @@ export const memberRemove = defineProposal({
     if (!target) throw proposalError('MEMBER_NOT_FOUND');
     if (target.id === ctx.proposer.id) throw proposalError('CANNOT_TARGET_SELF');
     if (target.role === 'ADMIN') throw proposalError('ADMIN_MUST_CHANGE_FIRST');
-    if (target.status !== 'INVITED') requireMoneyPort();
+    if (target.status !== 'INVITED') {
+      requireMoneyPort();
+      await assertNothingInFlight(ctx, target.id);
+    }
     await assertNoOpenProposalAbout(ctx, 'MEMBER_REMOVE', target.id);
     return {
       payload: args,
@@ -57,6 +65,7 @@ export const earlyExit = defineProposal({
   async plan(ctx) {
     if (ctx.proposer.role === 'ADMIN') throw proposalError('ADMIN_MUST_CHANGE_FIRST');
     requireMoneyPort();
+    await assertNothingInFlight(ctx, ctx.proposer.id);
     await assertNoOpenProposalAbout(ctx, 'EARLY_EXIT', ctx.proposer.id);
     return {
       payload: { membershipId: ctx.proposer.id },

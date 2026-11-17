@@ -75,6 +75,21 @@ export async function endMembership(
   endMembershipAccess(ctx.effects, { userId: member.userId, groupId: ctx.group.id });
 }
 
+/**
+ * A member who leaves or is removed is settled from the ledger as it stands when the vote closes,
+ * so nothing of theirs may be in flight: no payment, withdrawal or loan still being answered by the
+ * operator. The vote is refused until it is done, and while it is open the member cannot start a
+ * payment (payments.actions.ts), so nothing can start in between.
+ */
+export async function assertNothingInFlight(ctx: PlanContext, membershipId: string): Promise<void> {
+  const open = ['CREATED', 'PENDING', 'EXPIRED'] as const;
+  const [payments, sends] = await Promise.all([
+    ctx.db.paymentIntent.count({ where: { membershipId, status: { in: [...open] } } }),
+    ctx.db.disbursement.count({ where: { membershipId, status: { in: [...open] } } }),
+  ]);
+  if (payments + sends > 0) throw proposalError('EXIT_PAYMENT_IN_PROGRESS');
+}
+
 /** Settlements need the money modules once a cycle runs. */
 export function requireMoneyPort(): void {
   if (!moneyPort()) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');

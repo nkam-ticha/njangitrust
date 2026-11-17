@@ -4,6 +4,7 @@ import { getEnv } from '../../config/env';
 import { authorizeGroup } from '../../permissions';
 import type { ActionContext } from '../pending-actions';
 import { defineActionHandler } from '../pending-actions';
+import { paymentError } from './payments.errors';
 import { createPaymentIntent, paymentPreview, submitPaymentIntent } from './payments.service';
 
 const args = z.strictObject({
@@ -12,7 +13,18 @@ const args = z.strictObject({
 });
 
 async function preview(ctx: ActionContext, a: z.infer<typeof args>) {
-  await authorizeGroup(ctx.userId, a.groupId, 'group.payments.create', ctx.db);
+  const access = await authorizeGroup(ctx.userId, a.groupId, 'group.payments.create', ctx.db);
+  // While a vote on this member's leaving is open they are settled from the ledger as it stands
+  // when it closes: nothing new may start (the vote itself waits for nothing to be in flight).
+  const exitVote = await ctx.db.proposal.count({
+    where: {
+      groupId: a.groupId,
+      status: 'OPEN',
+      type: { in: ['EARLY_EXIT', 'MEMBER_REMOVE'] },
+      subjectMembershipId: access.membership.id,
+    },
+  });
+  if (exitVote > 0) throw paymentError('PAYMENT_BLOCKED_BY_EXIT_VOTE');
   return paymentPreview(ctx.db, {
     groupId: a.groupId,
     userId: ctx.userId,
