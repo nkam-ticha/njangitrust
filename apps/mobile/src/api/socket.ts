@@ -1,4 +1,8 @@
-import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
+import {
+  createClient,
+  REALTIME_SUBSCRIBE_STATES,
+  type RealtimeChannel,
+} from '@supabase/supabase-js';
 import type { ServerToClientEvents } from '@njangi/shared/contracts/realtime';
 import { z } from 'zod';
 import { useConnectivity } from '@/state/connectivity';
@@ -17,11 +21,12 @@ export interface RealtimeEventClient {
 
 const supabaseUrl: string | undefined = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey: string | undefined = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-const realtime = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    })
-  : null;
+const realtime =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      })
+    : null;
 
 const realtimeTokenSchema = z.strictObject({
   token: z.string().min(1),
@@ -69,8 +74,16 @@ function addChannel(topic: string): void {
   if (!realtime || channels.has(topic)) return;
   const nextChannel = realtime.channel(topic, { config: { private: true } });
   for (const event of [
-    'message.created', 'message.deleted', 'message.hidden', 'proposal.updated',
-    'notification.created', 'pendingAction.updated', 'session.ended',
+    'message.created',
+    'message.deleted',
+    'message.hidden',
+    'proposal.updated',
+    'notification.created',
+    'pendingAction.updated',
+    'session.ended',
+    'agent.delta',
+    'agent.activity',
+    'agent.done',
   ] as const) {
     nextChannel.on('broadcast', { event }, ({ payload }) => {
       for (const handler of handlers.get(event) ?? []) handler(payload);
@@ -78,8 +91,12 @@ function addChannel(topic: string): void {
     });
   }
   nextChannel.subscribe((status) => {
-    if (status === 'SUBSCRIBED') useConnectivity.getState().markOnline();
-    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+    if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) useConnectivity.getState().markOnline();
+    else if (
+      status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR ||
+      status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT ||
+      status === REALTIME_SUBSCRIBE_STATES.CLOSED
+    ) {
       useConnectivity.getState().markOffline();
     }
   });

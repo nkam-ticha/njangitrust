@@ -5,6 +5,7 @@ import {
 } from '@njangi/shared/contracts/auth';
 import { selfSchema } from '@njangi/shared/contracts/me';
 import { z } from 'zod';
+import { setLanguage } from '@/i18n';
 import { useSession } from '@/state/session';
 import { accessTokenStore, api, refreshAccessToken, setRefreshHandler } from './client';
 import { queryClient } from './queryClient';
@@ -58,7 +59,9 @@ export async function restoreSession(): Promise<void> {
     try {
       const { user } = await api.get('/v1/me', { schema: meResponseSchema });
       useSession.getState().setSignedIn(user);
-      connectSocket();
+      // The member's saved language wins over the device's (spec 1.6).
+      void setLanguage(user.language);
+      void connectSocket();
       return;
     } catch {
       // Offline at launch with a valid token is handled once offline persistence lands;
@@ -73,7 +76,8 @@ export async function restoreSession(): Promise<void> {
 export async function signIn(response: AuthResponse): Promise<void> {
   await applySession(response.session);
   useSession.getState().setSignedIn(response.user);
-  connectSocket();
+  void setLanguage(response.user.language);
+  void connectSocket();
 }
 
 /** "Se déconnecter", or "Se déconnecter partout" to revoke every device (spec 2.10). */
