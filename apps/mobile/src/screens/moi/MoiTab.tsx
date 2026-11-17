@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { newRoute } from '../shared/routes';
 import { useTranslation } from 'react-i18next';
 import { signOut } from '@/api/session';
 import { useSession } from '@/state/session';
@@ -120,6 +121,36 @@ export function MoiTab() {
               onPress={() => router.push('/members')}
             />
           ) : null}
+          {group ? (
+            <ListRow
+              title={t('loans.title')}
+              titleWeight="regular"
+              chevron
+              onPress={() => router.push(newRoute('/loans'))}
+            />
+          ) : null}
+          {group ? (
+            <ListRow
+              title={t('meetings.title')}
+              titleWeight="regular"
+              chevron
+              onPress={() => router.push(newRoute('/meetings'))}
+            />
+          ) : null}
+          {group ? (
+            <ListRow
+              title={t('moi.statements')}
+              titleWeight="regular"
+              chevron
+              onPress={() => router.push(newRoute('/statements'))}
+            />
+          ) : null}
+          <ListRow
+            title={t('moi.agentHistory')}
+            titleWeight="regular"
+            chevron
+            onPress={() => router.push(newRoute('/agent-history'))}
+          />
           {group ? (
             <ListRow
               title={t('groupSettings.pinResets')}
