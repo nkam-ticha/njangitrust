@@ -2,7 +2,6 @@
 
 import type { Refusal } from '../result';
 import {
-  addHours,
   assertDate,
   DAY_MS,
   daysInMonth,
@@ -15,7 +14,15 @@ import {
 /** R2.2: the payment deadline is this many hours before the payout. */
 export const DUE_BEFORE_PAYOUT_HOURS = 24;
 
-export type Frequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+/** CUSTOM: a period typed in minutes (`customPeriodMinutes`), from one minute up (DECISIONS D23). */
+export type Frequency = 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+/** The shortest and longest custom period, in minutes (one minute to 365 days). */
+export const MIN_CUSTOM_PERIOD_MINUTES = 1;
+export const MAX_CUSTOM_PERIOD_MINUTES = 525_600;
 
 /**
  * Q1: how a monthly group picks its payout day each month. The default is the day of the month of
@@ -39,8 +46,31 @@ export interface PayoutTime {
 export interface PayoutSchedule {
   firstPayoutAt: Date;
   frequency: Frequency;
+  /** CUSTOM only: the whole number of minutes between two payouts. */
+  customPeriodMinutes?: number;
   /** MONTHLY only. Defaults to the day of the month of `firstPayoutAt` (Q1). */
   monthlyAnchor?: MonthlyAnchor;
+}
+
+/** The period of a CUSTOM schedule in milliseconds; refuses anything but a whole number of minutes. */
+function customPeriodMs(minutes: unknown): number {
+  if (!Number.isSafeInteger(minutes) || (minutes as number) < MIN_CUSTOM_PERIOD_MINUTES) {
+    throw new RangeError('customPeriodMinutes must be a whole number of minutes, 1 or more');
+  }
+  return (minutes as number) * MINUTE_MS;
+}
+
+/**
+ * R2.2: how long before the payout the payment deadline falls. 24 hours, except that a custom
+ * period shorter than 48 hours puts the deadline half a period before the payout, so that it stays
+ * after the previous payout and rounds never overlap (D23).
+ */
+export function dueLeadMs(
+  schedule: Pick<PayoutSchedule, 'frequency' | 'customPeriodMinutes'>,
+): number {
+  const standard = DUE_BEFORE_PAYOUT_HOURS * HOUR_MS;
+  if (schedule.frequency !== 'CUSTOM') return standard;
+  return Math.min(standard, customPeriodMs(schedule.customPeriodMinutes) / 2);
 }
 
 /**
@@ -92,6 +122,9 @@ export function roundPayoutAt(schedule: PayoutSchedule, k: number): Date {
   const first = assertDate(schedule.firstPayoutAt, 'firstPayoutAt');
   if (schedule.frequency === 'WEEKLY') return new Date(first + (k - 1) * 7 * DAY_MS);
   if (schedule.frequency === 'BIWEEKLY') return new Date(first + (k - 1) * 14 * DAY_MS);
+  if (schedule.frequency === 'CUSTOM') {
+    return new Date(first + (k - 1) * customPeriodMs(schedule.customPeriodMinutes));
+  }
   const local = toDoualaLocal(schedule.firstPayoutAt);
   const anchor: MonthlyAnchor = schedule.monthlyAnchor ?? { kind: 'DAY_OF_MONTH', day: local.day };
   if (monthlyPayoutDay(local.year, local.month, anchor) !== local.day) {
@@ -111,15 +144,18 @@ export function roundPayoutAt(schedule: PayoutSchedule, k: number): Date {
   });
 }
 
-/** R2.2: the payment deadline (dueAt) is 24 hours before the payout. */
-export function roundDueAt(payoutAt: Date): Date {
-  return addHours(payoutAt, -DUE_BEFORE_PAYOUT_HOURS);
+/** R2.2: the payment deadline (dueAt) is 24 hours before the payout (`leadMs`, see dueLeadMs). */
+export function roundDueAt(
+  payoutAt: Date,
+  leadMs: number = DUE_BEFORE_PAYOUT_HOURS * HOUR_MS,
+): Date {
+  return new Date(assertDate(payoutAt, 'payoutAt') - leadMs);
 }
 
 /** R2.2: payout time and payment deadline of round k. */
 export function roundDates(schedule: PayoutSchedule, k: number): { payoutAt: Date; dueAt: Date } {
   const payoutAt = roundPayoutAt(schedule, k);
-  return { payoutAt, dueAt: roundDueAt(payoutAt) };
+  return { payoutAt, dueAt: roundDueAt(payoutAt, dueLeadMs(schedule)) };
 }
 
 /**
@@ -129,7 +165,11 @@ export function roundDates(schedule: PayoutSchedule, k: number): { payoutAt: Dat
 export const MIN_LEAD_BEFORE_FIRST_DUE_HOURS = 72;
 
 /** The next payout slot after `after`: +7 or +14 days, or the next monthly anchor day after its date. */
-function nextOccurrence(after: Date, frequency: Frequency, payoutTime: PayoutTime): Date {
+function nextOccurrence(
+  after: Date,
+  frequency: Exclude<Frequency, 'CUSTOM'>,
+  payoutTime: PayoutTime,
+): Date {
   const local = toDoualaLocal(after);
   const { hour, minute, monthlyAnchor } = payoutTime;
   if (frequency !== 'MONTHLY') {
@@ -172,11 +212,27 @@ function nextOccurrence(after: Date, frequency: Frequency, payoutTime: PayoutTim
 export function nextCycleFirstPayoutAt(input: {
   lastPayoutAt: Date;
   frequency: Frequency;
+  /** CUSTOM only. */
+  customPeriodMinutes?: number;
   payoutTime: PayoutTime;
   now: Date;
 }): Date {
   const last = assertDate(input.lastPayoutAt, 'lastPayoutAt');
-  const earliestDue = assertDate(input.now, 'now') + MIN_LEAD_BEFORE_FIRST_DUE_HOURS * 3_600_000;
+  const now = assertDate(input.now, 'now');
+  if (input.frequency === 'CUSTOM') {
+    // D23: whole periods after the last payout. The lead before the first deadline is the shorter
+    // of 72 hours and one period, so a one-minute group is not pushed days ahead. Computed
+    // directly, not by stepping, because a one-minute group can be idle for months.
+    const period = customPeriodMs(input.customPeriodMinutes);
+    const lead = dueLeadMs({ frequency: 'CUSTOM', customPeriodMinutes: input.customPeriodMinutes });
+    const earliestPayout = Math.max(
+      last + lead + 1,
+      now + Math.min(MIN_LEAD_BEFORE_FIRST_DUE_HOURS * HOUR_MS, period) + lead,
+    );
+    const periods = Math.max(1, Math.ceil((earliestPayout - last) / period));
+    return new Date(last + periods * period);
+  }
+  const earliestDue = now + MIN_LEAD_BEFORE_FIRST_DUE_HOURS * HOUR_MS;
   let candidate = nextOccurrence(input.lastPayoutAt, input.frequency, input.payoutTime);
   for (;;) {
     const due = roundDueAt(candidate).getTime();
@@ -200,6 +256,8 @@ export function rescheduleFromRound(input: {
   fromRound: number;
   previousPayoutAt: Date;
   frequency: Frequency;
+  /** CUSTOM only. */
+  customPeriodMinutes?: number;
   payoutTime: PayoutTime;
   now: Date;
 }): ScheduleSegment {
@@ -209,6 +267,7 @@ export function rescheduleFromRound(input: {
   const firstPayoutAt = nextCycleFirstPayoutAt({
     lastPayoutAt: input.previousPayoutAt,
     frequency: input.frequency,
+    customPeriodMinutes: input.customPeriodMinutes,
     payoutTime: input.payoutTime,
     now: input.now,
   });
@@ -217,6 +276,7 @@ export function rescheduleFromRound(input: {
     schedule: {
       firstPayoutAt,
       frequency: input.frequency,
+      ...(input.frequency === 'CUSTOM' ? { customPeriodMinutes: input.customPeriodMinutes } : {}),
       monthlyAnchor: input.payoutTime.monthlyAnchor,
     },
   };

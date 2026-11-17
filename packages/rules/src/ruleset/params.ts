@@ -1,7 +1,13 @@
 // Rule set parameters, defaults and allowed ranges (3.2, R11.7).
 
 import type { Refusal } from '../result';
-import type { Frequency, MonthlyAnchor, PayoutTime } from '../time';
+import {
+  MAX_CUSTOM_PERIOD_MINUTES,
+  MIN_CUSTOM_PERIOD_MINUTES,
+  type Frequency,
+  type MonthlyAnchor,
+  type PayoutTime,
+} from '../time';
 
 export type RotationMode = 'FIXED' | 'BIDDING';
 
@@ -11,6 +17,8 @@ export interface RuleSetParams {
   /** 0 turns the solidarity fund off. */
   solidarityContribution: number;
   frequency: Frequency;
+  /** Minutes between two rounds when `frequency` is CUSTOM (D23); ignored otherwise. */
+  customPeriodMinutes: number;
   payoutTime: PayoutTime;
   lateFine: number;
   rotationMode: RotationMode;
@@ -41,9 +49,19 @@ export type ParameterSpec =
 
 /** 3.2 allowed ranges and R11.1 effect timing, per parameter. */
 export const PARAMETER_SPECS: Readonly<Record<ParameterName, ParameterSpec>> = {
-  contributionAmount: { kind: 'integer', min: 500, max: 1_000_000, takesEffect: 'NEXT_ROUND' },
+  contributionAmount: { kind: 'integer', min: 25, max: 1_000_000, takesEffect: 'NEXT_ROUND' },
   solidarityContribution: { kind: 'integer', min: 0, max: 50_000, takesEffect: 'NEXT_ROUND' },
-  frequency: { kind: 'enum', values: ['WEEKLY', 'BIWEEKLY', 'MONTHLY'], takesEffect: 'NEXT_ROUND' },
+  frequency: {
+    kind: 'enum',
+    values: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'CUSTOM'],
+    takesEffect: 'NEXT_ROUND',
+  },
+  customPeriodMinutes: {
+    kind: 'integer',
+    min: MIN_CUSTOM_PERIOD_MINUTES,
+    max: MAX_CUSTOM_PERIOD_MINUTES,
+    takesEffect: 'NEXT_ROUND',
+  },
   // D13.1: a frequency or payout-time change re-dates the remaining rounds (rescheduleFromRound).
   payoutTime: { kind: 'payoutTime', takesEffect: 'NEXT_ROUND' },
   lateFine: { kind: 'integer', min: 0, max: 50_000, takesEffect: 'NEXT_ROUND' },
@@ -67,6 +85,7 @@ export const DEFAULT_RULE_SET: Readonly<RuleSetParams> = Object.freeze<RuleSetPa
   contributionAmount: 10_000,
   solidarityContribution: 1_000,
   frequency: 'MONTHLY',
+  customPeriodMinutes: 1_440,
   payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 } },
   lateFine: 1_000,
   rotationMode: 'FIXED',
@@ -81,6 +100,19 @@ export const DEFAULT_RULE_SET: Readonly<RuleSetParams> = Object.freeze<RuleSetPa
   distributeFundAtCycleEnd: true,
   reliabilityWindow: 12,
 });
+
+/** Parameters added after the first groups were created, with the value those groups run with. */
+const ADDED_LATER = { customPeriodMinutes: DEFAULT_RULE_SET.customPeriodMinutes } as const;
+
+/**
+ * Stored rule sets are never rewritten, so one saved before a parameter existed lacks it. This fills
+ * only those parameters with their defaults (D23) and keeps every stored value as it is; the result
+ * still goes through validateRuleSet before use.
+ */
+export function completeRuleSet(stored: unknown): RuleSetParams {
+  const base = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {};
+  return { ...ADDED_LATER, ...base } as unknown as RuleSetParams;
+}
 
 export type ParameterRefusal =
   | Refusal<'UNKNOWN_PARAMETER', { parameter: string }>

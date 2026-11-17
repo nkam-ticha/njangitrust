@@ -95,8 +95,8 @@ export const RULES_R1_R3: readonly RuleText[] = [
   entry(
     'R2.2',
     R2,
-    "Round dates: round k's payoutAt is the cycle's first payout time plus (k − 1) times the frequency. dueAt is 24 hours before payoutAt.",
-    "Dates des tours : le versement (payoutAt) du tour k a lieu à l'heure du premier versement du cycle plus (k − 1) fois la fréquence. La date limite de paiement (dueAt) est 24 heures avant le versement.",
+    "Round dates: round k's payoutAt is the cycle's first payout time plus (k − 1) times the frequency. dueAt is 24 hours before payoutAt (half a period before when a custom period is under 48 hours).",
+    "Dates des tours : le versement (payoutAt) du tour k a lieu à l'heure du premier versement du cycle plus (k − 1) fois la fréquence. La date limite de paiement (dueAt) est 24 heures avant le versement (une demi-période avant quand une période personnalisée dure moins de 48 heures).",
     [
       'dates',
       'date limite',

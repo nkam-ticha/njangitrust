@@ -7,11 +7,14 @@ import {
   nextCycleFirstPayoutAt,
   roundDates,
   roundDatesInSegments,
+  dueLeadMs,
   rescheduleFromRound,
   roundDueAt,
   roundPayoutAt,
 } from './schedule';
 import { addHours } from './douala';
+
+const MIN = 60_000;
 
 const utc = (iso: string) => new Date(iso);
 const lastSaturday = { kind: 'LAST_WEEKDAY', weekday: 6 } as const;
@@ -266,5 +269,109 @@ describe('re-dating the remaining rounds after a frequency or payout-time change
     expect(
       roundDueAt(first).getTime() - utc('2026-11-26T09:00:00.000Z').getTime(),
     ).toBeGreaterThanOrEqual(MIN_LEAD_BEFORE_FIRST_DUE_HOURS * 3_600_000);
+  });
+});
+
+describe('custom period in minutes (CUSTOM frequency)', () => {
+  const start = utc('2026-11-17T12:00:00.000Z');
+  const oneMinute = { firstPayoutAt: start, frequency: 'CUSTOM', customPeriodMinutes: 1 } as const;
+
+  it('adds the chosen number of minutes per round', () => {
+    expect(roundPayoutAt(oneMinute, 1)).toEqual(start);
+    expect(roundPayoutAt(oneMinute, 4).getTime()).toBe(start.getTime() + 3 * MIN);
+    const ninety = { ...oneMinute, customPeriodMinutes: 90 };
+    expect(roundPayoutAt(ninety, 3).getTime()).toBe(start.getTime() + 180 * MIN);
+  });
+
+  it('puts the deadline half a period before the payout when the period is under 48 hours', () => {
+    expect(roundDates(oneMinute, 2)).toEqual({
+      payoutAt: new Date(start.getTime() + MIN),
+      dueAt: new Date(start.getTime() + MIN / 2),
+    });
+    expect(dueLeadMs(oneMinute)).toBe(MIN / 2);
+    expect(dueLeadMs({ ...oneMinute, customPeriodMinutes: 600 })).toBe(300 * MIN);
+  });
+
+  it('keeps the 24 hour deadline for long periods and for the fixed frequencies', () => {
+    expect(dueLeadMs({ ...oneMinute, customPeriodMinutes: 2_880 })).toBe(24 * 60 * MIN);
+    expect(dueLeadMs({ ...oneMinute, customPeriodMinutes: 100_000 })).toBe(24 * 60 * MIN);
+    expect(dueLeadMs({ frequency: 'WEEKLY' })).toBe(24 * 60 * MIN);
+  });
+
+  it('keeps every deadline after the previous payout and before its own payout (property)', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 525_600 }), fc.integer({ min: 2, max: 40 }), (m, k) => {
+        const schedule = {
+          firstPayoutAt: start,
+          frequency: 'CUSTOM',
+          customPeriodMinutes: m,
+        } as const;
+        const previous = roundDates(schedule, k - 1).payoutAt.getTime();
+        const { payoutAt, dueAt } = roundDates(schedule, k);
+        expect(payoutAt.getTime() - previous).toBe(m * MIN);
+        expect(dueAt.getTime()).toBeGreaterThan(previous);
+        expect(dueAt.getTime()).toBeLessThan(payoutAt.getTime());
+      }),
+    );
+  });
+
+  it('refuses a missing or invalid period', () => {
+    for (const bad of [undefined, 0, -5, 1.5, Number.NaN]) {
+      expect(() =>
+        roundPayoutAt({ firstPayoutAt: start, frequency: 'CUSTOM', customPeriodMinutes: bad }, 2),
+      ).toThrow(RangeError);
+    }
+  });
+
+  it('continues a custom cycle one period after the last payout, with a deadline in the future', () => {
+    const last = utc('2026-11-17T12:10:00.000Z');
+    const now = utc('2026-11-17T12:10:20.000Z');
+    const next = nextCycleFirstPayoutAt({
+      lastPayoutAt: last,
+      now,
+      frequency: 'CUSTOM',
+      customPeriodMinutes: 5,
+      payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 1 } },
+    });
+    // 12:15 would be due at 12:12:30, after the last payout and after now + one period.
+    expect(next.getTime() - last.getTime()).toBeGreaterThanOrEqual(5 * MIN);
+    expect((next.getTime() - last.getTime()) % (5 * MIN)).toBe(0);
+    const due = next.getTime() - dueLeadMs({ frequency: 'CUSTOM', customPeriodMinutes: 5 });
+    expect(due).toBeGreaterThan(last.getTime());
+    expect(due).toBeGreaterThanOrEqual(now.getTime() + 5 * MIN);
+  });
+
+  it('skips idle periods without looping when the group has been idle for a long time', () => {
+    const next = nextCycleFirstPayoutAt({
+      lastPayoutAt: utc('2026-01-01T00:00:00.000Z'),
+      now: utc('2026-11-17T12:00:00.000Z'),
+      frequency: 'CUSTOM',
+      customPeriodMinutes: 1,
+      payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'DAY_OF_MONTH', day: 1 } },
+    });
+    expect(next.getTime()).toBeGreaterThan(utc('2026-11-17T12:00:00.000Z').getTime());
+    expect(next.getTime()).toBeLessThanOrEqual(utc('2026-11-17T12:03:00.000Z').getTime());
+  });
+
+  it('re-dates the remaining rounds in minutes when the group switches to a custom period', () => {
+    const monthly = {
+      firstPayoutAt: new Date('2026-11-28T17:00:00.000Z'),
+      frequency: 'MONTHLY',
+      monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 },
+    } as const;
+    const previous = roundPayoutAt(monthly, 1);
+    const segment = rescheduleFromRound({
+      fromRound: 2,
+      previousPayoutAt: previous,
+      now: new Date(previous.getTime() + 30 * MIN),
+      frequency: 'CUSTOM',
+      customPeriodMinutes: 10,
+      payoutTime: { hour: 18, minute: 0, monthlyAnchor: { kind: 'LAST_WEEKDAY', weekday: 6 } },
+    });
+    expect(segment.schedule.frequency).toBe('CUSTOM');
+    expect(segment.schedule.customPeriodMinutes).toBe(10);
+    const second = roundDatesInSegments([{ fromRound: 1, schedule: monthly }, segment], 2);
+    const third = roundDatesInSegments([{ fromRound: 1, schedule: monthly }, segment], 3);
+    expect(third.payoutAt.getTime() - second.payoutAt.getTime()).toBe(10 * MIN);
   });
 });

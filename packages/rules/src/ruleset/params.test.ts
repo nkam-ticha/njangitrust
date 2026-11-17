@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULE_SET, PARAMETER_SPECS, validateRuleSet, type ParameterName } from './params';
+import {
+  completeRuleSet,
+  DEFAULT_RULE_SET,
+  PARAMETER_SPECS,
+  validateRuleSet,
+  type ParameterName,
+} from './params';
 
 describe('parameters and defaults (3.2)', () => {
   it('has the spec defaults', () => {
@@ -19,6 +25,7 @@ describe('parameters and defaults (3.2)', () => {
       meetingAbsenceFine: 0,
       distributeFundAtCycleEnd: true,
       reliabilityWindow: 12,
+      customPeriodMinutes: 1_440,
     });
     // The spec's example payout time: last Saturday of the month, 18:00.
     expect(DEFAULT_RULE_SET.payoutTime).toEqual({
@@ -30,7 +37,8 @@ describe('parameters and defaults (3.2)', () => {
   });
 
   const ranges: [ParameterName, number, number][] = [
-    ['contributionAmount', 500, 1_000_000],
+    ['contributionAmount', 25, 1_000_000],
+    ['customPeriodMinutes', 1, 525_600],
     ['solidarityContribution', 0, 50_000],
     ['lateFine', 0, 50_000],
     ['minBid', 0, 1_000_000],
@@ -72,6 +80,9 @@ describe('parameters and defaults (3.2)', () => {
     });
     expect(validateRuleSet({ ...DEFAULT_RULE_SET, rotationMode: 'BIDDING' })).toEqual({ ok: true });
     expect(
+      validateRuleSet({ ...DEFAULT_RULE_SET, frequency: 'CUSTOM', customPeriodMinutes: 1 }),
+    ).toEqual({ ok: true });
+    expect(
       validateRuleSet({ ...DEFAULT_RULE_SET, distributeFundAtCycleEnd: 'yes' as never }),
     ).toMatchObject({ code: 'INVALID_VALUE' });
     for (const payoutTime of [
@@ -88,5 +99,31 @@ describe('parameters and defaults (3.2)', () => {
         parameter: 'payoutTime',
       });
     }
+  });
+});
+
+describe('rule sets stored before a parameter existed', () => {
+  it('fills a missing customPeriodMinutes with its default and keeps every stored value', () => {
+    const { customPeriodMinutes: _omitted, ...stored } = {
+      ...DEFAULT_RULE_SET,
+      contributionAmount: 20_000,
+      frequency: 'WEEKLY' as const,
+    };
+    expect(validateRuleSet(stored as never)).toMatchObject({ ok: false });
+    const completed = completeRuleSet(stored);
+    expect(completed).toEqual({
+      ...DEFAULT_RULE_SET,
+      contributionAmount: 20_000,
+      frequency: 'WEEKLY',
+    });
+    expect(validateRuleSet(completed)).toEqual({ ok: true });
+  });
+
+  it('never overrides a stored value and leaves invalid data to the validation', () => {
+    expect(
+      completeRuleSet({ ...DEFAULT_RULE_SET, customPeriodMinutes: 5 }).customPeriodMinutes,
+    ).toBe(5);
+    expect(completeRuleSet({ lateFine: 'x' }).lateFine).toBe('x');
+    expect(completeRuleSet(null)).toEqual({ customPeriodMinutes: 1_440 });
   });
 });
