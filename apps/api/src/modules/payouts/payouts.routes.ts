@@ -7,7 +7,7 @@ import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
 import { toPendingAction } from '../../dto';
 import { createPendingAction } from '../pending-actions';
-import { getOwnWithdrawal } from './withdrawals.service';
+import { getOwnWithdrawal, readMyMoney } from './withdrawals.service';
 
 const groupParams = z.strictObject({ groupId: uuidSchema });
 const withdrawalParams = z.strictObject({ withdrawalId: uuidSchema });
@@ -18,6 +18,26 @@ const request = z.strictObject({
 export function payoutRoutes(): Router {
   const router = Router();
   router.use(requireAuth());
+  // The member's own money in the group (spec 2.7 Money): read-only; the withdrawal card is a POST.
+  router.get(
+    '/:groupId/me/money',
+    handle({ params: groupParams }, async ({ params }, req, res) => {
+      const money = await readMyMoney(actorOf(req).userId, params.groupId);
+      res.json({
+        money: {
+          available: money.available,
+          locked: money.locked,
+          unlocksAt: money.unlocksAt?.toISOString() ?? null,
+          debtsDue: money.debtsDue,
+          hold: money.hold
+            ? { reason: money.hold.reason, until: money.hold.until.toISOString() }
+            : null,
+          withdrawalsPaused: money.withdrawalsPaused,
+          withdrawalInProgress: money.withdrawalInProgress,
+        },
+      });
+    }),
+  );
   router.post(
     '/:groupId/withdrawals',
     handle({ params: groupParams, body: request }, async ({ params, body }, req, res) => {

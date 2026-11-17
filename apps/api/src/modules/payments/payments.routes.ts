@@ -6,13 +6,30 @@ import { handle } from '../../http/validate';
 import { toPendingAction } from '../../dto';
 import { createPendingAction } from '../pending-actions';
 import { authorizeGroup } from '../../permissions';
-import { getOwnPayment } from './payments.service';
+import { getOwnPayment, listMyDues } from './payments.service';
 
 const requestSchema = z.strictObject({ obligationIds: z.array(uuidSchema).min(1).max(30) });
 
 export function paymentGroupRoutes(): Router {
   const router = Router();
   router.use(requireAuth());
+  // What the member owes in the group, oldest first (spec 2.6): read-only, the payment card is a POST.
+  router.get(
+    '/:groupId/me/dues',
+    handle({ params: z.strictObject({ groupId: uuidSchema }) }, async ({ params }, req, res) => {
+      const dues = await listMyDues(actorOf(req).userId, params.groupId);
+      res.json({
+        dues: dues.map((due) => ({
+          id: due.id,
+          kind: due.kind,
+          amount: due.amount,
+          dueAt: due.dueAt.toISOString(),
+          loanId: due.loanId,
+          roundNumber: due.roundNumber,
+        })),
+      });
+    }),
+  );
   router.post(
     '/:groupId/payments',
     handle(
