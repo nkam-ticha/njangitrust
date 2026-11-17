@@ -24,7 +24,9 @@ export const payoutTimeSchema = z.strictObject({
 export const ruleSetParamsSchema = z.strictObject({
   contributionAmount: int,
   solidarityContribution: int,
-  frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY']),
+  frequency: z.enum(['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'CUSTOM']),
+  /** Minutes between two rounds when `frequency` is CUSTOM (1 to 525 600). */
+  customPeriodMinutes: int,
   payoutTime: payoutTimeSchema,
   lateFine: int,
   rotationMode: z.enum(['FIXED', 'BIDDING']),

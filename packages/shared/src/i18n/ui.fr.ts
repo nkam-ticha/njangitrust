@@ -85,6 +85,7 @@ export const uiFr = {
       WEEKLY: 'Chaque semaine',
       BIWEEKLY: 'Toutes les deux semaines',
       MONTHLY: 'Chaque mois',
+      CUSTOM: 'Période personnalisée',
     },
     rotationMode: {
       FIXED: 'Ordre tiré au sort',
@@ -178,6 +179,8 @@ export const uiFr = {
       phoneInvalid: 'Numéro invalide : 9 chiffres commençant par 6.',
       amountMin: 'Le minimum est {{amount}}.',
       amountMax: 'Le maximum est {{amount}}.',
+      periodMin: 'Le minimum est 1 minute.',
+      periodMax: 'Le maximum est 365 jours.',
       amountWhole: 'Montant en francs entiers, sans virgule.',
       dateInPast: 'Choisis une date à venir.',
       endBeforeStart: 'La date de fin doit suivre la date de début.',
@@ -502,6 +505,17 @@ export const uiFr = {
       time: 'Heure',
       frequency: 'Fréquence',
       deadlineNote: 'Les membres paient au plus tard 24 h avant chaque versement.',
+      custom: {
+        title: 'Durée entre deux tours',
+        number: 'Combien',
+        unit: 'Unité',
+        help: 'Tape un nombre entier, à partir de 1 minute.',
+        deadlineNote:
+          'Les membres paient une demi-période avant chaque versement, et 24 h avant au plus.',
+        units: { minutes: 'Minutes', hours: 'Heures', days: 'Jours' },
+        short: { minutes: '{{count}} min', hours: '{{count}} h', days: '{{count}} j' },
+        today: 'Le premier versement doit être dans le futur.',
+      },
       preview: 'Tour 1 : {{first}}. Tour 2 : {{second}}.',
       anchor: {
         title: 'Chaque mois, le versement tombe',
@@ -547,6 +561,10 @@ export const uiFr = {
       help: '0 désactive la caisse de secours.',
     },
     frequency: { label: 'Fréquence des tours', help: 'Un changement s’applique au cycle suivant.' },
+    customPeriodMinutes: {
+      label: 'Période personnalisée',
+      help: 'Durée entre deux tours quand la fréquence est personnalisée : de 1 minute à 365 jours.',
+    },
     payoutTime: { label: 'Heure du versement', help: 'Le paiement est dû 24 h avant.' },
     lateFine: { label: 'Amende de retard', help: 'Une seule amende par membre et par tour.' },
     rotationMode: {
@@ -581,6 +599,12 @@ export const uiFr = {
     values: {
       hours_one: '{{count}} heure',
       hours_other: '{{count}} heures',
+      everyMinutes_one: 'Chaque minute',
+      everyMinutes_other: 'Toutes les {{count}} minutes',
+      everyHours_one: 'Chaque heure',
+      everyHours_other: 'Toutes les {{count}} heures',
+      everyDays_one: 'Chaque jour',
+      everyDays_other: 'Tous les {{count}} jours',
       months_one: '{{count}} mois',
       months_other: '{{count}} mois',
       items_one: '{{count}} échéance',

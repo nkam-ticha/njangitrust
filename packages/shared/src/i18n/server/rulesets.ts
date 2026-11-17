@@ -8,6 +8,10 @@ export const ruleLabels = {
     en: 'solidarity contribution',
   },
   frequency: { fr: 'fréquence des tours', en: 'round frequency' },
+  customPeriodMinutes: {
+    fr: 'durée d’un tour personnalisé (minutes)',
+    en: 'custom round length (minutes)',
+  },
   payoutTime: { fr: 'heure du versement', en: 'payout time' },
   lateFine: { fr: 'amende de retard', en: 'late fine' },
   rotationMode: { fr: 'mode de rotation', en: 'rotation mode' },
