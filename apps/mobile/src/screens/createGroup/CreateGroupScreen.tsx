@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react-native';
 import { monthlyAnchorFromFirstPayout, roundPayoutAt } from '@njangi/rules';
-import { formatDateLong, formatDateTime, toDouala } from '@njangi/shared';
+import { formatDateLong, formatDateTime, formatXAF, toDouala } from '@njangi/shared';
 import type { RuleSetParamsDto } from '@njangi/shared/contracts/groups';
 import { space, useTheme } from '@/theme';
 import {
@@ -24,15 +24,19 @@ import {
 } from '@/ui';
 import { useCreateGroup } from '@/features/groups/useGroups';
 import { AMOUNT_RANGES, DEFAULT_RULES, type RuleName } from '@/features/groups/ruleFormat';
+import { MAX_CUSTOM_PERIOD_MINUTES, MIN_CUSTOM_PERIOD_MINUTES } from '@njangi/rules';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { RulesList } from '../shared/RulesList';
 import { Screen } from '../shared/Screen';
+import { CustomPeriodField } from './CustomPeriodField';
 import { RuleEditSheet } from './RuleEditSheet';
 
 type Step = 'name' | 'schedule' | 'money' | 'rules' | 'summary';
 type Anchor = 'DAY_OF_MONTH' | 'LAST_WEEKDAY' | 'NTH_WEEKDAY';
 const STEPS: Step[] = ['name', 'schedule', 'money', 'rules', 'summary'];
 const pad = (n: number) => String(n).padStart(2, '0');
+/** Shortcuts for the contribution; any amount from the minimum up can be typed. */
+const QUICK_CONTRIBUTIONS = [25, 100, 500, 1_000, 5_000, 10_000];
 
 /** The anchors a chosen day allows (D13.2): its day number, the nth weekday (1 to 4), the last weekday. */
 function anchorsFor(day: string): Anchor[] {
@@ -50,9 +54,13 @@ export function CreateGroupScreen() {
   const lang = useLang();
   const router = useRouter();
   const create = useCreateGroup();
-  const today = useMemo(() => {
+  // Today's date and the time of day in Douala, read once when the screen opens.
+  const { today, nowTime } = useMemo(() => {
     const p = toDouala(new Date());
-    return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+    return {
+      today: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+      nowTime: `${pad(p.hour)}:${pad(p.minute)}`,
+    };
   }, []);
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
@@ -74,13 +82,14 @@ export function CreateGroupScreen() {
     const schedule = {
       firstPayoutAt: first,
       frequency: rules.frequency,
+      customPeriodMinutes: rules.customPeriodMinutes,
       monthlyAnchor: fixed && fixed.ok ? fixed.anchor : undefined,
     };
     return {
       first: formatDateTime(first, lang),
       second: formatDateTime(roundPayoutAt(schedule, 2), lang),
     };
-  }, [firstPayoutAt, rules.frequency, anchor0, lang]);
+  }, [firstPayoutAt, rules.frequency, rules.customPeriodMinutes, anchor0, lang]);
   const weekday = day ? (formatDateLong(`${day}T12:00:00Z`, lang).split(' ')[0] ?? '') : '';
   const dayNumber = day ? Number(day.slice(8)) : 0;
   const anchorLabel = (a: Anchor) =>
@@ -97,9 +106,18 @@ export function CreateGroupScreen() {
 
   const amountOk = (n: 'contributionAmount' | 'solidarityContribution') =>
     rules[n] >= AMOUNT_RANGES[n][0] && rules[n] <= AMOUNT_RANGES[n][1];
+  // A custom period can start within the hour (D23): the first payout only has to be in the future.
+  // The fixed frequencies keep their rule of a first payout on a later day.
+  const custom = rules.frequency === 'CUSTOM';
+  const customOk =
+    rules.customPeriodMinutes >= MIN_CUSTOM_PERIOD_MINUTES &&
+    rules.customPeriodMinutes <= MAX_CUSTOM_PERIOD_MINUTES;
+  const scheduleOk =
+    !!firstPayoutAt &&
+    (custom ? customOk && (day! > today || (day === today && time! > nowTime)) : day! > today);
   const canContinue =
     (step === 'name' && name.trim().length >= 2) ||
-    (step === 'schedule' && !!firstPayoutAt && day! > today) ||
+    (step === 'schedule' && scheduleOk) ||
     (step === 'money' && amountOk('contributionAmount') && amountOk('solidarityContribution')) ||
     step === 'rules';
 
@@ -191,11 +209,15 @@ export function CreateGroupScreen() {
             }}
             today={today}
             minDay={today}
-            error={day && day <= today ? t('errors.validation.dateInPast') : null}
+            error={
+              day && (custom ? day < today : day <= today)
+                ? t('errors.validation.dateInPast')
+                : null
+            }
           />
           <TimeField label={t('createGroup.schedule.time')} value={time} onChange={setTime} />
           <Txt variant="secondaryStrong">{t('createGroup.schedule.frequency')}</Txt>
-          {(['MONTHLY', 'BIWEEKLY', 'WEEKLY'] as const).map((f) => (
+          {(['MONTHLY', 'BIWEEKLY', 'WEEKLY', 'CUSTOM'] as const).map((f) => (
             <ChoiceRow
               key={f}
               label={t(`common.frequency.${f}`)}
@@ -203,6 +225,17 @@ export function CreateGroupScreen() {
               onPress={() => setRules({ ...rules, frequency: f })}
             />
           ))}
+          {custom ? (
+            <CustomPeriodField
+              value={rules.customPeriodMinutes}
+              onChange={(minutes) => setRules({ ...rules, customPeriodMinutes: minutes })}
+            />
+          ) : null}
+          {custom && firstPayoutAt && !scheduleOk && customOk ? (
+            <Txt variant="secondary" color="textDanger">
+              {t('createGroup.schedule.custom.today')}
+            </Txt>
+          ) : null}
           {rules.frequency === 'MONTHLY' && day ? (
             <>
               <Txt variant="secondaryStrong">{t('createGroup.schedule.anchor.title')}</Txt>
@@ -225,7 +258,9 @@ export function CreateGroupScreen() {
             <Txt variant="secondary">{t('createGroup.schedule.preview', preview)}</Txt>
           ) : null}
           <Txt variant="secondary" color="textSecondary">
-            {t('createGroup.schedule.deadlineNote')}
+            {custom
+              ? t('createGroup.schedule.custom.deadlineNote')
+              : t('createGroup.schedule.deadlineNote')}
           </Txt>
         </>
       ) : null}
@@ -240,6 +275,10 @@ export function CreateGroupScreen() {
             onChange={(v) => setRules({ ...rules, contributionAmount: v ?? 0 })}
             min={AMOUNT_RANGES.contributionAmount[0]}
             max={AMOUNT_RANGES.contributionAmount[1]}
+            quick={QUICK_CONTRIBUTIONS.map((amount) => ({
+              label: formatXAF(amount, lang),
+              amount,
+            }))}
           />
           <AmountInput
             label={t('createGroup.money.solidarity')}
@@ -260,7 +299,12 @@ export function CreateGroupScreen() {
           <View style={styles.flush}>
             <RulesList
               params={rules}
-              hide={['contributionAmount', 'solidarityContribution', 'frequency']}
+              hide={[
+                'contributionAmount',
+                'solidarityContribution',
+                'frequency',
+                'customPeriodMinutes',
+              ]}
               onEdit={setEditing}
             />
           </View>

@@ -13,6 +13,7 @@ import { Button, EmptyState, PhoneField, PinPad, RingMark, SkeletonRows, Txt, us
 import { useLogin } from '@/features/auth/useAuth';
 import { useAcceptInvite, useInvitePreview } from '@/features/invites/useInvites';
 import { errorCode, errorMessage } from '@/features/errors/errorMessage';
+import { frequencyText } from '@/features/groups/ruleFormat';
 import { SignupFlow } from '../signup/SignupFlow';
 import { RulesList } from '../shared/RulesList';
 import { Screen } from '../shared/Screen';
@@ -185,9 +186,7 @@ export function InvitationScreen() {
             t('invite.landing.facts.members', { count: invite.memberCount }),
             t('invite.landing.facts.contribution', {
               amount: formatXAF(invite.rules.params.contributionAmount, lang),
-              frequency: t(`common.frequency.${invite.rules.params.frequency}`).toLocaleLowerCase(
-                lang,
-              ),
+              frequency: frequencyText(invite.rules.params, t, lang),
             }),
           ].join(' · ')}
         </Txt>

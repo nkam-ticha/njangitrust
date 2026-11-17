@@ -1,12 +1,15 @@
 // Rule labels, values and edit choices for the 3.2 parameters (invitation preview, create a group,
 // group settings). Defaults and ranges come from @njangi/rules; the server validates every value.
 import type { TFunction } from 'i18next';
-import { DEFAULT_RULE_SET, PARAMETER_SPECS } from '@njangi/rules';
+import { DEFAULT_RULE_SET, PARAMETER_SPECS, splitPeriod } from '@njangi/rules';
 import { formatXAF, type Lang } from '@njangi/shared';
 import type { RuleSetParamsDto } from '@njangi/shared/contracts/groups';
 
 export type RuleName = Exclude<keyof RuleSetParamsDto, 'payoutTime'>;
-type Editable = Exclude<RuleName, 'contributionAmount' | 'solidarityContribution' | 'frequency'>;
+type Editable = Exclude<
+  RuleName,
+  'contributionAmount' | 'solidarityContribution' | 'frequency' | 'customPeriodMinutes'
+>;
 
 /** 3.2 defaults (payout time comes from the first payout chosen in the form). */
 const { payoutTime: _defaultPayoutTime, ...defaults } = DEFAULT_RULE_SET;
@@ -51,6 +54,7 @@ export const RULE_ORDER: RuleName[] = [
   'contributionAmount',
   'solidarityContribution',
   'frequency',
+  'customPeriodMinutes',
   'lateFine',
   'rotationMode',
   'minBid',
@@ -83,6 +87,32 @@ export function permilleText(permille: number, divisor: 10 | 1000, lang: Lang): 
   return `${whole}${lang === 'fr' ? ',' : '.'}${digits}`;
 }
 
+/** "Every minute", "Every 5 minutes", "Every 2 hours", "Every 7 days" (a custom period, D23). */
+export function periodText(minutes: number, t: TFunction): string {
+  const { unit, count } = splitPeriod(minutes);
+  switch (unit) {
+    case 'minutes':
+      return t('rules.values.everyMinutes', { count });
+    case 'hours':
+      return t('rules.values.everyHours', { count });
+    case 'days':
+      return t('rules.values.everyDays', { count });
+  }
+}
+
+/** How often the rounds come, for a sentence: "every month", or "every 5 minutes" when custom. */
+export function frequencyText(
+  params: { frequency: RuleSetParamsDto['frequency']; customPeriodMinutes: number },
+  t: TFunction,
+  lang: Lang,
+): string {
+  return (
+    params.frequency === 'CUSTOM'
+      ? periodText(params.customPeriodMinutes, t)
+      : t(`common.frequency.${params.frequency}`)
+  ).toLocaleLowerCase(lang);
+}
+
 export function ruleValue(
   name: RuleName,
   value: number | string | boolean,
@@ -99,7 +129,9 @@ export function ruleValue(
         ? t('rules.values.off')
         : formatXAF(value as number, lang);
     case 'frequency':
-      return t(`common.frequency.${value as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'}`);
+      return t(`common.frequency.${value as 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM'}`);
+    case 'customPeriodMinutes':
+      return periodText(value as number, t);
     case 'rotationMode':
       return t(`common.rotationMode.${value as 'FIXED' | 'BIDDING'}`);
     case 'loanRatePermille':

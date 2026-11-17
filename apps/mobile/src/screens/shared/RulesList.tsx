@@ -17,7 +17,9 @@ export function RulesList({ params, onEdit, hide = [] }: RulesListProps) {
   const lang = useLang();
   return (
     <GroupedList>
-      {RULE_ORDER.filter((n) => !hide.includes(n)).map((name) => {
+      {RULE_ORDER.filter(
+        (n) => !hide.includes(n) && (n !== 'customPeriodMinutes' || params.frequency === 'CUSTOM'),
+      ).map((name) => {
         const label = ruleLabel(name, t);
         const value = ruleValue(name, params[name], t, lang);
         return (
