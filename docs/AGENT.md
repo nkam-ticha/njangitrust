@@ -105,7 +105,7 @@ Both modes need the database and the demo data, and remove the demo members' own
 5. **Add texts** in French and English for anything the member may read.
 6. **Run** `pnpm test`, then `pnpm agent:eval`. If the tool is one a scenario expects, check the scenario in `tools/agent-eval/src/scenarios/scenarios.json`.
 
-If the service does not exist yet, declare what the tool needs in `apps/api/src/agent/ports.ts` and answer `unavailable(...)` until a port is registered. The chat, meetings and statements ports are in `apps/api/src/agent/adapters/`; the money and account ports are not written yet.
+If the service does not exist yet, declare what the tool needs in `apps/api/src/agent/ports.ts` and answer `unavailable(...)` until a port is registered. The chat, meetings, statements, money and account ports are in `apps/api/src/agent/adapters/`.
 
 ## Where things are
 

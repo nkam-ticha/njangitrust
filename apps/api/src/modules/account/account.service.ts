@@ -2,6 +2,7 @@
 // member confirms with their PIN (account.actions.ts); this file holds what they check and do.
 import { accountTexts as t } from '@njangi/shared/i18n/server/account';
 import { detectOperator, normalizeCameroonPhone, type Lang } from '@njangi/shared';
+import { hashPhone } from '../../lib/crypto';
 import type { EffectSink } from '../../lib/after-commit';
 import type { Db, Prisma } from '../../lib/prisma';
 import { disconnectUser } from '../../realtime/emitter';
@@ -92,7 +93,14 @@ export async function anonymiseAccount(
   userId: string,
   now: Date,
   effects: EffectSink,
+  /** The action carrying out the deletion: the only pending one that is kept. */
+  exceptActionId?: string,
 ): Promise<void> {
+  const user = await tx.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { loginPhone: true },
+  });
+  const phoneHash = hashPhone(user.loginPhone);
   const memberships = await tx.membership.findMany({
     where: { userId },
     select: { id: true, status: true },
@@ -128,6 +136,34 @@ export async function anonymiseAccount(
   await tx.disbursement.updateMany({
     where: { membershipId: { in: ids } },
     data: { phoneSnapshot: 'deleted' },
+  });
+  // The name and the keyed phone hash the person was invited with (an invite, a MEMBER_ADD vote).
+  const invites = await tx.invite.findMany({ where: { phoneHash }, select: { id: true } });
+  for (const invite of invites) {
+    await tx.invite.update({
+      where: { id: invite.id },
+      data: { inviteeName: t.deletedName.fr, phoneHash: `deleted:${invite.id}` },
+    });
+  }
+  const proposals = await tx.proposal.findMany({
+    where: { type: 'MEMBER_ADD', payload: { path: ['phoneHash'], equals: phoneHash } },
+    select: { id: true },
+  });
+  for (const proposal of proposals) {
+    await tx.proposal.update({
+      where: { id: proposal.id },
+      data: { payload: { inviteeName: t.deletedName.fr, phoneHash: `deleted:${proposal.id}` } },
+    });
+  }
+  await tx.uploadTicket.deleteMany({ where: { userId } });
+  // What the member had prepared and not confirmed is dropped with them.
+  await tx.pendingAction.updateMany({
+    where: {
+      userId,
+      status: 'PENDING',
+      ...(exceptActionId ? { id: { not: exceptActionId } } : {}),
+    },
+    data: { status: 'CANCELLED' },
   });
   await tx.refreshToken.deleteMany({ where: { userId } });
   await tx.device.deleteMany({ where: { userId } });

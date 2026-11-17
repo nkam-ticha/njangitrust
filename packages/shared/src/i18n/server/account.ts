@@ -65,8 +65,8 @@ export const accountTexts = {
     en: 'New number',
   },
   deleteNote: {
-    fr: 'Ton nom et ton numéro seront effacés. Les écritures financières des groupes restent, sans ton nom.',
-    en: 'Your name and number will be erased. The groups’ financial records stay, without your name.',
+    fr: 'Ton nom, ton numéro et tes données privées seront effacés de ton compte. Les écritures financières et les messages déjà publiés dans les groupes restent : ils sont la mémoire des groupes.',
+    en: 'Your name, number and private data will be erased from your account. The financial records and the messages already posted in the groups stay: they are the groups’ memory.',
   },
   deleteNoteIrreversible: {
     fr: 'Cette action est définitive.',

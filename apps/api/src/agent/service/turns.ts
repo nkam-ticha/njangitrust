@@ -83,10 +83,12 @@ export async function handleUserMessage(
   if (!agentConfig().configured) throw agentError('AGENT_NOT_CONFIGURED');
   await consumeAgentMessage(actor.userId);
   return withTurnLease(actor.userId, async () => {
+    // The row is created with no group: the requested one is only set once `buildCtx` has checked
+    // that the member may read it, so a refused group id is never stored.
     const conversation = await dbConversationStore.open({
       userId: actor.userId,
       channel: 'PRIVATE',
-      groupId: input.groupId ?? null,
+      groupId: null,
     });
     const groupId = input.groupId === undefined ? conversation.groupId : input.groupId;
     const ctx = await buildCtx(actor, { groupId, channel: 'PRIVATE', text: input.text });

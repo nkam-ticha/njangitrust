@@ -185,7 +185,7 @@ export const deleteAccountHandler = defineActionHandler({
 
   async execute(ctx) {
     await checkDelete(ctx, ctx.db);
-    await anonymiseAccount(ctx.db, ctx.userId, ctx.now, ctx.effects);
+    await anonymiseAccount(ctx.db, ctx.userId, ctx.now, ctx.effects, ctx.pendingActionId);
     return {
       outcome: 'done',
       resultRef: null,

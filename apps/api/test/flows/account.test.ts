@@ -66,9 +66,9 @@ describe('changing my payment number (R13)', () => {
       ),
     ).toBe(true);
     const messages = await getPrisma().message.findMany({ where: { groupId } });
-    const system = messages.filter((m) => /numéro de paiement/.test(JSON.stringify(m)));
+    const system = messages.filter((m) => /numéro de paiement/.test(JSON.stringify(m.systemText)));
     expect(system.length).toBeGreaterThan(0);
-    expect(JSON.stringify(system)).not.toMatch(/\d{6}/);
+    expect(JSON.stringify(system.map((m) => m.systemText))).not.toMatch(/\d{6}/);
     // The member and the admin are told.
     const notices = await getPrisma().notification.findMany({
       where: { userId: { in: [member.id, admin.id] }, category: 'SECURITY' },
@@ -148,6 +148,13 @@ describe('deleting my account (PRV-03)', () => {
     });
     expect(membership.status).toBe('LEFT');
     expect(await getPrisma().message.count({ where: { groupId } })).toBeGreaterThan(0);
+
+    // What the member was invited with goes too: the name and the keyed number.
+    const invites = await getPrisma().invite.findMany({ where: { groupId } });
+    expect(invites.some((invite) => invite.inviteeName === user.name)).toBe(false);
+    expect(invites.filter((invite) => invite.phoneHash.startsWith('deleted:'))).toHaveLength(1);
+    const adds = await getPrisma().proposal.findMany({ where: { groupId, type: 'MEMBER_ADD' } });
+    expect(JSON.stringify(adds)).not.toContain(user.name);
 
     // The old token and the old number no longer open anything.
     expect((await api(member).get('/v1/me')).status).toBe(401);

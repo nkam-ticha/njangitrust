@@ -14,6 +14,7 @@ import { tryConsumeAgentMessage } from '../guards/rate-limit';
 import { withTurnLease } from '../guards/turn-lease';
 import { toAgentMessage } from '../history';
 import { emitAgent } from '../realtime';
+import { redactForStorage } from '../guards/redaction';
 import { eventText, isEventStatus } from '../runtime/events';
 import { dbConversationStore } from '../store/db-store';
 import { EVENT_TOOL } from '../store/types';
@@ -37,7 +38,12 @@ async function recordEvent(userId: string, pendingActionId: string, status: stri
       role: 'tool',
       toolName: EVENT_TOOL,
       toolStatus: status === 'DONE' ? 'OK' : status === 'FAILED' ? 'ERROR' : 'REFUSED',
-      content: JSON.stringify({ pendingActionId: payload.id, status, text }),
+      // Like every stored line: no phone number or token, even one the server worded itself.
+      content: JSON.stringify({
+        pendingActionId: payload.id,
+        status,
+        text: { fr: redactForStorage(text.fr), en: redactForStorage(text.en) },
+      }),
     },
   ]);
   const self = await getSelfSource(userId);
