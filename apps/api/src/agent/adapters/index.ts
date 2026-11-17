@@ -1,6 +1,6 @@
-// The agent's ports that have a service behind them today. The account port (change of payment
-// number, account deletion) waits for those services; until then its tools answer "not available yet".
+// The agent's ports, each on the service behind it.
 import { registerAgentPorts } from '../ports';
+import { accountAdapter } from './account';
 import { chatAdapter } from './chat';
 import { meetingsAdapter } from './meetings';
 import { moneyAdapter } from './money';
@@ -13,5 +13,6 @@ export function registerAgentAdapters(): void {
     meetings: meetingsAdapter,
     statements: statementsAdapter,
     money: moneyAdapter,
+    account: accountAdapter,
   });
 }

@@ -5,6 +5,7 @@ import { pinResetGroupRoutes, pinResetOwnerRoutes } from '../modules/auth/pin-re
 import { devicesRoutes } from '../modules/devices/devices.routes';
 import { groupsRoutes } from '../modules/groups/groups.routes';
 import { invitePublicRoutes, inviteGroupRoutes } from '../modules/invites/invites.routes';
+import { accountRoutes } from '../modules/account';
 import { meRoutes } from '../modules/me/me.routes';
 import { membersRoutes } from '../modules/members/members.routes';
 import {
@@ -39,6 +40,7 @@ export function v1Router(): Router {
   v1.use('/me/pin-reset', pinResetOwnerRoutes());
   v1.use('/me/notification-prefs', notificationPrefsRoutes());
   v1.use('/me/statements', meStatementRoutes());
+  v1.use('/me', accountRoutes());
   v1.use('/me', meRoutes());
 
   // Chat, media, meetings and the audit export come before the other group routers.
