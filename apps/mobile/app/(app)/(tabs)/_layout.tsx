@@ -1,6 +1,7 @@
 // The five destinations (spec 1.3) as bottom tabs on phones, a rail on medium screens and a
 // sidebar on wide screens (DESIGN_SYSTEM.md 5.9, 8.1). Same component, different layout.
 import { Tabs } from 'expo-router';
+import { useUnreadTotal } from '@/features/chat/useChat';
 import { useSession } from '@/state/session';
 import { useBreakpoint } from '@/theme';
 import { Navigation, navigationLayoutFor, type TabKey } from '@/ui';
@@ -24,6 +25,7 @@ export default function TabsLayout() {
   const { breakpoint } = useBreakpoint();
   const layout = navigationLayoutFor(breakpoint);
   const name = useSession((s) => s.user?.name);
+  const unreadChat = useUnreadTotal();
   return (
     <Tabs
       screenOptions={{ headerShown: false, tabBarPosition: layout === 'tabs' ? 'bottom' : 'left' }}
@@ -37,7 +39,7 @@ export default function TabsLayout() {
               const route = state.routes.find((r) => r.name === TAB_TO_ROUTE[tab]);
               if (route) navigateToTab(route.key);
             }}
-            unreadChat={0}
+            unreadChat={unreadChat}
             votesWaiting={0}
             agentWaiting={false}
             memberName={name}
