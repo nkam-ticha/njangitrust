@@ -48,3 +48,5 @@ apps/api/generated/
 
 # Local QA browser profiles and scratch folders (hold signed-in sessions; never committed)
 .tmp-*/
+# The development demo clock (apps/api/src/lib/clock.ts)
+apps/api/.demo-clock

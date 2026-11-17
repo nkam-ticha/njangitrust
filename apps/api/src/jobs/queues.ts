@@ -1,6 +1,6 @@
 // Durable PostgreSQL job queue used by Vercel cron and the long-running server.
 import { randomUUID } from 'node:crypto';
-import { clock } from '../lib/clock';
+import { clock, demoClockOffsetMs } from '../lib/clock';
 import { componentLogger } from '../lib/logger';
 import { getPrisma } from '../lib/prisma';
 import { getJobDefinition, repeatableJobs } from './registry';
@@ -110,13 +110,16 @@ async function claimBatch(limit: number, options: BatchOptions = {}): Promise<Cl
   const only = options.onlyPrefix ? `${options.onlyPrefix}%` : null;
   const except = options.exceptPrefix ? `${options.exceptPrefix}%` : null;
   const leaseToken = randomUUID();
+  // The demo clock (development only) moves the app's time but not the database's: jobs due by the
+  // app's time are claimed. Everywhere else the database's own NOW() decides, as before.
+  const dueAt = demoClockOffsetMs() > 0 ? clock.now() : null;
   await getPrisma().$executeRaw`
     UPDATE "DeploymentJob" SET "status"='DEAD', "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW()
     WHERE "status"='RUNNING' AND "leaseUntil" < NOW() AND "attempts" >= "maxAttempts"`;
   return getPrisma().$queryRaw<ClaimedJob[]>`
     WITH candidates AS (
       SELECT "id" FROM "DeploymentJob"
-      WHERE (("status" IN ('PENDING', 'RETRY') AND "runAt" <= NOW())
+      WHERE (("status" IN ('PENDING', 'RETRY') AND "runAt" <= COALESCE(${dueAt}::timestamptz, NOW()))
         OR ("status" = 'RUNNING' AND "leaseUntil" < NOW() AND "attempts" < "maxAttempts"))
         AND (${only}::text IS NULL OR "name" LIKE ${only})
         AND (${except}::text IS NULL OR "name" NOT LIKE ${except})
