@@ -323,6 +323,66 @@ async function seedChat(plan: GroupPlan, groupId: string, admin: Session): Promi
   log(added > 0 ? `  + ${added} chat messages` : '  = chat already seeded');
 }
 
+interface ProposalRow {
+  id: string;
+  type: string;
+  status: string;
+}
+
+/** An open vote to change the late fine, so a member can be asked to vote on it. */
+async function ensureRuleProposal(
+  plan: GroupPlan,
+  groupId: string,
+  proposal: NonNullable<GroupPlan['ruleProposal']>,
+): Promise<void> {
+  const proposer = await login(proposal.from);
+  const { proposals } = await api.get<{ proposals: ProposalRow[] }>(
+    `/v1/groups/${groupId}/proposals?status=OPEN`,
+    proposer.token,
+  );
+  if (proposals.some((p) => p.type === 'RULE_CHANGE')) {
+    log('  = rule-change vote already open');
+    return;
+  }
+  try {
+    const { action } = await api.post<PendingActionBody>(
+      `/v1/groups/${groupId}/proposals`,
+      {
+        type: 'RULE_CHANGE',
+        changes: { lateFine: proposal.lateFine },
+        reason: 'Des amendes plus légères pour les retards',
+      },
+      proposer.token,
+    );
+    await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, proposer.token);
+    log(`  + vote opened: late fine to ${proposal.lateFine} FCFA`);
+  } catch (error) {
+    if (!(error instanceof ApiFailure)) throw error;
+    log(`  ! rule-change vote not opened: ${error.code}`);
+  }
+  void plan;
+}
+
+/** A payment number changed through the member's own PIN-confirmed action (R13.2). */
+async function ensureNumberChange(change: NonNullable<GroupPlan['numberChange']>): Promise<void> {
+  const session = await login(change.who);
+  try {
+    const { action } = await api.post<PendingActionBody>(
+      '/v1/me/payment-number',
+      { number: change.newNumber, operator: 'ORANGE' },
+      session.token,
+    );
+    await api.post(`/v1/pending-actions/${action.id}/confirm`, { pin: DEMO_PIN }, session.token);
+    log(`  + ${change.who.name} changed their payment number (withdrawals held 48 h)`);
+  } catch (error) {
+    if (error instanceof ApiFailure && error.code === 'NUMBER_UNCHANGED') {
+      log(`  = ${change.who.name} already has the new payment number`);
+      return;
+    }
+    throw error;
+  }
+}
+
 async function seedGroup(plan: GroupPlan): Promise<void> {
   log(`\n${plan.name}`);
   const admin = await ensureAccount(plan.admin);
@@ -340,6 +400,8 @@ async function seedGroup(plan: GroupPlan): Promise<void> {
   }
   if (await ensureCycle(groupId, admin)) await seedPayments(plan, groupId);
   await seedChat(plan, groupId, admin);
+  if (plan.ruleProposal) await ensureRuleProposal(plan, groupId, plan.ruleProposal);
+  if (plan.numberChange) await ensureNumberChange(plan.numberChange);
 }
 
 function localNumber(e164: string): string {

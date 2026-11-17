@@ -41,6 +41,10 @@ export interface GroupPlan {
   solidarityContribution: number;
   /** Members who have not paid the first round yet, so the app shows people still to pay. */
   unpaid: Person[];
+  /** An open vote to lower the late fine, proposed by this member (spec 5.5). */
+  ruleProposal?: { from: Person; lateFine: number };
+  /** A member whose payment number changed just now: withdrawals to it are held (R13.5). */
+  numberChange?: { who: Person; newNumber: string };
   /** A few chat messages, oldest first. */
   chat: { from: Person; text: string }[];
 }
@@ -55,6 +59,8 @@ export const groups: GroupPlan[] = [
     contributionAmount: 10_000,
     solidarityContribution: 1_000,
     unpaid: [carine, joel, paul],
+    ruleProposal: { from: nkam, lateFine: 500 },
+    numberChange: { who: mireille, newNumber: '+237699000305' },
     chat: [
       { from: nkam, text: 'Bonjour à tous, le premier tour est ouvert.' },
       { from: mireille, text: 'Merci Nkam. J’ai déjà cotisé ce matin.' },

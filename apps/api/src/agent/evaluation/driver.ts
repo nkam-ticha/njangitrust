@@ -170,11 +170,16 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     model: modelName,
     promptVersion: PROMPT_VERSION,
 
-    capabilities() {
+    async capabilities() {
       const built = agentStatus().capabilities;
-      const needs = (Object.keys(built) as (keyof typeof built)[]).filter((k) => built[k]);
-      // Bidding mode comes with the money services and is announced by them when it exists.
-      return Promise.resolve(new Set<Need>(needs));
+      const needs = new Set<Need>(
+        (Object.keys(built) as (keyof typeof built)[]).filter((k) => built[k]),
+      );
+      // The demo data has chat messages once `pnpm demo:seed` has written them.
+      if ((await getPrisma().message.count({ where: { kind: 'TEXT' } })) > 0) {
+        needs.add('demoChat');
+      }
+      return needs;
     },
 
     async open({ member, channel, language }): Promise<AgentSession> {
