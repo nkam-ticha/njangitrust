@@ -10,6 +10,7 @@ import { registerAgentJobs } from '../index';
 import { agentConfig, setAgentConfigForTests } from '../config';
 import { EVENT_TOOL } from '../store/types';
 import { agentMessageLimiter } from '../guards/rate-limit';
+import { release as releaseTurnLease } from '../guards/turn-lease';
 import { OpenRouterClient } from '../llm/openrouter';
 import { setLlmForTests } from '../llm/provider';
 import type { LlmCallOptions, LlmClient, LlmRequest, LlmResponse } from '../llm/types';
@@ -167,6 +168,10 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     await db.agentMessage.deleteMany({ where: { conversation: { userId } } });
     await db.agentConversation.deleteMany({ where: { userId } });
     await agentMessageLimiter.get().delete(userId);
+    // A run that was cut off can leave its lease behind: the next one must not wait for it.
+    await releaseTurnLease(userId);
+    // Every run starts with the group's chat unread (a summary marks it as read).
+    await db.membership.updateMany({ where: { userId }, data: { chatLastReadAt: null } });
   }
 
   return {

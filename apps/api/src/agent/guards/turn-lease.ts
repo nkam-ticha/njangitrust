@@ -27,7 +27,7 @@ async function claim(userId: string): Promise<boolean> {
   return rows.length === 1;
 }
 
-async function release(userId: string): Promise<void> {
+export async function release(userId: string): Promise<void> {
   await getPrisma().$executeRaw`DELETE FROM "RateLimitRecord" WHERE "key" = ${keyOf(userId)}`;
 }
 
