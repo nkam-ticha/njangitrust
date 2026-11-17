@@ -24,7 +24,10 @@ export async function endMembership(
     data: { status: input.reason === 'REMOVED' ? 'REMOVED' : 'LEFT', leftAt: ctx.now },
   });
   if (settles) {
-    await moneyPort()?.settleExit(ctx.tx, {
+    const port = moneyPort();
+    // A settlement is never skipped: without the money modules the vote does not apply.
+    if (!port) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
+    await port.settleExit(ctx.tx, {
       groupId: ctx.group.id,
       membershipId: input.membershipId,
       reason: input.reason,

@@ -113,7 +113,9 @@ export const ruleChange = defineProposal({
       params: next,
       createdByProposalId: ctx.proposal.id,
     });
-    const placed = await moneyPort()?.applyRuleSet(ctx.tx, {
+    const port = moneyPort();
+    if (!port) throw proposalError('PROPOSAL_TYPE_UNAVAILABLE');
+    const placed = await port.applyRuleSet(ctx.tx, {
       groupId: ctx.group.id,
       version,
       previous,
