@@ -179,6 +179,8 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
       const needs = new Set<Need>(
         (Object.keys(built) as (keyof typeof built)[]).filter((k) => built[k]),
       );
+      // Bidding mode is part of the money services (bids, close, pot): built when they are.
+      if (built.money) needs.add('bidding');
       // The demo data has chat messages once `pnpm demo:seed` has written them.
       if ((await getPrisma().message.count({ where: { kind: 'TEXT' } })) > 0) {
         needs.add('demoChat');
