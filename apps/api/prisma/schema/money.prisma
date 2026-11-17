@@ -101,6 +101,8 @@ model Obligation {
   paidAt               DateTime?        @db.Timestamptz(3)
   /// R3.5: set when paid.
   onTime               Boolean?
+  /// D16.1, D17: for a CORRECTION debt, the seq of the CLAWBACK entry it came from.
+  clawbackSeq          Int?
 
   @@index([membershipId, status])
   @@index([groupId, roundId, kind])
