@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import {
   activeHold,
   availableToWithdraw,
+  completionType,
   disbursementCompletedPostings,
+  disbursementReturnedPostings,
   loanSentPostings,
   naturalBalance,
   payableAccount,
@@ -20,6 +22,7 @@ import { getPrisma, type Db, type Prisma } from '../../lib/prisma';
 import { ui } from '../../lib/texts';
 import { authorizeGroup, type AuthActor } from '../../permissions';
 import { appendLedgerEntry } from '../ledger';
+import { sealClawbackReleases } from '../ledger/ledger.correction';
 import { completePendingAction, createPendingAction, type ActionOrigin } from '../pending-actions';
 import { getPaymentProvider, isSendClaim, providerRefused, sendClaim } from '../providers';
 import { dispatchJob } from '../../jobs/dispatch';
@@ -28,6 +31,34 @@ import { payoutError } from './payouts.errors';
 import { componentLogger } from '../../lib/logger';
 
 const log = componentLogger('payouts');
+
+/** The ledger texts of a send, by what it pays. */
+const SEND_TEXTS = {
+  WITHDRAWAL: {
+    completed: { descriptionFr: 'Retrait effectué', descriptionEn: 'Withdrawal completed' },
+    returned: {
+      descriptionFr: 'Retrait refusé, solde rétabli',
+      descriptionEn: 'Withdrawal failed, balance restored',
+    },
+  },
+  LOAN: {
+    completed: { descriptionFr: 'Prêt versé', descriptionEn: 'Loan paid out' },
+    returned: {
+      descriptionFr: 'Envoi du prêt refusé, montant rétabli',
+      descriptionEn: 'Loan send failed, amount restored',
+    },
+  },
+  SOLIDARITY: {
+    completed: {
+      descriptionFr: 'Soutien de secours versé',
+      descriptionEn: 'Solidarity support paid',
+    },
+    returned: {
+      descriptionFr: 'Envoi du soutien refusé, caisse de secours rétablie',
+      descriptionEn: 'Support send failed, solidarity fund restored',
+    },
+  },
+} as const;
 
 function feeSchedule() {
   const configured = getEnv().FEE_SCHEDULE;
@@ -467,7 +498,8 @@ async function completeDisbursement(id: string, providerFee?: number) {
       providerFee,
       schedule: feeSchedule(),
       kind: 'DISBURSEMENT',
-      amount: row.amount,
+      // A solidarity send's fee was estimated on the voted amount, which includes it.
+      amount: row.purpose === 'SOLIDARITY' ? row.amount + row.feeEstimated : row.amount,
     });
     const changed = await tx.disbursement.updateMany({
       where: { id, status: { in: ['CREATED', 'PENDING', 'EXPIRED'] } },
@@ -492,19 +524,24 @@ async function completeDisbursement(id: string, providerFee?: number) {
       feeSource: fee.feeSource,
     });
     await appendLedgerEntry(tx, row.groupId, {
-      type: row.purpose === 'LOAN' ? 'LOAN_DISBURSED' : 'WITHDRAWAL_COMPLETED',
+      type: completionType(row.purpose),
       occurredAt: now.toISOString(),
       roundId: null,
       membershipId: row.membershipId,
       refType: 'Disbursement',
       refId: id,
-      descriptionFr: 'Retrait effectué',
-      descriptionEn: 'Withdrawal completed',
+      ...SEND_TEXTS[row.purpose].completed,
       metadata: { ...completed.metadata, amount: row.amount, purpose: row.purpose },
       postings: completed.postings,
     });
     if (row.purpose === 'LOAN' && row.loan) {
       await tx.loan.update({ where: { id: row.loan.id }, data: { status: 'DISBURSED' } });
+    }
+    if (row.purpose === 'SOLIDARITY') {
+      await tx.solidarityRequest.updateMany({
+        where: { disbursementId: id, status: 'APPROVED' },
+        data: { status: 'PAID' },
+      });
     }
     return row.amount;
   });
@@ -545,23 +582,36 @@ async function returnFailedDisbursement(id: string) {
       include: { postings: true },
     });
     if (!sent) throw new Error('Withdrawal send is missing from the ledger');
-    await appendLedgerEntry(tx, row.groupId, {
+    const returnedEntry = await appendLedgerEntry(tx, row.groupId, {
       type: 'DISBURSEMENT_RETURNED',
       occurredAt: now.toISOString(),
       roundId: null,
       membershipId: row.membershipId,
       refType: 'Disbursement',
       refId: id,
-      descriptionFr: 'Retrait refusé, solde rétabli',
-      descriptionEn: 'Withdrawal failed, balance restored',
-      metadata: { operationId: id },
-      postings: sent.postings.map((posting) => ({
-        account: posting.account,
-        amount: -posting.amount,
-      })),
+      ...SEND_TEXTS[row.purpose].returned,
+      metadata: { sentSeq: sent.seq },
+      postings: disbursementReturnedPostings(
+        sent.postings.map((posting) => ({ account: posting.account, amount: posting.amount })),
+      ),
     });
     if (row.purpose === 'LOAN' && row.loan) {
       await tx.loan.update({ where: { id: row.loan.id }, data: { status: 'APPROVED' } });
+    } else if (row.purpose === 'SOLIDARITY') {
+      // The money is back in the fund: the request failed, and the clawbacks this payout had
+      // caused are released at once (owner Q1, Q3).
+      await tx.solidarityRequest.updateMany({
+        where: { disbursementId: id, status: 'APPROVED' },
+        data: { status: 'FAILED' },
+      });
+      const credited = await sealClawbackReleases(tx, {
+        groupId: row.groupId,
+        returnedSeq: returnedEntry.seq,
+        now,
+      });
+      for (const membershipId of credited) {
+        await settleDueDebts(tx, { groupId: row.groupId, membershipId, now });
+      }
     } else {
       await settleDueDebts(tx, { groupId: row.groupId, membershipId: row.membershipId, now });
     }

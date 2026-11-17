@@ -98,11 +98,15 @@ export const solidarityPayout = defineProposal({
     });
     const port = moneyPort();
     if (port)
-      await port.paySolidarity(ctx.tx, {
-        groupId: ctx.group.id,
-        solidarityRequestId: request.id,
-        proposalId: ctx.proposal.id,
-      });
+      await port.paySolidarity(
+        ctx.tx,
+        {
+          groupId: ctx.group.id,
+          solidarityRequestId: request.id,
+          proposalId: ctx.proposal.id,
+        },
+        ctx.effects,
+      );
     return appliedOn(ctx.now);
   },
 

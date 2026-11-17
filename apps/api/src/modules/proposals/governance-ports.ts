@@ -29,7 +29,7 @@ export interface FineDescription {
   membershipId: string;
   amount: number;
   roundNumber: number | null;
-  /** Only a DUE or already settled fine can be waived; a CANCELLED one cannot. */
+  /** Only a fine still DUE and not in an open payment can be waived (a paid one cannot). */
   waivable: boolean;
 }
 
@@ -109,6 +109,8 @@ export interface MoneyGovernancePort {
   paySolidarity(
     tx: Tx,
     input: { groupId: string; solidarityRequestId: string; proposalId: string },
+    /** Work that must wait for the commit (asking the operator to send). */
+    effects?: EffectSink,
   ): Promise<void>;
   /**
    * R7.4: the ADMIN_LOAN vote's result for the loan. Work that must wait for the commit (asking
