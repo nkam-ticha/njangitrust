@@ -1,6 +1,7 @@
 // Rule sets (3.2, R11). Defaults, ranges and validation come from @njangi/rules; this service
 // only assembles the creator's choices and stores versions.
 import {
+  completeRuleSet,
   DEFAULT_RULE_SET,
   monthlyAnchorFromFirstPayout,
   toDoualaLocal,
@@ -60,7 +61,12 @@ export async function createRuleSetVersion(
 
 /** The group's latest rule set version. Phase 5 adds versions that take effect at a later round. */
 export async function getCurrentRuleSet(groupId: string, db: Db = getPrisma()): Promise<RuleSet> {
-  return db.ruleSet.findFirstOrThrow({ where: { groupId }, orderBy: { version: 'desc' } });
+  const row = await db.ruleSet.findFirstOrThrow({
+    where: { groupId },
+    orderBy: { version: 'desc' },
+  });
+  // A version saved before a parameter existed gets that parameter's default (completeRuleSet).
+  return { ...row, params: completeRuleSet(row.params) as unknown as Prisma.JsonValue };
 }
 
 /** The current params, re-validated by the rules engine before use. */

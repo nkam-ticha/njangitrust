@@ -111,6 +111,7 @@ export async function startFirstCycle(
       {
         firstPayoutAt: group.firstPayoutAt,
         frequency: params.frequency,
+        customPeriodMinutes: params.customPeriodMinutes,
         monthlyAnchor: params.payoutTime.monthlyAnchor,
       },
       index,

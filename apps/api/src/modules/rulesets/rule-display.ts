@@ -1,6 +1,11 @@
 // How a rule and its value read to members ("Amende de retard : 1 000 FCFA → 1 500 FCFA"), from
 // the designer's copy (ui.*.ts `rules.*` and `common.*`). Amounts only through formatXAF.
-import { formatLimitFactor, type ParameterName, type RuleSetParams } from '@njangi/rules';
+import {
+  formatLimitFactor,
+  splitPeriod,
+  type ParameterName,
+  type RuleSetParams,
+} from '@njangi/rules';
 import { formatXAF, type Bilingual, type Lang } from '@njangi/shared';
 import type { UiCopyShape } from '@njangi/shared/i18n';
 import { ui } from '../../lib/texts';
@@ -53,6 +58,15 @@ export function ruleValue<P extends ParameterName>(
     if (v === 0 && OFF_AT_ZERO.has(parameter)) return ui((c) => c.rules.values.off);
     if (MONEY.has(parameter)) return { fr: formatXAF(v, 'fr'), en: formatXAF(v, 'en') };
     if (HOURS.has(parameter)) return ui((c) => c.rules.values[`hours_${plural(v)}`], { count: v });
+    if (parameter === 'customPeriodMinutes') {
+      const { unit, count } = splitPeriod(v);
+      const key = plural(count);
+      return unit === 'minutes'
+        ? ui((c) => c.rules.values[`everyMinutes_${key}`], { count })
+        : unit === 'hours'
+          ? ui((c) => c.rules.values[`everyHours_${key}`], { count })
+          : ui((c) => c.rules.values[`everyDays_${key}`], { count });
+    }
     if (parameter === 'loanMaxMonths')
       return ui((c) => c.rules.values[`months_${plural(v)}`], { count: v });
     if (parameter === 'reliabilityWindow')

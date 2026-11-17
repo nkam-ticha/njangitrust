@@ -1,9 +1,9 @@
 import {
+  completeRuleSet,
   fineAssessedPostings,
   installmentFine,
   roundLateFines,
   validateRuleSet,
-  type RuleSetParams,
 } from '@njangi/rules';
 import type { Job } from 'bullmq';
 import { clock } from '../../lib/clock';
@@ -25,7 +25,7 @@ export async function assessRoundFines(roundId: string, now: Date = clock.now())
     const ruleSet = await tx.ruleSet.findFirstOrThrow({
       where: { groupId: round.groupId, version: round.ruleSetVersion },
     });
-    const params = ruleSet.params as unknown as RuleSetParams;
+    const params = completeRuleSet(ruleSet.params);
     const valid = validateRuleSet(params);
     if (!valid.ok) throw new Error(`Invalid rule set ${round.ruleSetVersion}: ${valid.code}`);
     const obligations = await tx.obligation.findMany({

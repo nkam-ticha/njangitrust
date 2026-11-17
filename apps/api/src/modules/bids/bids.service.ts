@@ -1,9 +1,9 @@
 import {
   bidWinner,
+  completeRuleSet,
   biddingEligible,
   validateBid,
   validateRuleSet,
-  type RuleSetParams,
 } from '@njangi/rules';
 import { formatDateTime } from '@njangi/shared';
 import { clock } from '../../lib/clock';
@@ -33,7 +33,7 @@ async function bidContext(db: Db, groupId: string, roundId: string, userId: stri
   const ruleSet = await db.ruleSet.findFirstOrThrow({
     where: { groupId, version: round.ruleSetVersion },
   });
-  const params = ruleSet.params as unknown as RuleSetParams;
+  const params = completeRuleSet(ruleSet.params);
   const valid = validateRuleSet(params);
   if (!valid.ok) throw new Error(`Invalid rule set ${round.ruleSetVersion}: ${valid.code}`);
   const access = await authorizeGroup(userId, groupId, 'group.bids.place', db);

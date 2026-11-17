@@ -1,13 +1,8 @@
 // Audit export mappers (spec 2.11, 2.14): an allowlist of fields for the file any member downloads.
 // A payment number leaves only masked; a secret proposal never lists ballots (R11.5).
 import { maskNumber } from '@njangi/shared';
-import type {
-  ExportCycle,
-  ExportMember,
-  ExportProposal,
-  ExportRuleSet,
-  RuleSetParams,
-} from '@njangi/rules';
+import { completeRuleSet } from '@njangi/rules';
+import type { ExportCycle, ExportMember, ExportProposal, ExportRuleSet } from '@njangi/rules';
 import { iso, isoOrNull } from './time';
 
 export interface ExportMemberSource {
@@ -38,7 +33,7 @@ export interface ExportRuleSetSource {
 export function toExportRuleSet(r: ExportRuleSetSource): ExportRuleSet {
   return {
     version: r.version,
-    params: r.params as RuleSetParams,
+    params: completeRuleSet(r.params),
     effectiveFromRoundId: r.effectiveFromRoundId,
     createdByProposalId: r.createdByProposalId,
   };

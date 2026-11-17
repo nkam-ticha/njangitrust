@@ -18,10 +18,13 @@ export const rulesetTools = [
     const open = await listProposals(ctx.userId, ctx.groupId!, { status: 'OPEN' });
     return ok({
       version: ruleSet.version,
-      rules: (Object.keys(params) as ParameterName[]).map((name) => ({
-        rule: ruleLabel(name)[ctx.lang],
-        value: ruleValue(name, params[name])[ctx.lang],
-      })),
+      rules: (Object.keys(params) as ParameterName[])
+        // The custom period only matters while the frequency is custom.
+        .filter((name) => name !== 'customPeriodMinutes' || params.frequency === 'CUSTOM')
+        .map((name) => ({
+          rule: ruleLabel(name)[ctx.lang],
+          value: ruleValue(name, params[name])[ctx.lang],
+        })),
       openRuleChanges: open
         .filter((v) => v.proposal.type === 'RULE_CHANGE')
         .map((v) => ({ id: v.proposal.id, title: v.title[ctx.lang] })),

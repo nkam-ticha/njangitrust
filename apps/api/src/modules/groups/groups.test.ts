@@ -31,7 +31,7 @@ describe('creating a group (spec 2.7, 3.2, R1.1)', () => {
     const res = await api(admin).post('/v1/groups', {
       name: 'Njangi',
       firstPayoutAt: futurePayout(),
-      rules: { contributionAmount: 100 },
+      rules: { contributionAmount: 24 },
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('RULE_VALUE_OUT_OF_RANGE');
@@ -39,7 +39,7 @@ describe('creating a group (spec 2.7, 3.2, R1.1)', () => {
     expect(res.body.messageEn).toContain('contribution amount');
     expect(res.body.details).toMatchObject({
       parameter: 'contributionAmount',
-      min: 500,
+      min: 25,
       max: 1_000_000,
     });
   });

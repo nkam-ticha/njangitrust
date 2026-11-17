@@ -1,4 +1,5 @@
 // Group mappers (allowlists). Group rows hold no personal data, but the shape is still explicit.
+import { completeRuleSet } from '@njangi/rules';
 import type { GroupDto, RuleSetDto } from '@njangi/shared/contracts/groups';
 import { ruleSetParamsSchema } from '@njangi/shared/contracts/groups';
 import type { MyGroupDto } from '@njangi/shared/contracts/me';
@@ -55,7 +56,7 @@ export interface RuleSetSource {
 export function toRuleSet(ruleSet: RuleSetSource): RuleSetDto {
   return {
     version: ruleSet.version,
-    params: ruleSetParamsSchema.parse(ruleSet.params),
+    params: ruleSetParamsSchema.parse(completeRuleSet(ruleSet.params)),
     effectiveFromRoundId: ruleSet.effectiveFromRoundId,
     createdAt: iso(ruleSet.createdAt),
   };

@@ -362,6 +362,7 @@ export async function applyLoanDecision(
       const anchor = {
         firstPayoutAt: cycle.firstPayoutAt,
         frequency: params.frequency,
+        customPeriodMinutes: params.customPeriodMinutes,
         monthlyAnchor: params.payoutTime.monthlyAnchor,
       };
       if (installment.due.nthRound !== null) {
