@@ -4,6 +4,7 @@ import {
   formatClock,
   formatDateLong,
   formatDateShort,
+  formatMonthYear,
   formatDateTime,
   formatTimeSpoken,
   toDouala,
@@ -42,6 +43,12 @@ describe('Africa/Douala conversion (spec: times stored in UTC, shown in Douala)'
 });
 
 describe('date and time formatting, French and English', () => {
+  it('names a calendar month', () => {
+    expect(formatMonthYear(2026, 11, 'fr')).toBe('novembre 2026');
+    expect(formatMonthYear(2026, 1, 'en')).toBe('January 2026');
+    expect(() => formatMonthYear(2026, 13, 'en')).toThrow(RangeError);
+  });
+
   it('formats the spec examples', () => {
     expect(formatDateTime(deadline, 'fr')).toBe('vendredi 6 novembre à 18 h');
     expect(formatDateTime(deadline, 'en')).toBe('Friday 6 November at 6 pm');

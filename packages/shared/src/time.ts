@@ -109,6 +109,13 @@ export function formatDateShort(instant: Instant, lang: Lang, options: DateOptio
   return `${p.day} ${MONTHS_SHORT[lang][p.month - 1]}${year}`;
 }
 
+/** A calendar month: "novembre 2026" / "November 2026". `month` is 1 to 12. */
+export function formatMonthYear(year: number, month: number, lang: Lang): string {
+  const name = MONTHS[lang][month - 1];
+  if (name === undefined) throw new RangeError('month must be 1 to 12');
+  return `${name} ${year}`;
+}
+
 /** Time as said in a sentence: "18 h", "16 h 30" / "6 pm", "4:30 pm". */
 export function formatTimeSpoken(instant: Instant, lang: Lang): string {
   const { hour, minute } = toDouala(instant);
