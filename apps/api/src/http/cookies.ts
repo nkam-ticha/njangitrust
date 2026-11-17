@@ -38,7 +38,7 @@ export interface CookieOptions {
   maxAge: number;
   httpOnly: boolean;
   secure: boolean;
-  sameSite: 'Strict' | 'Lax';
+  sameSite: 'Strict' | 'Lax' | 'None';
 }
 
 export function serializeCookie(name: string, value: string, options: CookieOptions): string {

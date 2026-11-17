@@ -1,5 +1,6 @@
 // D1: mobile clients get the refresh token in the body (kept in SecureStore); web clients get it
-// as an httpOnly, Secure, SameSite=Strict cookie scoped to /v1/auth and never see it in script.
+// as an httpOnly, Secure cookie scoped to /v1/auth (SameSite=Strict, or None when COOKIE_SAMESITE=none
+// because the web app and the API are different sites) and never see it in script.
 // A request authenticated by that cookie must carry the X-Njangi-Client: web header (a cross-site
 // form cannot set it, and CORS lets only configured origins send it) and an allowed Origin.
 import type { Request, Response } from 'express';
@@ -15,6 +16,8 @@ import { serializeCookie } from './cookies';
 export const REFRESH_COOKIE = 'njangi_rt';
 const COOKIE_PATH = '/v1/auth';
 
+const sameSite = () => (getEnv().COOKIE_SAMESITE === 'none' ? 'None' : 'Strict');
+
 function setRefreshCookie(res: Response, token: string): void {
   res.append(
     'Set-Cookie',
@@ -23,7 +26,7 @@ function setRefreshCookie(res: Response, token: string): void {
       maxAge: REFRESH_TOKEN_TTL_DAYS * 86_400,
       httpOnly: true,
       secure: true,
-      sameSite: 'Strict',
+      sameSite: sameSite(),
     }),
   );
 }
@@ -36,7 +39,7 @@ export function clearRefreshCookie(res: Response): void {
       maxAge: 0,
       httpOnly: true,
       secure: true,
-      sameSite: 'Strict',
+      sameSite: sameSite(),
     }),
   );
 }

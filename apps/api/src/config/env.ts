@@ -119,6 +119,13 @@ const schema = z
         .optional(),
     ),
     PUBLIC_BASE_URL: z.string().url(),
+    /**
+     * D1: SameSite of the web refresh cookie. `strict` when the web app and the API share a site;
+     * `none` when they do not (for example two `*.vercel.app` projects, which are different sites):
+     * the cookie is then also sent on cross-site requests, and the CSRF defence is the required
+     * `X-Njangi-Client: web` header plus the `WEB_ORIGINS` allowlist (see session-delivery.ts).
+     */
+    COOKIE_SAMESITE: z.enum(['strict', 'none']).default('strict'),
     /** D1: comma-separated web origins allowed by CORS, e.g. `http://localhost:8081`. */
     WEB_ORIGINS: z
       .string()
