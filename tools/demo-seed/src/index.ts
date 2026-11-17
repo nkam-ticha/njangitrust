@@ -2,8 +2,10 @@
 // row and notification is exactly what the app would produce. Safe to run again: it creates only
 // what is missing. Usage: `pnpm demo:seed` (API running; DEMO_API_URL overrides http://localhost:3000).
 //
-// Today the API allows: accounts, both groups and their founding members. Cycles, payments, loans,
-// votes, meetings and chat wait for their services (the seed will grow with them).
+// It creates: accounts, both groups and their founding members, the first cycle, the first round's
+// contributions (a few members left unpaid on purpose) and some chat. Payments need the mock
+// operator (PAYMENT_PROVIDER=mock): the demo numbers are fictional. Loans, votes and meetings are
+// not seeded.
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -213,6 +215,114 @@ async function addMember(groupId: string, person: Person, admin: Session): Promi
   return true;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface Overview {
+  group: { status: string };
+}
+
+/** GRP-02: the admin starts the first cycle (a card, then its confirmation). */
+async function ensureCycle(groupId: string, admin: Session): Promise<boolean> {
+  const { group } = await api.get<Overview>(`/v1/groups/${groupId}/overview`, admin.token);
+  if (group.status !== 'FORMING') {
+    log('  = cycle already started');
+    return true;
+  }
+  try {
+    const { action } = await api.post<PendingActionBody>(
+      `/v1/groups/${groupId}/cycles/start`,
+      {},
+      admin.token,
+    );
+    await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+    log('  + cycle started (draw recorded)');
+    return true;
+  } catch (error) {
+    if (!(error instanceof ApiFailure)) throw error;
+    log(`  ! cycle not started: ${error.code}`);
+    return false;
+  }
+}
+
+interface Due {
+  id: string;
+  roundNumber: number | null;
+}
+
+/** Pays everything the member owes for round 1; returns the payment to follow, if one was made. */
+async function payFirstRound(groupId: string, person: Person): Promise<string | null> {
+  const session = await login(person);
+  const { dues } = await api.get<{ dues: Due[] }>(`/v1/groups/${groupId}/me/dues`, session.token);
+  const first = dues.filter((due) => due.roundNumber === 1).map((due) => due.id);
+  if (first.length === 0) return null;
+  try {
+    const { action } = await api.post<PendingActionBody>(
+      `/v1/groups/${groupId}/payments`,
+      { obligationIds: first },
+      session.token,
+    );
+    const confirmed = await api.post<{ action: { result?: { ref?: string } } }>(
+      `/v1/pending-actions/${action.id}/confirm`,
+      {},
+      session.token,
+    );
+    return confirmed.action.result?.ref ?? null;
+  } catch (error) {
+    if (error instanceof ApiFailure && error.code === 'PAYMENT_ALREADY_PENDING') return null;
+    throw error;
+  }
+}
+
+/** Waits until the operator has answered (the API's job runner checks every few seconds). */
+async function awaitPayment(paymentId: string, person: Person): Promise<string> {
+  const session = await login(person);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const { payment } = await api.get<{ payment: { status: string } }>(
+      `/v1/payments/${paymentId}`,
+      session.token,
+    );
+    if (payment.status === 'SUCCESSFUL' || payment.status === 'FAILED') return payment.status;
+    await sleep(2_000);
+  }
+  return 'PENDING';
+}
+
+async function seedPayments(plan: GroupPlan, groupId: string): Promise<void> {
+  const started: { person: Person; paymentId: string }[] = [];
+  for (const person of [plan.admin, ...plan.members]) {
+    if (plan.unpaid.includes(person)) continue;
+    const paymentId = await payFirstRound(groupId, person);
+    if (paymentId) started.push({ person, paymentId });
+  }
+  if (started.length === 0) {
+    log('  = first-round contributions already paid');
+    return;
+  }
+  for (const { person, paymentId } of started) {
+    const status = await awaitPayment(paymentId, person);
+    log(`  ${status === 'SUCCESSFUL' ? '+' : '!'} ${person.name} contribution: ${status}`);
+  }
+}
+
+async function seedChat(plan: GroupPlan, groupId: string, admin: Session): Promise<void> {
+  const { messages } = await api.get<{ messages: { kind?: string; text?: string | null }[] }>(
+    `/v1/groups/${groupId}/messages?limit=100`,
+    admin.token,
+  );
+  const present = new Set(messages.map((message) => message.text));
+  let added = 0;
+  for (const line of plan.chat) {
+    if (present.has(line.text)) continue;
+    await api.post(
+      `/v1/groups/${groupId}/messages`,
+      { text: line.text },
+      (await login(line.from)).token,
+    );
+    added++;
+  }
+  log(added > 0 ? `  + ${added} chat messages` : '  = chat already seeded');
+}
+
 async function seedGroup(plan: GroupPlan): Promise<void> {
   log(`\n${plan.name}`);
   const admin = await ensureAccount(plan.admin);
@@ -228,6 +338,8 @@ async function seedGroup(plan: GroupPlan): Promise<void> {
     if (present.has(person.name)) log(`  = ${person.name} already a member`);
     else await addMember(groupId, person, admin);
   }
+  if (await ensureCycle(groupId, admin)) await seedPayments(plan, groupId);
+  await seedChat(plan, groupId, admin);
 }
 
 function localNumber(e164: string): string {
@@ -257,9 +369,7 @@ async function main(): Promise<void> {
       .join(', ');
     log(`  ${p.name.padEnd(18)} ${localNumber(p.phone)}   ${roles}`);
   }
-  log(
-    '\nCycles, payments, loans, votes, meetings and chat are not seeded yet: their API is not built.',
-  );
+  log('\nLoans, votes and meetings are not seeded: create them in the app.');
 }
 
 main().catch((error: unknown) => {

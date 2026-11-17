@@ -39,6 +39,10 @@ export interface GroupPlan {
   frequency: 'WEEKLY' | 'MONTHLY';
   contributionAmount: number;
   solidarityContribution: number;
+  /** Members who have not paid the first round yet, so the app shows people still to pay. */
+  unpaid: Person[];
+  /** A few chat messages, oldest first. */
+  chat: { from: Person; text: string }[];
 }
 
 export const groups: GroupPlan[] = [
@@ -50,6 +54,14 @@ export const groups: GroupPlan[] = [
     frequency: 'MONTHLY',
     contributionAmount: 10_000,
     solidarityContribution: 1_000,
+    unpaid: [carine, joel, paul],
+    chat: [
+      { from: nkam, text: 'Bonjour à tous, le premier tour est ouvert.' },
+      { from: mireille, text: 'Merci Nkam. J’ai déjà cotisé ce matin.' },
+      { from: ivo, text: 'Good morning everyone, paid as well.' },
+      { from: sandrine, text: 'Qui apporte le registre à la réunion de samedi ?' },
+      { from: brice, text: 'Je m’en occupe.' },
+    ],
   },
   {
     // The second group (spec 5.5), led by Sandrine, so Nkam also sees a group as a plain member.
@@ -59,5 +71,11 @@ export const groups: GroupPlan[] = [
     frequency: 'WEEKLY',
     contributionAmount: 5_000,
     solidarityContribution: 500,
+    unpaid: [paul],
+    chat: [
+      { from: sandrine, text: 'Bienvenue dans le njangi du quartier.' },
+      { from: clarisse, text: 'Merci Sandrine, contente d’être là.' },
+      { from: herve, text: 'Cotisation envoyée.' },
+    ],
   },
 ];
