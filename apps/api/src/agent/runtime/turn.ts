@@ -51,6 +51,18 @@ export interface TurnBudget {
 
 export const DEFAULT_BUDGET: TurnBudget = { turnMs: 40_000, requestMs: 20_000 };
 
+/** Prefer the language of this turn over the saved app preference. Short common phrases count. */
+export function replyLanguage(text: string | null, fallback: AgentCtx['lang']): AgentCtx['lang'] {
+  if (!text) return fallback;
+  const words = text.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ' ');
+  const fr = (words.match(/\b(le|la|les|un|une|des|du|de|je|tu|vous|mon|ma|mes|combien|comment|pourquoi|est|que|quoi|ou|qui|paie|payer|bonjour|merci|monnaie)\b/g) ?? []).length;
+  const en = (words.match(/\b(the|a|an|is|are|am|i|you|my|me|how|what|why|where|who|when|pay|paid|hello|thanks|please|money|much|can|do|does)\b/g) ?? []).length;
+  if (fr !== en) return fr > en ? 'fr' : 'en';
+  if (/\b(how much|how do|where is|what is|can i|tell me)\b/.test(words)) return 'en';
+  if (/\b(combien|comment|ou est|qu'est|pourquoi|est-ce)\b/.test(words)) return 'fr';
+  return fallback;
+}
+
 export interface TurnEmitter {
   delta(payload: { turnId: string; text: string; reset?: boolean }): void;
   /** Sends streamed text still held back by coalescing (realtime.ts). */
@@ -122,20 +134,21 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     ...(summary ? { after: new Date(summary.upTo) } : {}),
   });
   const sessionBlock = buildSessionBlock(await deps.sessionFacts(ctx));
+  const responseLang = replyLanguage(input.text, ctx.lang);
   // The member's message as every provider receives it: numbers replaced by markers, typed PINs
   // and tokens masked. The routing call below gets this same text, never the raw one.
   const asked = input.text
-    ? memberMessage(input.text, ctx.lang, input.fromGroup, ctx.numberSlots)
+    ? memberMessage(input.text, responseLang, input.fromGroup, ctx.numberSlots)
     : null;
   const messages: LlmMessage[] = [
-    systemMessage(sessionBlock, summary?.text ?? null),
+    systemMessage(sessionBlock, summary?.text ?? null, responseLang),
     ...historyMessages(lines, ctx.lang),
     ...(asked ? [asked] : []),
   ];
   // A how-to question gets the guide to the app before the first call (runtime/prefetch.ts).
   const guide =
     input.text && ctx.channel === 'PRIVATE' && deps.registry.get('get_app_guide')
-      ? guidePrefetch(input.text, ctx.lang)
+      ? guidePrefetch(input.text, responseLang)
       : null;
   if (guide) messages.push(...guide);
   const categories =
@@ -197,7 +210,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
       messages.push({
         role: 'system',
         content:
-          ctx.lang === 'fr'
+          responseLang === 'fr'
             ? 'Write the next reply entirely in French, use tu, and copy all dates and amounts exactly from the session or tool results.'
             : 'Write the next reply entirely in English, and copy all dates and amounts exactly from the session or tool results.',
       });

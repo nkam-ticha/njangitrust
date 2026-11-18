@@ -16,9 +16,20 @@ const FROM_GROUP_NOTE: Record<Lang, string> = {
   en: '(question asked in the group chat) ',
 };
 
-export function systemMessage(sessionBlock: string, summary: string | null): LlmMessage {
+export function systemMessage(
+  sessionBlock: string,
+  summary: string | null,
+  responseLang?: Lang,
+): LlmMessage {
   const parts = [systemPrompt(), sessionBlock];
   if (summary) parts.push(`<summary>\n${neutralise(summary)}\n</summary>`);
+  if (responseLang) {
+    parts.push(
+      responseLang === 'fr'
+        ? 'LANGUAGE RULE: Reply entirely in French because the member wrote this turn in French. Do not use English.'
+        : 'LANGUAGE RULE: Reply entirely in English because the member wrote this turn in English. Do not use French.',
+    );
+  }
   return { role: 'system', content: parts.join('\n\n') };
 }
 

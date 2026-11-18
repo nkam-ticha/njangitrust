@@ -4,12 +4,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder, StyleSheet, View, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { size, space, useBreakpoint } from '@/theme';
 import { AgentOrb, navigationLayoutFor } from '@/ui';
 import { useAgentActivity } from '@/state/agentActivity';
+import { BottomSheet } from '@/ui';
+import { NjangiTab } from '@/screens/njangi/NjangiTab';
 
 const ORB = 56;
 const MARGIN = space.s2;
@@ -27,7 +29,6 @@ const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(mi
 
 export function FloatingAgent() {
   const { t } = useTranslation();
-  const router = useRouter();
   const pathname = usePathname();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -35,6 +36,7 @@ export function FloatingAgent() {
   const mode = useAgentActivity((s) => s.mode);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Where it may go: inside the screen, clear of the status bar and of the tab bar on phones.
   const bounds = useMemo(() => {
@@ -99,7 +101,7 @@ export function FloatingAgent() {
     });
   }, [saved, bounds, pos]);
 
-  const open = useCallback(() => router.navigate('/'), [router]);
+  const open = useCallback(() => setChatOpen(true), []);
   const openRef = useRef(open);
   useEffect(() => {
     openRef.current = open;
@@ -179,6 +181,15 @@ export function FloatingAgent() {
       >
         <AgentOrb size={ORB} mode={mode} />
       </Animated.View>
+      <BottomSheet
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+        title={t('common.agentName')}
+        dialogWidth={480}
+        scrollContent={false}
+      >
+        <NjangiTab />
+      </BottomSheet>
     </View>
   );
 }

@@ -182,7 +182,9 @@ describe('the confirmation protocol (spec 4.5)', () => {
     expect(res.body.turn.actions).toHaveLength(1);
     const action = res.body.turn.actions[0];
     expect(action).toMatchObject({ type: 'PROPOSAL_CREATE', status: 'PENDING', origin: 'AGENT' });
-    const toolMessage = JSON.parse(String(llm.bodies[1]!.messages.at(-1)!.content).split('\n')[1]!);
+    const toolMessage = JSON.parse(
+      String(llm.bodies[1]!.messages.find((m) => m.role === 'tool')!.content).split('\n')[1]!,
+    );
     expect(Object.keys(toolMessage).sort()).toEqual(['pendingActionId', 'status', 'summary']);
     expect((await agentApi(carine).get('/v1/agent/history')).body.items[0].status).toBe('prepared');
 

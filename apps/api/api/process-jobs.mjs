@@ -689,8 +689,8 @@ var init_ui_en = __esm({
         a11y: "NjangiTrust, loading"
       },
       welcome: {
-        title: "Your njangi, clear to everyone",
-        body: "Contribute with Mobile Money, follow every franc in the records and decide everything by vote.",
+        title: "Your njangi, in total transparency",
+        body: "Contribute with Mobile Money, track every franc in the records, and decide everything by vote.",
         create: "Create a njangi",
         invitation: "I have an invitation",
         login: "I already have an account",
@@ -770,9 +770,9 @@ var init_ui_en = __esm({
         submit: "Log in",
         forgotPin: "Forgot your PIN?",
         noAccount: "No account yet? Create one",
-        wrongPin_one: "Wrong PIN. You have {{count}} try left.",
-        wrongPin_other: "Wrong PIN. You have {{count}} tries left.",
-        locked: "Too many tries. Try again at {{time}}, or ask for a new PIN.",
+        wrongPin_one: "Incorrect PIN. You have {{count}} attempt left.",
+        wrongPin_other: "Incorrect PIN. You have {{count}} attempts left.",
+        locked: "Too many attempts. Try again at {{time}}, or request a new PIN.",
         unknownPhone: "No account with this number. Check the number or create an account.",
         changeNumber: "Use another number"
       },
@@ -1514,6 +1514,12 @@ var init_ui_en = __esm({
           hide: "Hide (admin)",
           hideReason: "Reason, kept in the admin log",
           copyText: "Copy text",
+          reply: "Reply",
+          tagAgent: "Ask Njangi",
+          tagAgentHelp: "Ask the assistant about this message",
+          options: "Message options",
+          copied: "Message copied",
+          tagNjangi: "Tag @Njangi",
           mentionYou: "{{name}} mentioned you",
           a11y: "{{name}}, {{time}}: {{text}}",
           a11yOwn: "You, {{time}}: {{text}}"
@@ -1909,13 +1915,15 @@ var init_ui_en = __esm({
         member: "Member",
         event: "Event",
         amount: "Amount",
+        min: "At least {{amount}}.",
         max: "At most {{amount}}, the solidarity fund\u2019s balance.",
         note: "Note",
         notePlaceholder: "A few words for the group",
         noteHelp: "Members of the group can see it.",
         vote: "The request goes to a majority vote, open for {{duration}}.",
         prepare: "Prepare the request",
-        fundEmpty: "The solidarity fund is empty for now."
+        fundEmpty: "The solidarity fund is empty for now (minimum 25 FCFA required).",
+        insufficientBalance: "The solidarity fund balance ({{balance}}) is insufficient (minimum {{min}})."
       },
       // Votes tab and proposals (spec 1.4, R11)
       votes: {
@@ -3673,6 +3681,12 @@ var init_ui_fr = __esm({
           hide: "Masquer (admin)",
           hideReason: "Motif, visible dans le journal de l\u2019admin",
           copyText: "Copier le texte",
+          reply: "R\xE9pondre",
+          tagAgent: "Demander \xE0 Njangi",
+          tagAgentHelp: "Pose une question \xE0 l\u2019assistant sur ce message",
+          options: "Options du message",
+          copied: "Message copi\xE9",
+          tagNjangi: "Taguer @Njangi",
           mentionYou: "{{name}} parle de toi",
           a11y: "{{name}}, {{time}}\xA0: {{text}}",
           a11yOwn: "Toi, {{time}}\xA0: {{text}}"
@@ -4068,13 +4082,15 @@ var init_ui_fr = __esm({
         member: "Membre",
         event: "\xC9v\xE9nement",
         amount: "Montant",
+        min: "Au minimum {{amount}}.",
         max: "Au plus {{amount}}, le solde de la caisse de secours.",
         note: "Note",
         notePlaceholder: "Quelques mots pour le groupe",
         noteHelp: "Visible par les membres du groupe.",
         vote: "La demande passe par un vote \xE0 la majorit\xE9, ouvert {{duration}}.",
         prepare: "Pr\xE9parer la demande",
-        fundEmpty: "La caisse de secours est vide pour le moment."
+        fundEmpty: "La caisse de secours est vide pour le moment (minimum 25 FCFA requis).",
+        insufficientBalance: "Le solde de la caisse de secours ({{balance}}) est insuffisant (minimum {{min}})."
       },
       // Votes tab and proposals (spec 1.4, R11)
       votes: {
@@ -12216,7 +12232,6 @@ import { z as z5 } from "zod";
 var actionLevelSchema, actionOriginSchema, pendingActionStatusSchema, previewLineSchema, actionPreviewSchema, pendingActionSchema, pendingActionResponseSchema, confirmActionRequestSchema, actionResultDataSchema, confirmActionResponseSchema, pendingActionCreatedSchema;
 var init_pending_actions = __esm({
   "../../packages/shared/src/contracts/pending-actions.ts"() {
-    "use strict";
     init_common2();
     actionLevelSchema = z5.enum(["L1", "L2"]);
     actionOriginSchema = z5.enum(["AGENT", "UI"]);
@@ -26392,11 +26407,16 @@ var FROM_GROUP_NOTE = {
   fr: "(question pos\xE9e dans le chat du groupe) ",
   en: "(question asked in the group chat) "
 };
-function systemMessage(sessionBlock, summary) {
+function systemMessage(sessionBlock, summary, responseLang) {
   const parts = [systemPrompt(), sessionBlock];
   if (summary) parts.push(`<summary>
 ${neutralise(summary)}
 </summary>`);
+  if (responseLang) {
+    parts.push(
+      responseLang === "fr" ? "LANGUAGE RULE: Reply entirely in French because the member wrote this turn in French. Do not use English." : "LANGUAGE RULE: Reply entirely in English because the member wrote this turn in English. Do not use French."
+    );
+  }
   return { role: "system", content: parts.join("\n\n") };
 }
 function readEvent(content) {
@@ -28167,6 +28187,16 @@ var SUMMARY_BATCH = 10;
 var MIN_STEP_MS = 3e3;
 var MIN_SUMMARY_MS = 1e4;
 var DEFAULT_BUDGET = { turnMs: 4e4, requestMs: 2e4 };
+function replyLanguage(text, fallback) {
+  if (!text) return fallback;
+  const words2 = text.toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, " ");
+  const fr = (words2.match(/\b(le|la|les|un|une|des|du|de|je|tu|vous|mon|ma|mes|combien|comment|pourquoi|est|que|quoi|ou|qui|paie|payer|bonjour|merci|monnaie)\b/g) ?? []).length;
+  const en = (words2.match(/\b(the|a|an|is|are|am|i|you|my|me|how|what|why|where|who|when|pay|paid|hello|thanks|please|money|much|can|do|does)\b/g) ?? []).length;
+  if (fr !== en) return fr > en ? "fr" : "en";
+  if (/\b(how much|how do|where is|what is|can i|tell me)\b/.test(words2)) return "en";
+  if (/\b(combien|comment|ou est|qu'est|pourquoi|est-ce)\b/.test(words2)) return "fr";
+  return fallback;
+}
 function activityName(run, registry2) {
   const level = registry2.get(run.name)?.level;
   return level === "L1" || level === "L2" ? "prepareAction" : run.name;
@@ -28184,13 +28214,14 @@ async function runTurn(deps, input2) {
     ...summary ? { after: new Date(summary.upTo) } : {}
   });
   const sessionBlock = buildSessionBlock(await deps.sessionFacts(ctx));
-  const asked = input2.text ? memberMessage(input2.text, ctx.lang, input2.fromGroup, ctx.numberSlots) : null;
+  const responseLang = replyLanguage(input2.text, ctx.lang);
+  const asked = input2.text ? memberMessage(input2.text, responseLang, input2.fromGroup, ctx.numberSlots) : null;
   const messages = [
-    systemMessage(sessionBlock, summary?.text ?? null),
+    systemMessage(sessionBlock, summary?.text ?? null, responseLang),
     ...historyMessages(lines, ctx.lang),
     ...asked ? [asked] : []
   ];
-  const guide = input2.text && ctx.channel === "PRIVATE" && deps.registry.get("get_app_guide") ? guidePrefetch(input2.text, ctx.lang) : null;
+  const guide = input2.text && ctx.channel === "PRIVATE" && deps.registry.get("get_app_guide") ? guidePrefetch(input2.text, responseLang) : null;
   if (guide) messages.push(...guide);
   const categories = deps.toolRouting && asked ? await routeCategories(deps.llm, deps.model, asked.content ?? "", callSignal()) : void 0;
   const tools = deps.registry.toolsFor(ctx, categories).map(toLlmTool);
@@ -28242,7 +28273,7 @@ async function runTurn(deps, input2) {
     if (!privateReply) {
       messages.push({
         role: "system",
-        content: ctx.lang === "fr" ? "Write the next reply entirely in French, use tu, and copy all dates and amounts exactly from the session or tool results." : "Write the next reply entirely in English, and copy all dates and amounts exactly from the session or tool results."
+        content: responseLang === "fr" ? "Write the next reply entirely in French, use tu, and copy all dates and amounts exactly from the session or tool results." : "Write the next reply entirely in English, and copy all dates and amounts exactly from the session or tool results."
       });
     }
   }

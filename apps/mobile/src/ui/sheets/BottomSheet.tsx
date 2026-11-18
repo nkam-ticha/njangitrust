@@ -41,6 +41,8 @@ export interface BottomSheetProps {
   topSlot?: ReactNode;
   /** False while a PIN is being checked: no drag, no scrim tap, no back. */
   dismissible?: boolean;
+  /** Use when children already manage their own scroll and sticky composer. */
+  scrollContent?: boolean;
   /** Dialog width on wide screens: 480 default, 520 withdraw, 400 PIN and pickers. */
   dialogWidth?: 400 | 480 | 520;
 }
@@ -53,6 +55,7 @@ export function BottomSheet({
   footer,
   topSlot,
   dismissible = true,
+  scrollContent = true,
   dialogWidth = 480,
 }: BottomSheetProps) {
   const { colors, scheme } = useTheme();
@@ -196,13 +199,17 @@ export function BottomSheet({
             </View>
           )}
           {header}
-          <ScrollView
-            style={styles.flexShrink}
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-          >
-            {children}
-          </ScrollView>
+          {scrollContent ? (
+            <ScrollView
+              style={styles.flexShrink}
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={styles.fill}>{children}</View>
+          )}
           {footer ? (
             <View
               style={[
@@ -248,4 +255,5 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: space.s5, paddingTop: space.s3, gap: space.s2 },
   flex: { flex: 1 },
   flexShrink: { flexShrink: 1 },
+  fill: { flex: 1, minHeight: 0 },
 });

@@ -5,7 +5,19 @@ import { ToolRegistry } from '../tools/registry';
 import { SPECS } from '../tools/specs';
 import { implement, type Tool } from '../tools/types';
 import type { AgentCtx } from '../types';
-import { runTurn, type TurnDeps } from './turn';
+import { replyLanguage, runTurn, type TurnDeps } from './turn';
+
+describe('reply language', () => {
+  it.each([
+    ['How much do I owe?', 'fr', 'en'],
+    ['Can you explain my balance?', 'fr', 'en'],
+    ['Combien est-ce que je dois ?', 'en', 'fr'],
+    ['Où est mon prêt ?', 'en', 'fr'],
+    ['', 'fr', 'fr'],
+  ] as const)('uses the message language for %j', (text, fallback, expected) => {
+    expect(replyLanguage(text, fallback)).toBe(expected);
+  });
+});
 
 const OWN = '+237677123456';
 
@@ -301,10 +313,11 @@ describe('the guide to the app, handed over before the first call', () => {
 
   it('gives the guide in the member’s language', async () => {
     const { llm, deps } = setup([{ text: 'Here is how.' }], withGuide);
-    await turn(deps, 'Where can I see my loans?', ctx({ lang: 'en' }));
+    await turn(deps, 'Where can I see my loans?', ctx({ lang: 'fr' }));
     const result0 = (llm.requests[0]!.messages[3] as { content: string }).content;
     expect(result0).toContain('"title":"Loans"');
     expect(result0).toContain('You can borrow');
+    expect(String(llm.requests[0]!.messages[0]!.content)).toContain('entirely in English');
   });
 
   it('adds nothing to an order, a greeting or a question the guide does not cover', async () => {
