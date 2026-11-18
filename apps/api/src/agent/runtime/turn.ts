@@ -9,6 +9,7 @@
 import type { AgentCard, AgentTraceDto } from '@njangi/shared/contracts/agent';
 import { agentTexts } from '@njangi/shared/i18n/server/agent';
 import { MAX_TOOL_STEPS } from '../guards/rate-limit';
+import { detectLanguage } from '../guards/language';
 import { redactForStorage, redactToolArgs } from '../guards/redaction';
 import { StreamGuard } from '../guards/stream-guard';
 import { wrapToolResult } from '../guards/wrap';
@@ -54,13 +55,7 @@ export const DEFAULT_BUDGET: TurnBudget = { turnMs: 40_000, requestMs: 20_000 };
 /** Prefer the language of this turn over the saved app preference. Short common phrases count. */
 export function replyLanguage(text: string | null, fallback: AgentCtx['lang']): AgentCtx['lang'] {
   if (!text) return fallback;
-  const words = text.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ' ');
-  const fr = (words.match(/\b(le|la|les|un|une|des|du|de|je|tu|vous|mon|ma|mes|combien|comment|pourquoi|est|que|quoi|ou|qui|paie|payer|bonjour|merci|monnaie)\b/g) ?? []).length;
-  const en = (words.match(/\b(the|a|an|is|are|am|i|you|my|me|how|what|why|where|who|when|pay|paid|hello|thanks|please|money|much|can|do|does)\b/g) ?? []).length;
-  if (fr !== en) return fr > en ? 'fr' : 'en';
-  if (/\b(how much|how do|where is|what is|can i|tell me)\b/.test(words)) return 'en';
-  if (/\b(combien|comment|ou est|qu'est|pourquoi|est-ce)\b/.test(words)) return 'fr';
-  return fallback;
+  return detectLanguage(text, fallback);
 }
 
 export interface TurnEmitter {
@@ -134,7 +129,9 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     ...(summary ? { after: new Date(summary.upTo) } : {}),
   });
   const sessionBlock = buildSessionBlock(await deps.sessionFacts(ctx));
-  const responseLang = replyLanguage(input.text, ctx.lang);
+  const lastHistoryText = lines.at(-1)?.content ?? null;
+  const historyLang = replyLanguage(lastHistoryText, ctx.lang);
+  const responseLang = replyLanguage(input.text, historyLang);
   // The member's message as every provider receives it: numbers replaced by markers, typed PINs
   // and tokens masked. The routing call below gets this same text, never the raw one.
   const asked = input.text

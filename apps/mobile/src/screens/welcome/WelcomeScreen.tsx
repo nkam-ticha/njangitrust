@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { Globe } from 'lucide-react-native';
 import { setLanguage } from '@/i18n';
 import { space, useTheme } from '@/theme';
 import { BottomSheet, Button, RingMark, TextField, Txt, useLang } from '@/ui';
@@ -47,6 +48,7 @@ export function WelcomeScreen() {
       <View style={styles.lang}>
         <Button
           variant="text"
+          icon={Globe}
           label={t('welcome.languageSwitch')}
           onPress={() => void setLanguage(lang === 'fr' ? 'en' : 'fr')}
         />

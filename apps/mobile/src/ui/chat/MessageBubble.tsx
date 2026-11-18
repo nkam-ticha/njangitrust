@@ -95,7 +95,7 @@ export function MessageBubble(p: MessageBubbleProps) {
       ) : null}
       {p.media}
       {p.parts?.length ? (
-        <Txt selectable>
+        <Txt>
           {p.parts.map((part, i) =>
             typeof part === 'string' ? (
               part

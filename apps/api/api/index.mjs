@@ -123,7 +123,7 @@ var init_env = __esm({
       GROQ_MODEL: optionalString,
       GROQ_BASE_URL: llmBaseUrl("api.groq.com", "https://api.groq.com/openai/v1"),
       /** Groq's free tier takes about 7,000 input tokens a minute: a request is cut to this size. */
-      GROQ_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(2e5).default(3500),
+      GROQ_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(2e5).default(6e3),
       GOOGLE_AI_API_KEY: optionalString,
       GOOGLE_AI_MODEL: optionalString,
       GOOGLE_AI_BASE_URL: llmBaseUrl(
@@ -13418,6 +13418,7 @@ var init_registry3 = __esm({
 // src/jobs/dispatch.ts
 var dispatch_exports = {};
 __export(dispatch_exports, {
+  currentJobScheduler: () => currentJobScheduler,
   dispatchJob: () => dispatchJob,
   runInBackground: () => runInBackground,
   settleBackground: () => settleBackground,
@@ -13425,6 +13426,9 @@ __export(dispatch_exports, {
 });
 function useJobScheduler(next) {
   scheduler = next;
+}
+function currentJobScheduler() {
+  return scheduler;
 }
 function runInBackground(name, fn) {
   const task = new Promise((resolve) => setImmediate(resolve)).then(() => runAsSystem(fn)).catch((error) => log4.error({ err: error, job: name }, "background job failed")).finally(() => running.delete(task));
@@ -17816,10 +17820,10 @@ async function postAnnouncement(userId, groupId, text, scope) {
     return message;
   });
 }
-async function postAgentMessage(groupId, text, scope) {
+async function postAgentMessage(groupId, text, scope, replyToId) {
   return runScoped(scope, async (s2) => {
     const row = await s2.db.message.create({
-      data: { groupId, kind: "AGENT", text },
+      data: { groupId, kind: "AGENT", text, ...replyToId ? { replyToId } : {} },
       include: messageInclude
     });
     const message = toChatMessage(row);
@@ -23861,36 +23865,36 @@ async function sealClawbackReleases(tx2, input2) {
     debtUnpaid: (seq) => unpaid.has(seq)
   });
   const credited2 = /* @__PURE__ */ new Set();
-  for (const release2 of plan) {
+  for (const release3 of plan) {
     await appendLedgerEntry(tx2, input2.groupId, {
-      type: release2.type,
+      type: release3.type,
       occurredAt: input2.now.toISOString(),
       roundId: null,
-      membershipId: release2.membershipId,
+      membershipId: release3.membershipId,
       refType: "LedgerTransaction",
       refId: returned.id,
       descriptionFr: "Dette de secours lib\xE9r\xE9e",
       descriptionEn: "Solidarity debt released",
-      metadata: release2.metadata,
-      postings: release2.postings
+      metadata: release3.metadata,
+      postings: release3.postings
     });
-    const debt = unpaid.get(release2.metadata.clawbackSeq);
-    if (release2.fromDebt > 0 && debt) {
+    const debt = unpaid.get(release3.metadata.clawbackSeq);
+    if (release3.fromDebt > 0 && debt) {
       await tx2.obligation.update({ where: { id: debt.id }, data: { status: "CANCELLED" } });
-      if (release2.debtLeft > 0) {
+      if (release3.debtLeft > 0) {
         await tx2.obligation.create({
           data: {
             groupId: input2.groupId,
-            membershipId: release2.membershipId,
+            membershipId: release3.membershipId,
             kind: "CORRECTION",
-            amount: release2.debtLeft,
+            amount: release3.debtLeft,
             dueAt: debt.dueAt,
-            clawbackSeq: release2.metadata.clawbackSeq
+            clawbackSeq: release3.metadata.clawbackSeq
           }
         });
       }
     }
-    if (release2.toPayable > 0) credited2.add(release2.membershipId);
+    if (release3.toPayable > 0) credited2.add(release3.membershipId);
   }
   if (plan.length > 0) await assertSoundLedger(tx2, input2.groupId);
   return [...credited2];
@@ -29721,10 +29725,22 @@ Member: "Comment je paie ma cotisation ?"
 
 Member: "Where can I see my loans?"
 -> call get_app_guide with topic "loans" and answer from it.
+
+CONVERSATIONAL CONTINUITY
+When a member answers with a short reply ("yes", "oui", "d'accord", "ok", "sure",
+"no", "non") or refers to earlier turns in this conversation, read your own
+previous message(s) and the conversation history (including <summary>) to
+understand what they are responding to, then call the appropriate tool in this
+turn to carry out what you offered. Always call the tool first before saying a
+card is ready, and say "Voici la carte" / "La carte est pr\xEAte" / "Here is the
+card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
+you have no pending question or no record of a question you just asked. For
+requests to summarize or read group chat messages or notes, call summarize_unread
+(or search_chat).
 `;
 
 // src/agent/prompts/index.ts
-var PROMPT_VERSION = "2026-11-18.5";
+var PROMPT_VERSION = "2026-11-18.6";
 function systemPrompt() {
   return SYSTEM_PROMPT_TEXT;
 }
@@ -30375,7 +30391,7 @@ var readingSpecs = {
     category: "chat",
     channels: PRIVATE,
     needs: "chat",
-    description: "A short summary of the group chat since the member last read it (decisions, money events, questions for them, media by sender). Marks the chat read.",
+    description: "A short summary of the group chat messages and notes (unread messages since the member last read it, or the recent group messages if already read: decisions, money events, questions, media by sender). Marks the chat read.",
     args: s({}),
     example: {}
   }),
@@ -30385,7 +30401,7 @@ var readingSpecs = {
     category: "chat",
     channels: PRIVATE,
     needs: "chat",
-    description: "Group chat messages matching a search.",
+    description: 'Reads or searches group chat messages (pass a keyword, or "*" for the most recent messages).',
     args: s({
       query: z66.string().min(1).max(100),
       from: z66.string().date().optional(),
@@ -30787,6 +30803,26 @@ function userEmitter(userId, nowMs = () => clock.nowMs()) {
     },
     activity: (payload5) => emitAgent(userId, "agent.activity", payload5)
   };
+}
+
+// src/agent/guards/language.ts
+var FRENCH = "je j tu te t moi mon ma mes ton ta tes le la les de des du un une et est pour pas avec dans sur qui quoi quand combien pourquoi comment quel quelle quels c \xE7a oui non merci bonjour bonsoir paie payer retire retirer dois peux veux suis ai mets annule supprime donne montre envoie ajoute emprunter cotisation amende pr\xEAt tour caisse relev\xE9 mise rat\xE9 num\xE9ro ou au aux ce cette n il elle nous vous sont prochaine r\xE9union resume resumer groupe lire continuer francais parler ouais accord";
+var ENGLISH = "i me my you your the a an and is are for not with in on who what when how much many why which yes no thanks thank hello hi please pay withdraw owe can want am have has do does did show give send add borrow contribution fine loan round fund statement bid missed number of to it there this that we they tell exact amount turn solidarity next meeting summarize summary notes group chat read open continue english speak speaking sure yeah yep nope okay explain balance where";
+var FR = new Set(FRENCH.split(" "));
+var EN = new Set(ENGLISH.split(" "));
+var ACCENTED = /[àâçéèêëîïôûùüÿœæ]/iu;
+function words(text) {
+  return text.normalize("NFC").toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+}
+function detectLanguage(text, fallback) {
+  let fr = ACCENTED.test(text) ? 1 : 0;
+  let en = 0;
+  for (const word of words(text)) {
+    if (FR.has(word)) fr += 1;
+    if (EN.has(word)) en += 1;
+  }
+  if (fr === en) return fallback;
+  return fr > en ? "fr" : "en";
 }
 
 // src/agent/guards/redaction.ts
@@ -31510,7 +31546,10 @@ function findGuideEntry(topic) {
 }
 var HOW_TO = /(^|\W)(comment|c est quoi|qu est ce|a quoi (sert|servent)|explique\w*|ou (est|sont|puis|trouve\w*|voir|je|on|se)|how (do|can|to|does|should|would)|where|what (is|are|does)|what s|explain|help|aide\w*)(\W|$)/;
 function howToTopic(text) {
+  if (text.length > 220) return null;
   const plain = strip(text).replace(/['’]/g, " ");
+  if (/\b(you just|this was from you|you asked|tu viens de|tu m as demande)\b/.test(plain))
+    return null;
   if (!HOW_TO.test(plain)) return null;
   return findGuideEntry(text);
 }
@@ -31590,13 +31629,7 @@ var MIN_SUMMARY_MS = 1e4;
 var DEFAULT_BUDGET = { turnMs: 4e4, requestMs: 2e4 };
 function replyLanguage(text, fallback) {
   if (!text) return fallback;
-  const words2 = text.toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, " ");
-  const fr = (words2.match(/\b(le|la|les|un|une|des|du|de|je|tu|vous|mon|ma|mes|combien|comment|pourquoi|est|que|quoi|ou|qui|paie|payer|bonjour|merci|monnaie)\b/g) ?? []).length;
-  const en = (words2.match(/\b(the|a|an|is|are|am|i|you|my|me|how|what|why|where|who|when|pay|paid|hello|thanks|please|money|much|can|do|does)\b/g) ?? []).length;
-  if (fr !== en) return fr > en ? "fr" : "en";
-  if (/\b(how much|how do|where is|what is|can i|tell me)\b/.test(words2)) return "en";
-  if (/\b(combien|comment|ou est|qu'est|pourquoi|est-ce)\b/.test(words2)) return "fr";
-  return fallback;
+  return detectLanguage(text, fallback);
 }
 function activityName(run2, registry2) {
   const level = registry2.get(run2.name)?.level;
@@ -31615,7 +31648,9 @@ async function runTurn(deps, input2) {
     ...summary ? { after: new Date(summary.upTo) } : {}
   });
   const sessionBlock = buildSessionBlock(await deps.sessionFacts(ctx));
-  const responseLang = replyLanguage(input2.text, ctx.lang);
+  const lastHistoryText = lines.at(-1)?.content ?? null;
+  const historyLang = replyLanguage(lastHistoryText, ctx.lang);
+  const responseLang = replyLanguage(input2.text, historyLang);
   const asked = input2.text ? memberMessage(input2.text, responseLang, input2.fromGroup, ctx.numberSlots) : null;
   const messages = [
     systemMessage(sessionBlock, summary?.text ?? null, responseLang),
@@ -31783,6 +31818,7 @@ async function foldSummary(deps, conversation, older, lang, signal) {
 }
 
 // src/agent/store/db-store.ts
+init_clock();
 init_prisma();
 var DIALOGUE = {
   OR: [
@@ -31831,10 +31867,14 @@ var dbConversationStore = {
   async append(conversationId, messages) {
     const db = getPrisma();
     const stored = [];
+    let lastMs = 0;
     for (const message of messages) {
+      const now = clock.nowMs();
+      lastMs = now > lastMs ? now : lastMs + 1;
       const row = await db.agentMessage.create({
         data: {
           conversationId,
+          createdAt: new Date(lastMs),
           role: message.role,
           content: message.content,
           toolName: message.toolName ?? null,
@@ -31889,28 +31929,6 @@ var dbConversationStore = {
 init_clock();
 import { randomUUID as randomUUID12 } from "node:crypto";
 init_permissions();
-
-// src/agent/guards/language.ts
-var FRENCH = "je j tu te t moi mon ma mes ton ta tes le la les de des du un une et est pour pas avec dans sur qui quoi quand combien pourquoi comment quel quelle quels c \xE7a oui non merci bonjour bonsoir paie payer retire retirer dois peux veux suis ai mets annule supprime donne montre envoie ajoute emprunter cotisation amende pr\xEAt tour caisse relev\xE9 mise rat\xE9 num\xE9ro ou au aux ce cette n il elle nous vous sont prochaine r\xE9union";
-var ENGLISH = "i me my you your the a an and is are for not with in on who what when how much many why which yes no thanks thank hello hi please pay withdraw owe can want am have has do does did show give send add borrow contribution fine loan round fund statement bid missed number of to it there this that we they tell exact amount turn solidarity next meeting";
-var FR = new Set(FRENCH.split(" "));
-var EN = new Set(ENGLISH.split(" "));
-var ACCENTED = /[àâçéèêëîïôûùüÿœæ]/iu;
-function words(text) {
-  return text.normalize("NFC").toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
-}
-function detectLanguage(text, fallback) {
-  let fr = ACCENTED.test(text) ? 1 : 0;
-  let en = 0;
-  for (const word of words(text)) {
-    if (FR.has(word)) fr += 1;
-    if (EN.has(word)) en += 1;
-  }
-  if (fr === en) return fallback;
-  return fr > en ? "fr" : "en";
-}
-
-// src/agent/service/context.ts
 async function buildCtx(actor, input2) {
   const self = await getSelfSource(actor.userId);
   let group2 = null;
@@ -31961,7 +31979,7 @@ var TOPICS = {
   loans: /\b(pr[eê]t\w*|loan\w*|emprunt\w*|borrow\w*|rembours\w*|repay\w*|ench[eè]re\w*|bid\w*|bidding|int[eé]r[eê]t\w*|interest)\b/i,
   governance: /\b(vot\w*|propos\w*|r[eè]gle\w*|rule\w*|amende\w*|fines?|membres?|members?|invit\w*|admin\w*|quitt\w*|leave|rotation|tour|round|cycle|caisse|solidar\w*|secours|d[eé]cision|decision|chang\w*|modifi\w*|exclu\w*|expel|ajout\w*|add|fond\w*|group\w*|dissol\w*|sanction\w*|p[eé]nalit\w*|waive|annul\w*)\b/i,
   account: /\b(compte|account|pin|num[eé]ro|number|langue|language|pr[eé]f[eé]rence\w*|preference\w*|notif\w*|profil\w*|profile|supprim\w*|delete|t[eé]l[eé]phone|phone)\b/i,
-  chat: /\b(message\w*|discu\w*|chat|[eé]cri\w*|write|envoi\w*|send|annonce\w*|announce\w*|dis à|tell)\b/i,
+  chat: /\b(message\w*|discu\w*|chat|[eé]cri\w*|write|envoi\w*|send|annonce\w*|announce\w*|dis à|tell|summar\w*|r[eé]sum\w*|note\w*|unread|non[- ]lu\w*|read\b|lire|lu\w*|talk\w*|parl\w*|said|dit|quoi de neuf|missed|manqu\w*|rat[eé]\w*|conversation\w*)\b/i,
   meetings: /\b(r[eé]union\w*|meeting\w*|rendez|agenda|proc[eè]s|minutes|pv|pr[eé]sence\w*|attendance|visio|appel|call)\b/i
 };
 function lastUserIndex(messages) {
@@ -31989,12 +32007,15 @@ function pickTools(tools, messages, budgetTokens) {
   const at = lastUserIndex(messages);
   const last = at >= 0 ? messages[at] : void 0;
   const asked = last?.role === "user" ? last.content : "";
-  const scores = topicScores(asked);
+  const directScores = topicScores(asked);
+  const recentContext = at > 0 ? messages.slice(Math.max(0, at - 2), at + 1).map((m) => m.content ?? "").join(" ") : asked;
+  const scores = directScores.size > 0 ? directScores : topicScores(recentContext);
   const used = usedToolNames(messages.slice(Math.max(0, at)));
   const rank2 = (tool) => {
     if (used.has(tool.name)) return 0;
     if (tool.category === void 0) return 1;
     if (tool.category === "reading") return 2;
+    if (tool.name === "summarize_unread" || tool.name === "search_chat") return 2.5;
     const score = scores.get(tool.category) ?? 0;
     return score > 0 ? 3 + 1 / (1 + score) : Number.POSITIVE_INFINITY;
   };
@@ -32019,18 +32040,53 @@ function trimResult(message) {
   return { ...message, content: wrapped ? `${cut}
 ${closing}` : cut };
 }
+function lastAssistantInHistory(history) {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i].role === "assistant") return history[i];
+  }
+  return void 0;
+}
+var PINNED_WINDOW = 10;
+var PINNED_MAX_CHARS = 850;
+function pinnedHistory(history) {
+  const lastAssistant = lastAssistantInHistory(history);
+  const pinned = [];
+  const stop = Math.max(0, history.length - PINNED_WINDOW);
+  for (let i = history.length - 1; i >= stop; i -= 1) {
+    const m = history[i];
+    if (m !== lastAssistant && (m.content ?? "").length > PINNED_MAX_CHARS) break;
+    pinned.unshift(m);
+  }
+  if (lastAssistant && !pinned.includes(lastAssistant)) pinned.push(lastAssistant);
+  return pinned;
+}
 function compactRequest(request2, maxTokens) {
   if (estimateTokens(request2) <= maxTokens) return request2;
   const at = lastUserIndex(request2.messages);
   const system = request2.messages.filter((m) => m.role === "system");
   const history = at >= 0 ? request2.messages.slice(0, at).filter((m) => m.role !== "system") : [];
   const current = (at >= 0 ? request2.messages.slice(at) : request2.messages.slice()).map(trimResult);
-  const fixed = estimateTokens({ messages: [...system, ...current], tools: [] });
-  const tools = pickTools(request2.tools, request2.messages, Math.max(0, maxTokens - fixed));
+  const pinned = pinnedHistory(history);
+  const pinnedSet = new Set(pinned);
+  const fixed = estimateTokens({
+    messages: [...system, ...pinned, ...current],
+    tools: []
+  });
+  const remainingAfterFixed = Math.max(0, maxTokens - fixed);
+  const olderHistoryReserve = maxTokens >= 3500 && history.length > pinned.length ? Math.min(600, Math.floor(remainingAfterFixed * 0.2)) : 0;
+  const tools = pickTools(
+    request2.tools,
+    request2.messages,
+    Math.max(0, remainingAfterFixed - olderHistoryReserve)
+  );
+  const mergeHistory = (kept2) => {
+    const keptSet = new Set(kept2);
+    return history.filter((m) => keptSet.has(m) || pinnedSet.has(m));
+  };
   const shaped = (kept2) => ({
     ...request2,
     tools,
-    messages: [...system, ...kept2, ...current]
+    messages: [...system, ...mergeHistory(kept2), ...current]
   });
   let kept = [];
   for (let i = history.length - 1; i >= 0; i -= 1) {
@@ -33361,6 +33417,103 @@ init_texts();
 init_logger();
 init_dispatch();
 
+// src/jobs/queues.ts
+init_clock();
+init_logger();
+init_prisma();
+init_registry3();
+import { randomUUID as randomUUID13 } from "node:crypto";
+var log24 = componentLogger("jobs");
+var DEFAULT_BATCH_SIZE = 20;
+var MAX_BATCH_SIZE = 100;
+var LEASE_MS2 = 6e4;
+var MAX_ATTEMPTS = 8;
+async function scheduleAt(name, data, at, jobId) {
+  if (!getJobDefinition(name)) throw new Error(`Unknown job ${name}`);
+  if (!jobId || jobId.length > 200) throw new Error("Invalid job id");
+  await getPrisma().$executeRaw`
+    INSERT INTO "DeploymentJob" ("id", "name", "jobKey", "payload", "runAt", "status", "attempts", "maxAttempts", "createdAt", "updatedAt")
+    VALUES (${randomUUID13()}, ${name}, ${jobId}, ${JSON.stringify(data)}::jsonb, ${at}, 'PENDING', 0, ${Math.min(getJobDefinition(name)?.attempts ?? 3, MAX_ATTEMPTS)}, NOW(), NOW())
+    ON CONFLICT ("name", "jobKey") DO UPDATE SET
+      "payload" = EXCLUDED."payload", "runAt" = LEAST("DeploymentJob"."runAt", EXCLUDED."runAt"), "updatedAt" = NOW()
+    WHERE "DeploymentJob"."status" IN ('PENDING', 'RETRY')`;
+}
+async function claimBatch(limit, options = {}) {
+  const only = options.onlyPrefix ? `${options.onlyPrefix}%` : null;
+  const except = options.exceptPrefix ? `${options.exceptPrefix}%` : null;
+  const leaseToken = randomUUID13();
+  const dueAt = demoClockOffsetMs() > 0 ? clock.now() : null;
+  await getPrisma().$executeRaw`
+    UPDATE "DeploymentJob" SET "status"='DEAD', "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW()
+    WHERE "status"='RUNNING' AND "leaseUntil" < NOW() AND "attempts" >= "maxAttempts"`;
+  return getPrisma().$queryRaw`
+    WITH candidates AS (
+      SELECT "id" FROM "DeploymentJob"
+      WHERE (("status" IN ('PENDING', 'RETRY') AND "runAt" <= COALESCE(${dueAt}::timestamptz, NOW()))
+        OR ("status" = 'RUNNING' AND "leaseUntil" < NOW() AND "attempts" < "maxAttempts"))
+        AND (${only}::text IS NULL OR "name" LIKE ${only})
+        AND (${except}::text IS NULL OR "name" NOT LIKE ${except})
+      ORDER BY "runAt", "createdAt"
+      FOR UPDATE SKIP LOCKED LIMIT ${limit}
+    )
+    UPDATE "DeploymentJob" j SET "status" = 'RUNNING', "leaseUntil" = NOW() + (${LEASE_MS2} * INTERVAL '1 millisecond'),
+      "leaseToken" = ${leaseToken}, "attempts" = j."attempts" + 1, "updatedAt" = NOW()
+    FROM candidates c WHERE j."id" = c."id"
+    RETURNING j."id", j."name", j."payload", j."attempts", j."leaseToken"`;
+}
+async function finish2(job) {
+  await getPrisma().$executeRaw`UPDATE "DeploymentJob" SET "status"='SUCCEEDED', "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW() WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
+}
+async function release2(job) {
+  await getPrisma().$executeRaw`
+    UPDATE "DeploymentJob" SET "status"='PENDING', "attempts"=GREATEST("attempts" - 1, 0),
+      "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW()
+    WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
+}
+async function fail2(job, error) {
+  const message = error instanceof Error ? error.message.slice(0, 1e3) : "Job failed";
+  const delay = Math.min(5e3 * 2 ** Math.max(0, job.attempts - 1), 3e5);
+  await getPrisma().$executeRaw`
+    UPDATE "DeploymentJob" SET "status"=CASE WHEN "attempts" >= "maxAttempts" THEN 'DEAD' ELSE 'RETRY' END,
+      "runAt"=NOW() + (${delay} * INTERVAL '1 millisecond'), "leaseUntil"=NULL, "leaseToken"=NULL,
+      "lastError"=${message}, "updatedAt"=NOW() WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
+}
+async function processDueJobs(requestedLimit = DEFAULT_BATCH_SIZE, options = {}) {
+  const limit = Math.max(
+    1,
+    Math.min(MAX_BATCH_SIZE, Math.floor(requestedLimit) || DEFAULT_BATCH_SIZE)
+  );
+  const jobs = await claimBatch(limit, options);
+  let succeeded = 0;
+  let failed = 0;
+  let released = 0;
+  for (const job of jobs) {
+    if (options.deadlineMs !== void 0 && clock.nowMs() >= options.deadlineMs) {
+      await release2(job);
+      released++;
+      continue;
+    }
+    const definition = getJobDefinition(job.name);
+    try {
+      if (!definition) throw new Error(`No processor registered for ${job.name}`);
+      const payload5 = typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload;
+      await definition.process({ data: payload5, name: job.name, id: job.id });
+      await finish2(job);
+      succeeded++;
+    } catch (error) {
+      await fail2(job, error);
+      log24.error({ job: job.name, jobId: job.id, err: error }, "job failed");
+      failed++;
+    }
+  }
+  return { claimed: jobs.length, succeeded, failed, released };
+}
+var SLOW_JOB_PREFIX = "agent.";
+
+// src/agent/service/group.ts
+init_pending_work();
+init_request_context();
+
 // src/agent/runtime/personal.ts
 var MENTION = /@njangi\b/giu;
 var FIRST_PERSON_FR = /(^|[^\p{L}])((je|moi|mon|ma|mes)(?=[^\p{L}]|$)|[jm]['’])/iu;
@@ -33375,7 +33528,7 @@ function looksPersonal(text) {
 }
 
 // src/agent/service/group.ts
-var log24 = componentLogger("agent");
+var log25 = componentLogger("agent");
 var LEASE_WAIT_MS = 5e3;
 async function authorActor(userId) {
   const self = await getSelfSource(userId);
@@ -33399,6 +33552,9 @@ var GROUP_MENTION_JOB = "agent.groupMention";
 async function onGroupMention(mention) {
   if (!agentPorts().chat || !agentConfig().configured) return;
   await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
+  if (currentJobScheduler() === scheduleAt) {
+    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+  }
 }
 async function answerGroupMention(mention) {
   const chat = agentPorts().chat;
@@ -33439,7 +33595,7 @@ async function answerGroupMention(mention) {
     },
     { waitMs: LEASE_WAIT_MS }
   ).catch((error) => {
-    log24.error(
+    log25.error(
       { errorName: error instanceof Error ? error.name : "unknown" },
       "group mention failed"
     );
@@ -33450,6 +33606,8 @@ async function answerGroupMention(mention) {
 init_dto();
 init_dispatch();
 init_logger();
+init_pending_work();
+init_request_context();
 init_pending_actions4();
 
 // src/agent/runtime/events.ts
@@ -33482,7 +33640,7 @@ function eventText2(action, status) {
 }
 
 // src/agent/service/events.ts
-var log25 = componentLogger("agent");
+var log26 = componentLogger("agent");
 async function recordEvent(userId, pendingActionId, status) {
   const payload5 = { id: pendingActionId };
   if (!isEventStatus(status)) return null;
@@ -33542,12 +33700,15 @@ async function onPendingActionUpdated(userId, payload5) {
   if (!await dbConversationStore.findPreparing(userId, payload5.id)) return;
   const data = { userId, pendingActionId: payload5.id, status: payload5.status };
   await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload5.id}:${payload5.status}` });
+  if (currentJobScheduler() === scheduleAt) {
+    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+  }
 }
 async function handleActionResult(job) {
   await withTurnLease(job.userId, () => react(job.userId, job.pendingActionId, job.status), {
     waitMs: JOB_LEASE_WAIT_MS
   }).catch((error) => {
-    log25.error({ errorName: error instanceof Error ? error.name : "unknown" }, "agent event failed");
+    log26.error({ errorName: error instanceof Error ? error.name : "unknown" }, "agent event failed");
   });
 }
 
@@ -33625,7 +33786,26 @@ function groupOf3(ctx) {
 }
 var chatAdapter = {
   async unread(ctx) {
-    const unread = await summarizeUnread(ctx.userId, groupOf3(ctx));
+    const groupId = groupOf3(ctx);
+    const unread = await summarizeUnread(ctx.userId, groupId);
+    if (unread.messages.length === 0 && unread.events.length === 0) {
+      const recent = await listMessages(ctx.userId, groupId, { limit: 30 });
+      const chronological = recent.messages.filter((m) => !m.removed && m.kind !== "SYSTEM").slice().reverse();
+      const recentEvents = recent.messages.filter((m) => !m.removed && m.kind === "SYSTEM" && m.systemText).slice().reverse().map((m) => m.systemText[ctx.lang]);
+      if (chronological.length > 0 || recentEvents.length > 0) {
+        return {
+          messages: chronological.map((m) => ({
+            author: m.author?.name ?? "Njangi",
+            kind: m.kind === "AGENT" ? "TEXT" : m.kind,
+            text: m.text,
+            at: formatDateTime(m.createdAt, ctx.lang)
+          })),
+          moreCount: 0,
+          events: recentEvents,
+          media: []
+        };
+      }
+    }
     return {
       messages: unread.messages.map((m) => ({
         author: m.author?.name ?? "Njangi",
@@ -33644,7 +33824,10 @@ var chatAdapter = {
   /** The most recent messages (up to 400) whose text contains the words searched. */
   async search(ctx, input2) {
     const groupId = groupOf3(ctx);
-    const wanted = fold(input2.query);
+    const wanted = fold(input2.query).trim();
+    const matchAll = wanted === "*" || /^(note|notes|message|messages|chat|discussion|resume|summary|tout|all|recent|groupe|group)$/.test(
+      wanted
+    );
     const found = [];
     let before;
     let searched = 0;
@@ -33656,7 +33839,7 @@ var chatAdapter = {
       searched += messages.length;
       for (const m of messages) {
         const day3 = m.createdAt.slice(0, 10);
-        if (!m.text || !fold(m.text).includes(wanted)) continue;
+        if (!m.text || !matchAll && !fold(m.text).includes(wanted)) continue;
         if (input2.from && day3 < input2.from || input2.to && day3 > input2.to) continue;
         found.push({
           author: m.author?.name ?? "Njangi",
@@ -33675,14 +33858,53 @@ var chatAdapter = {
   prepareHide: (ctx, input2) => requestHide(ctx.actor, input2.messageId, input2.reason, "AGENT"),
   /** The text of the member's own message, still visible, in that group; anything else is null. */
   async mentionText({ groupId, messageId, userId }) {
-    const message = await getPrisma().message.findFirst({
+    const db = getPrisma();
+    const message = await db.message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
-      select: { text: true }
+      select: {
+        createdAt: true,
+        text: true,
+        replyTo: {
+          select: {
+            text: true,
+            deletedAt: true,
+            hiddenByAdminAt: true
+          }
+        }
+      }
     });
-    return message?.text ?? null;
+    if (!message?.text) return null;
+    const quoted = message.replyTo && !message.replyTo.deletedAt && !message.replyTo.hiddenByAdminAt && message.replyTo.text ? ` ("${message.replyTo.text}")` : "";
+    const asksAboutChat = /\b(summar\w*|resum\w*|message\w*|chat|discu\w*|note\w*|said|dit|parl\w*|talk\w*|quoi de neuf)\b/i.test(
+      fold(message.text)
+    );
+    if (!asksAboutChat) return `${message.text}${quoted}`;
+    const recent = await db.message.findMany({
+      where: {
+        groupId,
+        id: { not: messageId },
+        createdAt: { lte: message.createdAt },
+        deletedAt: null,
+        hiddenByAdminAt: null,
+        text: { not: null },
+        kind: { in: ["TEXT", "AGENT"] }
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 15,
+      select: {
+        text: true,
+        author: { select: { user: { select: { name: true } } } }
+      }
+    });
+    if (recent.length === 0) return `${message.text}${quoted}`;
+    const lines = recent.reverse().map((m) => `- ${m.author?.user.name ?? "Njangi"}: ${m.text}`).join("\n");
+    return `${message.text}${quoted}
+
+[Messages r\xE9cents du groupe / Recent group messages:
+${lines}]`;
   },
-  async postAgentReply({ groupId, text }) {
-    await postAgentMessage(groupId, text);
+  async postAgentReply({ groupId, text, replyToMessageId }) {
+    await postAgentMessage(groupId, text, void 0, replyToMessageId);
   }
 };
 
@@ -35012,10 +35234,10 @@ init_logger();
 init_prisma();
 init_dispatch();
 init_registry3();
-import { randomUUID as randomUUID13 } from "node:crypto";
+import { randomUUID as randomUUID14 } from "node:crypto";
 init_loans_service();
 init_rulesets2();
-var log26 = componentLogger("solidarity");
+var log27 = componentLogger("solidarity");
 var LIVE_SEND = ["CREATED", "PENDING", "EXPIRED", "SUCCESSFUL"];
 async function solidarityFund(db, groupId) {
   const [chain, waiting] = await Promise.all([
@@ -35077,13 +35299,13 @@ async function sendSolidarity(tx2, requestId2, now) {
     hasActivePaymentNumber: Boolean(number)
   });
   if (!allowed.ok || !["ACTIVE", "LEAVING"].includes(request2.recipient.status)) {
-    log26.info(
+    log27.info(
       { requestId: requestId2, reason: allowed.ok ? "RECIPIENT_NOT_MEMBER" : allowed.code },
       "solidarity payout waits"
     );
     return null;
   }
-  const id = randomUUID13();
+  const id = randomUUID14();
   const sent = solidaritySentPostings({ operationId: id, amount: request2.amount, feeEstimated });
   await tx2.disbursement.create({
     data: {
@@ -35546,7 +35768,7 @@ init_errors();
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir as mkdir3, rename, rm as rm2, stat as stat2 } from "node:fs/promises";
 import path4 from "node:path";
-import { randomUUID as randomUUID14 } from "node:crypto";
+import { randomUUID as randomUUID15 } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
 import { Router as Router31 } from "express";
@@ -35593,7 +35815,7 @@ function localStorageRoutes(storage2) {
     ))
       throw commonError("CONFLICT");
     await mkdir3(path4.dirname(target), { recursive: true });
-    const temp = `${target}.${randomUUID14()}.part`;
+    const temp = `${target}.${randomUUID15()}.part`;
     try {
       await pipeline(req, sizeLimit(request2.maxBytes), createWriteStream(temp, { flags: "wx" }));
       await rename(temp, target);
@@ -35618,27 +35840,6 @@ function localStorageRoutes(storage2) {
 
 // src/app.ts
 init_emitter();
-
-// src/jobs/queues.ts
-init_clock();
-init_logger();
-init_prisma();
-init_registry3();
-import { randomUUID as randomUUID15 } from "node:crypto";
-var log27 = componentLogger("jobs");
-var MAX_ATTEMPTS = 8;
-async function scheduleAt(name, data, at, jobId) {
-  if (!getJobDefinition(name)) throw new Error(`Unknown job ${name}`);
-  if (!jobId || jobId.length > 200) throw new Error("Invalid job id");
-  await getPrisma().$executeRaw`
-    INSERT INTO "DeploymentJob" ("id", "name", "jobKey", "payload", "runAt", "status", "attempts", "maxAttempts", "createdAt", "updatedAt")
-    VALUES (${randomUUID15()}, ${name}, ${jobId}, ${JSON.stringify(data)}::jsonb, ${at}, 'PENDING', 0, ${Math.min(getJobDefinition(name)?.attempts ?? 3, MAX_ATTEMPTS)}, NOW(), NOW())
-    ON CONFLICT ("name", "jobKey") DO UPDATE SET
-      "payload" = EXCLUDED."payload", "runAt" = LEAST("DeploymentJob"."runAt", EXCLUDED."runAt"), "updatedAt" = NOW()
-    WHERE "DeploymentJob"."status" IN ('PENDING', 'RETRY')`;
-}
-
-// src/app.ts
 init_dispatch();
 var JSON_LIMIT = "64kb";
 function createApp() {

@@ -17,6 +17,7 @@ import { foreignPhones } from '../../../test/helpers/phone-scanner';
 import type { ScriptedStep } from '../llm/scripted';
 import type { LlmRequest } from '../llm/types';
 import { registerAgentPorts, type AgentChatPort, type AgentMoneyPort } from '../ports';
+import { agentMessageLimiter } from '../guards/rate-limit';
 import { onGroupMention } from '../service/group';
 import { agentApi, scriptedAgent } from './helpers';
 
@@ -89,6 +90,7 @@ function scriptFor(scenario: Scenario, turnIndex: number) {
 }
 
 async function play(scenario: Scenario): Promise<string[]> {
+  agentMessageLimiter.resetAllForTests();
   const member = memberOf(scenario);
   const bodies: string[] = [];
   for (const [index, turn] of scenario.turns.entries()) {
@@ -133,9 +135,9 @@ beforeAll(async () => {
 
 afterAll(() => uninstallFakeMoney());
 
-describe('what is sent to the AI provider, for the 30 scenarios of spec 5.4', () => {
+describe('what is sent to the AI provider, for the 33 scenarios of spec 5.4', () => {
   it('reached the model in every scenario', () => {
-    expect(scenarios).toHaveLength(30);
+    expect(scenarios).toHaveLength(33);
     for (const scenario of scenarios) {
       expect(bodiesByScenario.get(scenario.id)!.length, scenario.id).toBeGreaterThan(0);
     }

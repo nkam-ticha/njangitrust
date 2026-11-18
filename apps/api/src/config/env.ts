@@ -127,7 +127,7 @@ const schema = z
     GROQ_MODEL: optionalString,
     GROQ_BASE_URL: llmBaseUrl('api.groq.com', 'https://api.groq.com/openai/v1'),
     /** Groq's free tier takes about 7,000 input tokens a minute: a request is cut to this size. */
-    GROQ_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(200_000).default(3_500),
+    GROQ_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(200_000).default(6_000),
     GOOGLE_AI_API_KEY: optionalString,
     GOOGLE_AI_MODEL: optionalString,
     GOOGLE_AI_BASE_URL: llmBaseUrl(

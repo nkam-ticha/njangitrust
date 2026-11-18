@@ -427,9 +427,10 @@ export const moneyAdapter: AgentMoneyPort = {
   async pay(ctx, input) {
     const groupId = groupOf(ctx);
     const dues = await listMyDues(ctx.userId, groupId);
-    const oldestDueRound = dues.find(
-      (d) => typeof d.roundNumber === 'number' && ['CONTRIBUTION', 'SOLIDARITY'].includes(d.kind),
-    )?.roundNumber ?? undefined;
+    const oldestDueRound =
+      dues.find(
+        (d) => typeof d.roundNumber === 'number' && ['CONTRIBUTION', 'SOLIDARITY'].includes(d.kind),
+      )?.roundNumber ?? undefined;
     const targetRoundNumber = input.round ?? oldestDueRound;
     const round = await roundOf(ctx, targetRoundNumber);
     const chosen = dues.filter(

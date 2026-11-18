@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runScenario, runEvaluation, skipReason, type AgentDriver } from '../harness';
-import { loadScenarios } from '../scenarios';
+import { loadScenarios, SCENARIO_COUNT } from '../scenarios';
 import { scriptedAnswer, ScriptError } from '../script';
 import {
   NotAvailable,
@@ -197,10 +197,10 @@ describe('the harness', () => {
       event: () => Promise.reject(new NotAvailable('no events')),
     });
 
-  it('loads exactly the 30 scenarios of spec 5.4', () => {
+  it('loads exactly the scenarios of spec 5.4 and regression suite', () => {
     const scenarios = loadScenarios();
     expect(scenarios.map((s) => s.id)).toEqual(
-      Array.from({ length: 30 }, (_x, i) => `S${String(i + 1).padStart(2, '0')}`),
+      Array.from({ length: SCENARIO_COUNT }, (_x, i) => `S${String(i + 1).padStart(2, '0')}`),
     );
     expect(scenarios.filter((s) => s.channel === 'GROUP').map((s) => s.id)).toEqual(['S04', 'S24']);
   });

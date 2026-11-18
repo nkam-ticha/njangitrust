@@ -2,13 +2,13 @@
 import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { AgentGlow } from '@/ui';
-import { useAgentActivity } from '@/state/agentActivity';
+import { useAgentBusyMode } from '@/features/agent/useAgent';
 import { FloatingAgent } from '@/screens/shell/FloatingAgent';
 
 // The agent is within reach everywhere: a floating orb on every screen, and a glow around the
 // screen while it is answering.
 export default function AppLayout() {
-  const mode = useAgentActivity((s) => s.mode);
+  const mode = useAgentBusyMode();
   return (
     <View style={styles.fill}>
       <Stack screenOptions={{ headerShown: false }} />

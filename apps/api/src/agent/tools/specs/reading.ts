@@ -194,7 +194,7 @@ export const readingSpecs = {
     channels: PRIVATE,
     needs: 'chat',
     description:
-      'A short summary of the group chat since the member last read it (decisions, money events, questions for them, media by sender). Marks the chat read.',
+      'A short summary of the group chat messages and notes (unread messages since the member last read it, or the recent group messages if already read: decisions, money events, questions, media by sender). Marks the chat read.',
     args: s({}),
     example: {},
   }),
@@ -204,7 +204,8 @@ export const readingSpecs = {
     category: 'chat',
     channels: PRIVATE,
     needs: 'chat',
-    description: 'Group chat messages matching a search.',
+    description:
+      'Reads or searches group chat messages (pass a keyword, or "*" for the most recent messages).',
     args: s({
       query: z.string().min(1).max(100),
       from: z.string().date().optional(),

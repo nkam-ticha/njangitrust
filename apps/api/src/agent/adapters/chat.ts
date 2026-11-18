@@ -63,7 +63,38 @@ function groupOf(ctx: AgentCtx): string {
 
 export const chatAdapter: AgentChatPort = {
   async unread(ctx) {
-    const unread = await summarizeUnread(ctx.userId, groupOf(ctx));
+    const groupId = groupOf(ctx);
+    const unread = await summarizeUnread(ctx.userId, groupId);
+    if (unread.messages.length === 0 && unread.events.length === 0) {
+      // If the member already opened the Groupe tab (which marks chat read) or wrote the notes
+      // themselves, fall back to the most recent group messages so "summarize my group notes" works.
+      const recent = await listMessages(ctx.userId, groupId, { limit: 30 });
+      const chronological = recent.messages
+        .filter((m) => !m.removed && m.kind !== 'SYSTEM')
+        .slice()
+        .reverse();
+      const recentEvents = recent.messages
+        .filter((m) => !m.removed && m.kind === 'SYSTEM' && m.systemText)
+        .slice()
+        .reverse()
+        .map((m) => m.systemText![ctx.lang]);
+      if (chronological.length > 0 || recentEvents.length > 0) {
+        return {
+          messages: chronological.map((m) => ({
+            author: m.author?.name ?? 'Njangi',
+            kind:
+              m.kind === 'AGENT'
+                ? 'TEXT'
+                : (m.kind as 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'DOCUMENT'),
+            text: m.text,
+            at: formatDateTime(m.createdAt, ctx.lang),
+          })),
+          moreCount: 0,
+          events: recentEvents,
+          media: [],
+        };
+      }
+    }
     return {
       messages: unread.messages.map((m) => ({
         author: m.author?.name ?? 'Njangi',
@@ -84,7 +115,12 @@ export const chatAdapter: AgentChatPort = {
   /** The most recent messages (up to 400) whose text contains the words searched. */
   async search(ctx, input) {
     const groupId = groupOf(ctx);
-    const wanted = fold(input.query);
+    const wanted = fold(input.query).trim();
+    const matchAll =
+      wanted === '*' ||
+      /^(note|notes|message|messages|chat|discussion|resume|summary|tout|all|recent|groupe|group)$/.test(
+        wanted,
+      );
     const found: { author: string; text: string; at: string }[] = [];
     let before: string | undefined;
     let searched = 0;
@@ -96,7 +132,7 @@ export const chatAdapter: AgentChatPort = {
       searched += messages.length;
       for (const m of messages) {
         const day = m.createdAt.slice(0, 10);
-        if (!m.text || !fold(m.text).includes(wanted)) continue;
+        if (!m.text || (!matchAll && !fold(m.text).includes(wanted))) continue;
         if ((input.from && day < input.from) || (input.to && day > input.to)) continue;
         found.push({
           author: m.author?.name ?? 'Njangi',
@@ -120,14 +156,60 @@ export const chatAdapter: AgentChatPort = {
 
   /** The text of the member's own message, still visible, in that group; anything else is null. */
   async mentionText({ groupId, messageId, userId }) {
-    const message = await getPrisma().message.findFirst({
+    const db = getPrisma();
+    const message = await db.message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
-      select: { text: true },
+      select: {
+        createdAt: true,
+        text: true,
+        replyTo: {
+          select: {
+            text: true,
+            deletedAt: true,
+            hiddenByAdminAt: true,
+          },
+        },
+      },
     });
-    return message?.text ?? null;
+    if (!message?.text) return null;
+    const quoted =
+      message.replyTo &&
+      !message.replyTo.deletedAt &&
+      !message.replyTo.hiddenByAdminAt &&
+      message.replyTo.text
+        ? ` ("${message.replyTo.text}")`
+        : '';
+    const asksAboutChat =
+      /\b(summar\w*|resum\w*|message\w*|chat|discu\w*|note\w*|said|dit|parl\w*|talk\w*|quoi de neuf)\b/i.test(
+        fold(message.text),
+      );
+    if (!asksAboutChat) return `${message.text}${quoted}`;
+    const recent = await db.message.findMany({
+      where: {
+        groupId,
+        id: { not: messageId },
+        createdAt: { lte: message.createdAt },
+        deletedAt: null,
+        hiddenByAdminAt: null,
+        text: { not: null },
+        kind: { in: ['TEXT', 'AGENT'] },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 15,
+      select: {
+        text: true,
+        author: { select: { user: { select: { name: true } } } },
+      },
+    });
+    if (recent.length === 0) return `${message.text}${quoted}`;
+    const lines = recent
+      .reverse()
+      .map((m) => `- ${m.author?.user.name ?? 'Njangi'}: ${m.text}`)
+      .join('\n');
+    return `${message.text}${quoted}\n\n[Messages récents du groupe / Recent group messages:\n${lines}]`;
   },
 
-  async postAgentReply({ groupId, text }) {
-    await postAgentMessage(groupId, text);
+  async postAgentReply({ groupId, text, replyToMessageId }) {
+    await postAgentMessage(groupId, text, undefined, replyToMessageId);
   },
 };

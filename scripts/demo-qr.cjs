@@ -5,7 +5,17 @@ const path = require('node:path');
 const url = process.argv[2];
 if (!url) process.exit(0);
 try {
-  const qr = path.join(__dirname, '..', 'node_modules', '@expo', 'cli', 'build', 'src', 'utils', 'qr.js');
+  const qr = path.join(
+    __dirname,
+    '..',
+    'node_modules',
+    '@expo',
+    'cli',
+    'build',
+    'src',
+    'utils',
+    'qr.js',
+  );
   require(qr).printQRCode(url).print();
 } catch {
   process.stdout.write('(No QR code here: use the one in the Expo window, or type the URL.)\n');

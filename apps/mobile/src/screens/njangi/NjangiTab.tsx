@@ -60,11 +60,14 @@ const CHIPS = [
   'missed',
 ] as const;
 
-export function NjangiTab() {
+export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const lang = useLang();
   const router = useRouter();
   const { colors } = useTheme();
+  // The floating chat (a small sheet on top of any page) shows only the conversation: no group
+  // header, bell, round line, history link or shortcut chips.
+  const Shell: typeof TabScreen = compact ? CompactShell : TabScreen;
   const online = useConnectivity((s) => s.online);
   const user = useSession((s) => s.user);
   const { group, loading } = useActiveGroup();
@@ -93,14 +96,14 @@ export function NjangiTab() {
 
   if (loading) {
     return (
-      <TabScreen>
+      <Shell>
         <SkeletonRows rows={4} />
-      </TabScreen>
+      </Shell>
     );
   }
   if (!group) {
     return (
-      <TabScreen>
+      <Shell>
         <EmptyState
           icon={Users}
           title={t('emptyStates.noGroup.title')}
@@ -115,7 +118,7 @@ export function NjangiTab() {
             onPress={() => router.push('/join')}
           />
         </View>
-      </TabScreen>
+      </Shell>
     );
   }
 
@@ -153,46 +156,47 @@ export function NjangiTab() {
     );
   };
 
-  const roundLine = round.data ? (
-    <Touchable
-      onPress={() => router.navigate('/caisse')}
-      accessibilityLabel={t('agent.header.a11y')}
-    >
-      <View style={styles.header}>
-        <Txt variant="secondary" color="textSecondary">
-          {t('agent.header.round', {
-            round: round.data.number,
-            total: round.data.contributionCount,
-          })}
-          {' · '}
-          {round.data.beneficiaryMembershipId === group.membershipId
-            ? t('agent.header.beneficiaryYou')
-            : t('agent.header.beneficiary', { name: round.data.beneficiaryName ?? '' })}
-        </Txt>
-        {dues.data && round.data ? (
+  const roundLine =
+    !compact && round.data ? (
+      <Touchable
+        onPress={() => router.navigate('/caisse')}
+        accessibilityLabel={t('agent.header.a11y')}
+      >
+        <View style={styles.header}>
           <Txt variant="secondary" color="textSecondary">
-            {t('agent.header.contribution', {
-              status: t(
-                dues.data.some(
-                  (d) => d.kind === 'CONTRIBUTION' && d.roundNumber === round.data?.number,
-                )
-                  ? 'agent.header.status.toPay'
-                  : 'agent.header.status.paid',
-              ),
+            {t('agent.header.round', {
+              round: round.data.number,
+              total: round.data.contributionCount,
             })}
+            {' · '}
+            {round.data.beneficiaryMembershipId === group.membershipId
+              ? t('agent.header.beneficiaryYou')
+              : t('agent.header.beneficiary', { name: round.data.beneficiaryName ?? '' })}
           </Txt>
-        ) : null}
-      </View>
-    </Touchable>
-  ) : null;
+          {dues.data && round.data ? (
+            <Txt variant="secondary" color="textSecondary">
+              {t('agent.header.contribution', {
+                status: t(
+                  dues.data.some(
+                    (d) => d.kind === 'CONTRIBUTION' && d.roundNumber === round.data?.number,
+                  )
+                    ? 'agent.header.status.toPay'
+                    : 'agent.header.status.paid',
+                ),
+              })}
+            </Txt>
+          ) : null}
+        </View>
+      </Touchable>
+    ) : null;
 
   return (
-    <TabScreen
+    <Shell
       scroll={false}
       footer={
         configured ? (
           <View style={styles.footer}>
-            {empty ? (
+            {empty && !compact ? (
               <ChipRow label={t('agent.chips.groupLabel')}>
                 {CHIPS.map((key) => (
                   <Chip
@@ -221,15 +225,17 @@ export function NjangiTab() {
       }
     >
       {roundLine}
-      <Touchable
-        onPress={() => router.push(newRoute('/agent-history'))}
-        accessibilityLabel={t('agentHistory.title')}
-      >
-        <View style={styles.historyLink}>
-          <History size={18} color={colors.iconSecondary} strokeWidth={2} />
-          <Txt variant="secondary">{t('agentHistory.title')}</Txt>
-        </View>
-      </Touchable>
+      {compact ? null : (
+        <Touchable
+          onPress={() => router.push(newRoute('/agent-history'))}
+          accessibilityLabel={t('agentHistory.title')}
+        >
+          <View style={styles.historyLink}>
+            <History size={18} color={colors.iconSecondary} strokeWidth={2} />
+            <Txt variant="secondary">{t('agentHistory.title')}</Txt>
+          </View>
+        </Touchable>
+      )}
 
       {!configured ? <AgentMessage text={notConfiguredText} /> : null}
 
@@ -259,8 +265,8 @@ export function NjangiTab() {
           />
         ) : null}
         {empty && configured && conversation.isSuccess ? (
-          <View style={styles.hero}>
-            <AgentOrb size={120} mode="idle" />
+          <View style={compact ? styles.heroCompact : styles.hero}>
+            <AgentOrb size={compact ? 64 : 120} mode="idle" />
             <Txt variant="sectionTitle" align="center">
               {t('agent.hero.tagline')}
             </Txt>
@@ -307,9 +313,17 @@ export function NjangiTab() {
           </Txt>
         ) : null}
       </ScrollView>
-    </TabScreen>
+    </Shell>
   );
 }
+
+/** The floating chat's frame: just the content and the composer, with no header or offline bar. */
+const CompactShell: typeof TabScreen = ({ children, footer }) => (
+  <View style={styles.compactRoot}>
+    <View style={styles.compactBody}>{children}</View>
+    {footer ? <View style={styles.compactFooter}>{footer}</View> : null}
+  </View>
+);
 
 /** One line of the conversation: the member's own text, the agent's reply, or an event of an action. */
 function ConversationLine({ message, lang }: { message: AgentMessageDto; lang: 'fr' | 'en' }) {
@@ -366,6 +380,10 @@ const styles = StyleSheet.create({
   conversation: { gap: space.s3, paddingVertical: space.s3 },
   streaming: { gap: space.s2 },
   hero: { alignItems: 'center', gap: space.s6, paddingVertical: space.s8 },
+  heroCompact: { alignItems: 'center', gap: space.s3, paddingVertical: space.s4 },
+  compactRoot: { flex: 1, minHeight: 0 },
+  compactBody: { flex: 1, minHeight: 0, paddingHorizontal: space.s4, gap: space.s3 },
+  compactFooter: { paddingTop: space.s1 },
   thinking: { paddingLeft: space.s4, paddingVertical: space.s3 },
   footer: { gap: space.s3 },
 });

@@ -333,10 +333,11 @@ export async function postAgentMessage(
   groupId: string,
   text: string,
   scope?: Scope,
+  replyToId?: string,
 ): Promise<ChatMessageDto> {
   return runScoped(scope, async (s) => {
     const row = await s.db.message.create({
-      data: { groupId, kind: 'AGENT', text },
+      data: { groupId, kind: 'AGENT', text, ...(replyToId ? { replyToId } : {}) },
       include: messageInclude,
     });
     const message = toChatMessage(row);

@@ -13,6 +13,7 @@ import { space } from '@/theme';
 import {
   AmountInput,
   AmountText,
+  Banner,
   BottomSheet,
   Button,
   ChoiceRow,
@@ -163,6 +164,9 @@ function SolidarityRequestSheet({
   const [note, setNote] = useState('');
   const [action, setAction] = useState<PendingActionDto | null>(null);
 
+  const MIN_SUPPORT_AMOUNT = 25;
+  const isFundEmpty = fundBalance === null || fundBalance < MIN_SUPPORT_AMOUNT;
+
   if (action) {
     return (
       <ActionCard
@@ -179,6 +183,19 @@ function SolidarityRequestSheet({
 
   return (
     <View style={styles.column}>
+      {isFundEmpty ? (
+        <Banner
+          kind="info"
+          text={
+            fundBalance !== null && fundBalance > 0
+              ? t('solidarityRequest.insufficientBalance', {
+                  balance: formatXAF(fundBalance, lang),
+                  min: formatXAF(MIN_SUPPORT_AMOUNT, lang),
+                })
+              : t('solidarityRequest.fundEmpty')
+          }
+        />
+      ) : null}
       <Txt variant="sectionTitle">{t('solidarityRequest.recipient')}</Txt>
       <ChoiceRow
         label={t('solidarityRequest.me')}
@@ -220,11 +237,12 @@ function SolidarityRequestSheet({
         label={t('solidarityRequest.amount')}
         value={amount}
         onChange={setAmount}
-        max={fundBalance ?? undefined}
+        min={MIN_SUPPORT_AMOUNT}
+        max={fundBalance && fundBalance >= MIN_SUPPORT_AMOUNT ? fundBalance : undefined}
         helper={
-          fundBalance !== null
+          !isFundEmpty && fundBalance !== null
             ? t('solidarityRequest.max', { amount: formatXAF(fundBalance, lang) })
-            : undefined
+            : t('solidarityRequest.min', { amount: formatXAF(MIN_SUPPORT_AMOUNT, lang) })
         }
       />
       <TextField
@@ -245,9 +263,15 @@ function SolidarityRequestSheet({
         label={t('solidarityRequest.prepare')}
         loading={request.isPending}
         offline={!online}
-        disabled={amount === null || request.isPending}
+        disabled={
+          isFundEmpty ||
+          amount === null ||
+          amount < MIN_SUPPORT_AMOUNT ||
+          (fundBalance !== null && amount > fundBalance) ||
+          request.isPending
+        }
         onPress={() => {
-          if (amount === null) return;
+          if (amount === null || amount < MIN_SUPPORT_AMOUNT) return;
           request.mutate(
             {
               recipientMembershipId: recipient,

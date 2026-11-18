@@ -50,3 +50,5 @@ apps/api/generated/
 .tmp-*/
 # The development demo clock (apps/api/src/lib/clock.ts)
 apps/api/.demo-clock
+
+.vercel

@@ -633,6 +633,105 @@
           }
         ]
       ]
+    },
+    {
+      "id": "S31",
+      "title": "Agent asked a question, member replies Oui — agent must follow up (memory test)",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": ["money"],
+      "turns": [{ "user": "Je dois combien ?" }, { "user": "Oui" }],
+      "expect": {
+        "toolsCalled": ["get_my_overview", "pay"],
+        "mustNotMatch": [
+          "(?i)(pas de question|no record|je ne me souviens|n.ai pas de|aucune question)"
+        ]
+      },
+      "script": [
+        [
+          { "tools": [{ "name": "get_my_overview", "args": {} }] },
+          {
+            "reply": "Tu dois {{amount:due}} pour le tour 4, avant {{date:deadline}}. Je prépare le paiement ?"
+          }
+        ],
+        [
+          { "tools": [{ "name": "pay", "args": {} }] },
+          {
+            "reply": "Voici la carte de paiement. Confirme-la dans l'application pour recevoir la demande Mobile Money."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "S32",
+      "title": "Member replies Yes in English after agent offered help — agent must not say it has no record",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "en",
+      "needs": ["money"],
+      "turns": [
+        { "user": "What can you help me with?" },
+        { "user": "Yes, show me what's open in my group" }
+      ],
+      "expect": {
+        "anyOfTools": [["get_my_overview"], ["list_proposals"], ["get_round"]],
+        "mustNotMatch": ["(?i)(no record|don.t have|didn.t ask|no pending question)"]
+      },
+      "script": [
+        [
+          {
+            "reply": "I can help you pay contributions, check your balance, manage loans, votes, and the solidarity fund. Want me to show what's currently open in your group?"
+          }
+        ],
+        [
+          { "tools": [{ "name": "get_my_overview", "args": {} }] },
+          { "reply": "Here is what is currently open in your group." }
+        ]
+      ]
+    },
+    {
+      "id": "S33",
+      "title": "Continuous 4-turn conversation: summarize group notes, ask capabilities, reply Yes, then check funds",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "en",
+      "needs": ["money", "chat", "demoChat"],
+      "turns": [
+        { "user": "Summarize me notes from my group" },
+        { "user": "What exactly can you help me do in this app" },
+        { "user": "Yes" },
+        { "user": "Also read my group's current fund amounts for me" }
+      ],
+      "expect": {
+        "toolsCalled": ["summarize_unread", "get_my_overview", "get_funds"],
+        "mustNotMatch": [
+          "(?i)(no record|don.t have|didn.t ask|no pending question|pas de question|je ne me souviens)"
+        ]
+      },
+      "script": [
+        [
+          { "tools": [{ "name": "summarize_unread", "args": {} }] },
+          { "reply": "Here is the summary of your group chat: {{summary}}" }
+        ],
+        [
+          {
+            "reply": "I can help you pay contributions, check your balance, manage loans, votes, and the solidarity fund. Want me to show you what's currently open in your group?"
+          }
+        ],
+        [
+          { "tools": [{ "name": "get_my_overview", "args": {} }] },
+          {
+            "reply": "You owe {{amount:due}} for the current round, due by {{date:deadline}}. Want me to read your group's current fund amounts for you?"
+          }
+        ],
+        [
+          { "tools": [{ "name": "get_funds", "args": {} }] },
+          {
+            "reply": "Here are your group's current fund amounts from the general and solidarity funds."
+          }
+        ]
+      ]
     }
   ]
 }

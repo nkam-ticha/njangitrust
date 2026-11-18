@@ -10,7 +10,10 @@ import type { AuthActor } from '../../permissions';
 import { agentConfig } from '../config';
 import { tryConsumeAgentMessage } from '../guards/rate-limit';
 import { withTurnLease } from '../guards/turn-lease';
-import { dispatchJob } from '../../jobs/dispatch';
+import { currentJobScheduler, dispatchJob } from '../../jobs/dispatch';
+import { processDueJobs, scheduleAt, SLOW_JOB_PREFIX } from '../../jobs/queues';
+import { trackPendingWork } from '../../lib/pending-work';
+import { runAsSystem } from '../../lib/request-context';
 import { agentPorts } from '../ports';
 import { looksPersonal } from '../runtime/personal';
 import { dbConversationStore } from '../store/db-store';
@@ -65,6 +68,9 @@ export const GROUP_MENTION_JOB = 'agent.groupMention';
 export async function onGroupMention(mention: GroupMention): Promise<void> {
   if (!agentPorts().chat || !agentConfig().configured) return;
   await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
+  if (currentJobScheduler() === scheduleAt) {
+    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+  }
 }
 
 /** The job: answers the mention. A failure is logged and not retried (no double answer). */

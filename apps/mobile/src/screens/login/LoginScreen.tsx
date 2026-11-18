@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Globe } from 'lucide-react-native';
 import { maskNumber } from '@njangi/shared';
+import { setLanguage } from '@/i18n';
 import { space, useTheme } from '@/theme';
 import { Button, PhoneField, PinPad, Touchable, Txt, useLang } from '@/ui';
 import { useLogin } from '@/features/auth/useAuth';
@@ -38,9 +39,15 @@ export function LoginScreen() {
       >
         <ArrowLeft size={24} color={colors.iconPrimary} strokeWidth={2} />
       </Touchable>
-      <Txt variant="screenTitle" accessibilityRole="header">
+      <Txt variant="screenTitle" accessibilityRole="header" style={{ flex: 1 }}>
         {t('login.title')}
       </Txt>
+      <Button
+        variant="text"
+        icon={Globe}
+        label={t('welcome.languageSwitch')}
+        onPress={() => void setLanguage(lang === 'fr' ? 'en' : 'fr')}
+      />
     </View>
   );
 

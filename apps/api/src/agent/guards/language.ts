@@ -7,12 +7,15 @@ const FRENCH =
   'sur qui quoi quand combien pourquoi comment quel quelle quels c ça oui non merci bonjour ' +
   'bonsoir paie payer retire retirer dois peux veux suis ai mets annule supprime donne montre ' +
   'envoie ajoute emprunter cotisation amende prêt tour caisse relevé mise raté numéro ou au aux ' +
-  'ce cette n il elle nous vous sont prochaine réunion';
+  'ce cette n il elle nous vous sont prochaine réunion resume resumer groupe lire continuer ' +
+  'francais parler ouais accord';
 const ENGLISH =
   'i me my you your the a an and is are for not with in on who what when how much many why ' +
   'which yes no thanks thank hello hi please pay withdraw owe can want am have has do does did ' +
   'show give send add borrow contribution fine loan round fund statement bid missed number of ' +
-  'to it there this that we they tell exact amount turn solidarity next meeting';
+  'to it there this that we they tell exact amount turn solidarity next meeting summarize ' +
+  'summary notes group chat read open continue english speak speaking sure yeah yep nope okay ' +
+  'explain balance where';
 const FR = new Set(FRENCH.split(' '));
 const EN = new Set(ENGLISH.split(' '));
 const ACCENTED = /[àâçéèêëîïôûùüÿœæ]/iu;

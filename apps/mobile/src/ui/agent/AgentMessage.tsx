@@ -77,7 +77,7 @@ export function AgentMessage({ text, startOfTurn = true, streaming, speaking }: 
           return (
             <View key={i} style={bullet ? styles.bullet : null}>
               {bullet ? <Txt>•</Txt> : null}
-              <Txt style={styles.flex} selectable>
+              <Txt style={styles.flex}>
                 {inline(bullet ? line.replace(/^\s*[-•]\s+/, '') : line)}
                 {streaming && last ? <Txt color="textSecondary"> ▍</Txt> : null}
               </Txt>

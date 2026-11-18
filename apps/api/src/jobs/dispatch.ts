@@ -23,6 +23,10 @@ export function useJobScheduler(next: Scheduler | null): void {
   scheduler = next;
 }
 
+export function currentJobScheduler(): Scheduler | null {
+  return scheduler;
+}
+
 /** Runs `fn` after the current request, detached from its context. */
 export function runInBackground(name: string, fn: () => Promise<unknown>): void {
   const task = new Promise<void>((resolve) => setImmediate(resolve))

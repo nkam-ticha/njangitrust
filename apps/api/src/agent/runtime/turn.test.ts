@@ -367,4 +367,29 @@ describe('routing and failures keep what the member must be protected from and k
     const { deps } = setup([]);
     await expect(turn(deps, 'Bonjour')).rejects.toMatchObject({ name: 'LlmError' });
   });
+
+  it('maintains multi-turn context and language across "Yes" / "Ok" follow-ups', async () => {
+    const { llm, deps } = setup([
+      { text: 'I can help you run your group. Want me to show who is in your group?' },
+      { toolCalls: [{ name: 'list_members' }] },
+      { text: 'Carine Fotso is in your group. Want me to check the group rules next?' },
+      { toolCalls: [{ name: 'get_rules' }] },
+      { text: 'Here are the official rules of your group.' },
+    ]);
+    // Member profile default is French, but conversation is in English:
+    await turn(deps, 'What can you help me do in this app?', ctx({ lang: 'fr' }));
+    const second = await turn(deps, 'Yes', ctx({ lang: 'fr' }));
+    expect(second.reply).toContain('Carine Fotso');
+    // Turn 2's request to the LLM had Turn 1's question and assistant offer, and kept English:
+    const turn2Messages = JSON.stringify(llm.requests[1]!.messages);
+    expect(turn2Messages).toContain('Want me to show who is in your group?');
+    expect(turn2Messages).toContain('Reply entirely in English');
+
+    // Turn 3: "Ok" is language-neutral, but inherits English from the active conversation:
+    const third = await turn(deps, 'Ok', ctx({ lang: 'fr' }));
+    expect(third.reply).toContain('official rules');
+    const turn3Messages = JSON.stringify(llm.requests[3]!.messages);
+    expect(turn3Messages).toContain('Want me to check the group rules next?');
+    expect(turn3Messages).toContain('Reply entirely in English');
+  });
 });

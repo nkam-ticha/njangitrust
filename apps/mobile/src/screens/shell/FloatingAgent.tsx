@@ -8,8 +8,8 @@ import { usePathname } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { size, space, useBreakpoint } from '@/theme';
-import { AgentOrb, navigationLayoutFor } from '@/ui';
-import { useAgentActivity } from '@/state/agentActivity';
+import { AgentGlow, AgentOrb, navigationLayoutFor } from '@/ui';
+import { useAgentBusyMode } from '@/features/agent/useAgent';
 import { BottomSheet } from '@/ui';
 import { NjangiTab } from '@/screens/njangi/NjangiTab';
 
@@ -33,7 +33,7 @@ export function FloatingAgent() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { breakpoint } = useBreakpoint();
-  const mode = useAgentActivity((s) => s.mode);
+  const mode = useAgentBusyMode();
   const [saved, setSaved] = useState<Saved | null>(null);
   const [dragging, setDragging] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -187,8 +187,11 @@ export function FloatingAgent() {
         title={t('common.agentName')}
         dialogWidth={480}
         scrollContent={false}
+        heightRatio={0.5}
+        // The panel is a Modal, drawn above the page's glow: it carries its own while answering.
+        overlay={<AgentGlow active={mode !== 'idle'} />}
       >
-        <NjangiTab />
+        <NjangiTab compact />
       </BottomSheet>
     </View>
   );

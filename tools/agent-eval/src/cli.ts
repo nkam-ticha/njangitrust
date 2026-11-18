@@ -82,7 +82,7 @@ async function main(): Promise<number> {
     print('');
     print(summaryLine(report));
     if (report.passed && !report.complete) {
-      print('Skipped scenarios are not passes: the gate of spec 5.4 needs all 30 to run and pass.');
+      print('Skipped scenarios are not passes: the gate of spec 5.4 needs all 33 to run and pass.');
     }
     if (mode === 'scripted') {
       print('Scripted mode says nothing about a model. Run "pnpm agent:eval" with a key for that.');

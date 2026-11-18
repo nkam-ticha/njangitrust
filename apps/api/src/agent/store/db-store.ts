@@ -1,5 +1,6 @@
 // The PostgreSQL conversation store. One private conversation per member (its group is the active
 // one and follows switch_group); one group-channel conversation per member and group.
+import { clock } from '../../lib/clock';
 import type { Prisma } from '../../lib/prisma';
 import { getPrisma } from '../../lib/prisma';
 import {
@@ -68,11 +69,16 @@ export const dbConversationStore: ConversationStore = {
   async append(conversationId, messages: NewMessage[]) {
     const db = getPrisma();
     const stored: StoredMessage[] = [];
-    // One at a time: createdAt then orders the lines exactly as they happened.
+    // One at a time with strictly increasing millisecond timestamps: createdAt then orders the
+    // lines (user -> tool -> assistant) deterministically even on a sub-millisecond insert.
+    let lastMs = 0;
     for (const message of messages) {
+      const now = clock.nowMs();
+      lastMs = now > lastMs ? now : lastMs + 1;
       const row = await db.agentMessage.create({
         data: {
           conversationId,
+          createdAt: new Date(lastMs),
           role: message.role,
           content: message.content,
           toolName: message.toolName ?? null,

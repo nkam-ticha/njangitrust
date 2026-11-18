@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { contentWidth, space, useBreakpoint, useTheme } from '@/theme';
+import { useKeyboardOpen } from '@/ui/primitives/useKeyboardOpen';
 import { OfflineBanner } from './OfflineBanner';
 
 interface ScreenProps {
@@ -36,7 +37,14 @@ export function Screen({
     max ? { maxWidth: max } : null,
     { paddingHorizontal: width === 'full' ? 0 : gutter },
   ];
-  const bottom = inTabs && isCompact ? space.s4 : insets.bottom + space.s4;
+  const keyboardOpen = useKeyboardOpen();
+  // With the keyboard up, the screen already ends above the keys: no gesture-bar space under the
+  // sticky footer (it showed as a white band between the field and the keyboard).
+  const bottom = keyboardOpen
+    ? space.s2
+    : inTabs && isCompact
+      ? space.s4
+      : insets.bottom + space.s4;
 
   return (
     <KeyboardAvoidingView

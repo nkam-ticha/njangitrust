@@ -429,7 +429,10 @@ const HOW_TO =
  * fits. The runtime hands the entry to the model before its first call (runtime/prefetch.ts).
  */
 export function howToTopic(text: string): GuideEntry | null {
+  if (text.length > 220) return null;
   const plain = strip(text).replace(/['’]/g, ' ');
+  if (/\b(you just|this was from you|you asked|tu viens de|tu m as demande)\b/.test(plain))
+    return null;
   if (!HOW_TO.test(plain)) return null;
   return findGuideEntry(text);
 }

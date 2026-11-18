@@ -55,6 +55,8 @@ describe('topicsOf: what a message is about (French and English)', () => {
     expect(topicsOf('Propose un vote pour changer la règle').has('governance')).toBe(true);
     expect(topicsOf('Planifie une réunion samedi').has('meetings')).toBe(true);
     expect(topicsOf('Change my phone number').has('account')).toBe(true);
+    expect(topicsOf('Summarize me notes from my group').has('chat')).toBe(true);
+    expect(topicsOf('Résume les messages non lus').has('chat')).toBe(true);
   });
 });
 
@@ -112,6 +114,71 @@ describe('compactRequest: a small important context', () => {
       const compact = compactRequest(full, 1_800);
       expect(estimateTokens(compact)).toBeLessThanOrEqual(1_800);
     }
+  });
+
+  it('always keeps the last assistant reply even on a tiny budget (agent sees its own question)', () => {
+    // This is the exact bug: user says "Yes" after the agent asked a question. With a tiny
+    // token budget (like Groq's old 3 500 default), ALL history was dropped, so the agent had
+    // no context for "Yes". The fix guarantees MIN_HISTORY_LINES are always present.
+    const agentQuestion: LlmMessage = {
+      role: 'assistant',
+      content: 'Veux-tu que je montre le solde de ta caisse ?',
+    };
+    const full: LlmRequest = {
+      ...request(),
+      messages: [
+        system,
+        { role: 'user', content: 'ancien message '.repeat(60) },
+        agentQuestion,
+        { role: 'user', content: 'Oui' },
+      ],
+    };
+    // Budget so tight that only system + current message would normally fit.
+    const compact = compactRequest(full, 800);
+    const content = JSON.stringify(compact.messages);
+    // The agent's question must still be present so it knows what "Oui" refers to.
+    expect(content).toContain('Veux-tu que je montre le solde');
+    // The old noisy history may be dropped — that is fine.
+    expect(content).not.toContain('ancien message');
+  });
+
+  it('a "yes" answer always has at least the last 4 history lines for context', () => {
+    // Build a conversation where the agent asked several questions; check MIN_HISTORY_LINES apply.
+    const historyLines: LlmMessage[] = [
+      { role: 'user', content: 'msg1 '.repeat(20) },
+      { role: 'assistant', content: 'rep1 '.repeat(20) },
+      { role: 'user', content: 'msg2 '.repeat(20) },
+      { role: 'assistant', content: 'rep2 — Veux-tu continuer ?' },
+    ];
+    const full: LlmRequest = {
+      ...request(),
+      messages: [system, ...historyLines, { role: 'user', content: 'Oui' }],
+    };
+    // Tight budget — history would be dropped without the guarantee.
+    const compact = compactRequest(full, 1_200);
+    const msgStr = JSON.stringify(compact.messages);
+    // At least the last assistant reply (the question the user is answering) must survive.
+    expect(msgStr).toContain('Veux-tu continuer');
+    expect(msgStr).toContain('msg2');
+  });
+
+  it('keeps the relevant action tool when the member replies "Oui" or "Yes" to an assistant offer', () => {
+    const full: LlmRequest = {
+      ...request(),
+      messages: [
+        system,
+        { role: 'user', content: 'Je dois combien ?' },
+        {
+          role: 'assistant',
+          content: 'Tu dois 11 000 FCFA pour ta cotisation. Je prépare le paiement ?',
+        },
+        { role: 'user', content: 'Oui' },
+      ],
+    };
+    const compact = compactRequest(full, 1_800);
+    const names = compact.tools.map((t) => t.name);
+    expect(names).toContain('pay_contribution');
+    expect(JSON.stringify(compact.messages)).toContain('Je prépare le paiement ?');
   });
 
   it('never sends the tool category to the provider', () => {

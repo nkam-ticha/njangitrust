@@ -3,7 +3,7 @@
 // Web: Enter sends, Shift+Enter adds a line (8.5).
 import { StyleSheet, TextInput, View, type TextInputKeyPressEvent } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Mic, Paperclip, SendHorizontal } from 'lucide-react-native';
+import { Bot, Mic, Paperclip, SendHorizontal } from 'lucide-react-native';
 import { radius, size, space, typography, useTheme } from '@/theme';
 import { Touchable } from '../primitives/Touchable';
 import { Txt } from '../primitives/Txt';
@@ -21,6 +21,8 @@ interface ComposerProps {
   disabledReason?: string | null;
   /** Shown above the field ("Réponse à Carine" with cancel). */
   replyTo?: { name: string; onCancel: () => void } | null;
+  /** Quick action to tag @njangi */
+  onTagAgent?: () => void;
 }
 
 export function Composer({
@@ -32,6 +34,7 @@ export function Composer({
   onVoice,
   disabledReason,
   replyTo,
+  onTagAgent,
 }: ComposerProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -86,6 +89,38 @@ export function Composer({
             <Txt variant="secondaryStrong" color="textLink">
               {t('common.actions.cancel')}
             </Txt>
+          </Touchable>
+        </View>
+      ) : null}
+      {kind === 'chat' && (onTagAgent || value.endsWith('@')) ? (
+        <View style={styles.mentionRow}>
+          <Touchable
+            onPress={() => {
+              if (value.endsWith('@')) {
+                onChange(value.slice(0, -1) + '@njangi ');
+              } else if (onTagAgent) {
+                onTagAgent();
+              } else {
+                onChange(
+                  value.toLowerCase().includes('@njangi')
+                    ? value
+                    : `${value ? value.trim() + ' ' : ''}@njangi `,
+                );
+              }
+            }}
+            radius={radius.full}
+            accessibilityRole="button"
+            accessibilityLabel={t('chat.message.tagNjangi')}
+          >
+            <View style={[styles.tagAgentInner, { backgroundColor: colors.surfaceTint }]}>
+              <Bot size={14} color={colors.textLink} strokeWidth={2} />
+              <Txt variant="captionStrong" color="textLink">
+                @njangi
+              </Txt>
+              <Txt variant="caption" color="textSecondary">
+                · {t('common.agentName')}
+              </Txt>
+            </View>
           </Touchable>
         </View>
       ) : null}
@@ -157,6 +192,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.group,
     paddingHorizontal: space.s3,
     minHeight: 40,
+  },
+  mentionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: space.s2,
+    gap: space.s2,
+  },
+  tagAgentInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.s1,
+    paddingHorizontal: space.s3,
+    paddingVertical: 6,
+    borderRadius: radius.full,
   },
   flex: { flex: 1 },
 });

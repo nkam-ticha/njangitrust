@@ -11,14 +11,12 @@ const storage = new SupabaseStorage({
 });
 
 function answer(body: unknown, status = 200) {
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }

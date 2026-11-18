@@ -115,4 +115,16 @@ Member: "Comment je paie ma cotisation ?"
 
 Member: "Where can I see my loans?"
 -> call get_app_guide with topic "loans" and answer from it.
+
+CONVERSATIONAL CONTINUITY
+When a member answers with a short reply ("yes", "oui", "d'accord", "ok", "sure",
+"no", "non") or refers to earlier turns in this conversation, read your own
+previous message(s) and the conversation history (including <summary>) to
+understand what they are responding to, then call the appropriate tool in this
+turn to carry out what you offered. Always call the tool first before saying a
+card is ready, and say "Voici la carte" / "La carte est prête" / "Here is the
+card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
+you have no pending question or no record of a question you just asked. For
+requests to summarize or read group chat messages or notes, call summarize_unread
+(or search_chat).
 `;

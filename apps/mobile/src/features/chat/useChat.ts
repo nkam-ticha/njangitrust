@@ -82,16 +82,25 @@ export function useMarkRead(groupId: string | null) {
 export function useSendMessage(groupId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async (input: string | { text: string; replyToId?: string | null }) => {
       const id = newMessageId();
-      const res = await api.post(
-        `/v1/groups/${groupId}/messages`,
-        { id, text },
-        { schema: messageResponseSchema },
-      );
+      const payload = typeof input === 'string' ? { id, text: input } : { id, ...input };
+      const res = await api.post(`/v1/groups/${groupId}/messages`, payload, {
+        schema: messageResponseSchema,
+      });
       return res.message;
     },
-    onSuccess: (message) => insertMessage(qc, groupId, message),
+    onSuccess: (message) => {
+      insertMessage(qc, groupId, message);
+      if (groupId && message.text && /@njangi\b/i.test(message.text)) {
+        void qc.invalidateQueries({ queryKey: chatKeys.messages(groupId) });
+        void qc.invalidateQueries({ queryKey: ['agent'] });
+        setTimeout(() => {
+          void qc.invalidateQueries({ queryKey: chatKeys.messages(groupId) });
+          void qc.invalidateQueries({ queryKey: ['agent'] });
+        }, 3_500);
+      }
+    },
   });
 }
 

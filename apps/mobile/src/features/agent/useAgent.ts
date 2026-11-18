@@ -2,7 +2,14 @@
 // `agent.delta` events only stream its text while it is written. Deltas are applied in `seq` order:
 // a delta that arrives early waits in a buffer until the gap before it is filled.
 import { useEffect, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useAgentActivity, type AgentMode } from '@/state/agentActivity';
 import {
   agentConversationSchema,
   agentHistorySchema,
@@ -22,7 +29,18 @@ export const agentKeys = {
   status: ['agent', 'status'] as const,
   conversation: ['agent', 'conversation'] as const,
   history: ['agent', 'history'] as const,
+  send: ['agent', 'send'] as const,
 };
+
+/**
+ * What the agent is doing for the whole app (orb and glow): what the Njangi tab reports while it is
+ * open, and "thinking" for as long as a message is still being answered after the chat was closed.
+ */
+export function useAgentBusyMode(): AgentMode {
+  const mode = useAgentActivity((s) => s.mode);
+  const sending = useIsMutating({ mutationKey: agentKeys.send }) > 0;
+  return mode !== 'idle' ? mode : sending ? 'thinking' : 'idle';
+}
 
 export function useAgentStatus() {
   return useQuery({
@@ -99,6 +117,7 @@ export function useAgentStream(active: boolean) {
 export function useSendAgentMessage() {
   const qc = useQueryClient();
   return useMutation({
+    mutationKey: agentKeys.send,
     mutationFn: async (body: AgentMessageRequest): Promise<AgentTurnDto> =>
       (
         await api.post('/v1/agent/messages', agentMessageRequestSchema.parse(body), {

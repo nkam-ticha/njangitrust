@@ -4,12 +4,40 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '@/api/queryClient';
 import { restoreSession } from '@/api/session';
 import { useSession } from '@/state/session';
 import { ThemeProvider } from '@/theme';
 import { fontSources } from '@/theme/fonts';
+
+// Stop the whole-screen blue selection on long-press/hold: the page background and containers are
+// not selectable, but text (see Txt) and inputs are, so members can still select and copy text.
+// Buttons stay unselectable so pressing and holding one never highlights its label.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleId = 'disable-long-press-selection';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      :where(html, body, #root, #root *) {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      input, textarea, [contenteditable="true"] {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+      button, button *, [role="button"], [role="button"] * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
 
 // Keep the splash up until the fonts are loaded and the session is known.
 void SplashScreen.preventAutoHideAsync();

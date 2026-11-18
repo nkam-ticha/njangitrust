@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Globe } from 'lucide-react-native';
 import { detectOperator, formatOwnNumber, type Operator } from '@njangi/shared';
 import { CURRENT_CONSENT_VERSION } from '@njangi/shared/contracts/auth';
+import { setLanguage } from '@/i18n';
 import { space, useTheme } from '@/theme';
 import { Button, ChoiceRow, PhoneField, PinPad, TextField, Touchable, Txt, useLang } from '@/ui';
 import { errorCode, errorMessage } from '@/features/errors/errorMessage';
@@ -125,9 +126,16 @@ export function SignupFlow({
         variant="secondary"
         color="textSecondary"
         accessibilityLabel={t('a11y.stepProgress', { current: index + 1, total: STEPS.length })}
+        style={{ flex: 1 }}
       >
         {t('common.stepOf', { current: index + 1, total: STEPS.length })}
       </Txt>
+      <Button
+        variant="text"
+        icon={Globe}
+        label={t('welcome.languageSwitch')}
+        onPress={() => void setLanguage(lang === 'fr' ? 'en' : 'fr')}
+      />
     </View>
   );
   const footer =

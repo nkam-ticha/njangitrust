@@ -154,7 +154,7 @@ describe('model providers in the environment (docs/AGENT.md, D24)', () => {
     expect(env.GROQ_BASE_URL).toBe('https://api.groq.com/openai/v1');
     expect(env.GOOGLE_AI_BASE_URL).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
     expect(env.GROQ_API_KEYS).toBe('g2, g3');
-    expect(env.GROQ_MAX_INPUT_TOKENS).toBe(3_500);
+    expect(env.GROQ_MAX_INPUT_TOKENS).toBe(6_000);
     expect(env.LLM_PROVIDER_ORDER).toBe('openrouter,groq,google');
   });
 

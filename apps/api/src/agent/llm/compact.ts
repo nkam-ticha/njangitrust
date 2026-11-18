@@ -9,7 +9,9 @@
 //   3. what this turn has already done: every tool call and its result (long results trimmed);
 //   4. only the tools that can matter: the reading tools, the categories the message is about,
 //      and any tool already used in this turn;
-//   5. as much recent history as still fits, newest first.
+//   5. as much recent history as still fits, newest first — but always at least the last few
+//      lines (MIN_HISTORY_LINES), so the model sees its own previous reply and understands
+//      short follow-ups like "Yes" or "Oui".
 // When a provider takes over in the middle of a reply, a short note says so, and the work of the
 // turn so far travels with it as in (3), so the new model neither starts over nor repeats a tool.
 import type { LlmMessage, LlmRequest, LlmToolSpec } from './types';
@@ -34,7 +36,7 @@ const TOPICS: Record<string, RegExp> = {
     /\b(vot\w*|propos\w*|r[eè]gle\w*|rule\w*|amende\w*|fines?|membres?|members?|invit\w*|admin\w*|quitt\w*|leave|rotation|tour|round|cycle|caisse|solidar\w*|secours|d[eé]cision|decision|chang\w*|modifi\w*|exclu\w*|expel|ajout\w*|add|fond\w*|group\w*|dissol\w*|sanction\w*|p[eé]nalit\w*|waive|annul\w*)\b/i,
   account:
     /\b(compte|account|pin|num[eé]ro|number|langue|language|pr[eé]f[eé]rence\w*|preference\w*|notif\w*|profil\w*|profile|supprim\w*|delete|t[eé]l[eé]phone|phone)\b/i,
-  chat: /\b(message\w*|discu\w*|chat|[eé]cri\w*|write|envoi\w*|send|annonce\w*|announce\w*|dis à|tell)\b/i,
+  chat: /\b(message\w*|discu\w*|chat|[eé]cri\w*|write|envoi\w*|send|annonce\w*|announce\w*|dis à|tell|summar\w*|r[eé]sum\w*|note\w*|unread|non[- ]lu\w*|read\b|lire|lu\w*|talk\w*|parl\w*|said|dit|quoi de neuf|missed|manqu\w*|rat[eé]\w*|conversation\w*)\b/i,
   meetings:
     /\b(r[eé]union\w*|meeting\w*|rendez|agenda|proc[eè]s|minutes|pv|pr[eé]sence\w*|attendance|visio|appel|call)\b/i,
 };
@@ -86,12 +88,23 @@ function pickTools(
   const at = lastUserIndex(messages);
   const last = at >= 0 ? messages[at] : undefined;
   const asked = last?.role === 'user' ? last.content : '';
-  const scores = topicScores(asked);
+  const directScores = topicScores(asked);
+  // Short follow-ups ("Yes", "Oui", "Ok", "Go ahead") have no topic words of their own: look at
+  // the immediately preceding exchange so the tools for what the assistant just offered stay kept.
+  const recentContext =
+    at > 0
+      ? messages
+          .slice(Math.max(0, at - 2), at + 1)
+          .map((m) => m.content ?? '')
+          .join(' ')
+      : asked;
+  const scores = directScores.size > 0 ? directScores : topicScores(recentContext);
   const used = usedToolNames(messages.slice(Math.max(0, at)));
   const rank = (tool: LlmToolSpec): number => {
     if (used.has(tool.name)) return 0;
     if (tool.category === undefined) return 1;
     if (tool.category === 'reading') return 2;
+    if (tool.name === 'summarize_unread' || tool.name === 'search_chat') return 2.5;
     const score = scores.get(tool.category) ?? 0;
     return score > 0 ? 3 + 1 / (1 + score) : Number.POSITIVE_INFINITY;
   };
@@ -122,6 +135,38 @@ function trimResult(message: LlmMessage): LlmMessage {
   return { ...message, content: wrapped ? `${cut}\n${closing}` : cut };
 }
 
+/** The model MUST see its own last question/statement so short follow-ups like "Yes" / "Oui"
+ *  make sense. The last assistant message in `history` (before the current user turn) is pinned. */
+
+/**
+ * The last assistant message in `history` (the agent's most recent reply before this turn).
+ * This is the minimum we always keep: without it, a "Yes" or "Oui" follow-up has no context.
+ */
+function lastAssistantInHistory(history: readonly LlmMessage[]): LlmMessage | undefined {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i]!.role === 'assistant') return history[i];
+  }
+  return undefined;
+}
+
+/** Normal chat lines (<= 850 chars) in the last 10 history messages (5 full turns), plus always
+ *  the last assistant reply, are pinned as a contiguous suffix so the model never loses context. */
+const PINNED_WINDOW = 10;
+const PINNED_MAX_CHARS = 850;
+
+function pinnedHistory(history: readonly LlmMessage[]): LlmMessage[] {
+  const lastAssistant = lastAssistantInHistory(history);
+  const pinned: LlmMessage[] = [];
+  const stop = Math.max(0, history.length - PINNED_WINDOW);
+  for (let i = history.length - 1; i >= stop; i -= 1) {
+    const m = history[i]!;
+    if (m !== lastAssistant && (m.content ?? '').length > PINNED_MAX_CHARS) break;
+    pinned.unshift(m);
+  }
+  if (lastAssistant && !pinned.includes(lastAssistant)) pinned.push(lastAssistant);
+  return pinned;
+}
+
 /**
  * The request cut down to `maxTokens` (estimated), or unchanged when it already fits. When even
  * the smallest form does not fit, the smallest form is returned and the provider decides.
@@ -133,14 +178,34 @@ export function compactRequest(request: LlmRequest, maxTokens: number): LlmReque
   const history = at >= 0 ? request.messages.slice(0, at).filter((m) => m.role !== 'system') : [];
   const current = (at >= 0 ? request.messages.slice(at) : request.messages.slice()).map(trimResult);
 
-  // The system prompt and this turn's work come first; the tools take what is left, and the
-  // history what the tools leave.
-  const fixed = estimateTokens({ messages: [...system, ...current], tools: [] });
-  const tools = pickTools(request.tools, request.messages, Math.max(0, maxTokens - fixed));
+  // The system prompt, this turn's work, and the pinned recent exchange come first; the tools
+  // take what is left, and older history takes what the tools leave.
+  const pinned = pinnedHistory(history);
+  const pinnedSet = new Set(pinned);
+  const fixed = estimateTokens({
+    messages: [...system, ...pinned, ...current],
+    tools: [],
+  });
+  const remainingAfterFixed = Math.max(0, maxTokens - fixed);
+  // When the budget is generous (> 3 500 tokens), reserve a slice for older history so tools do
+  // not consume 100% of the remaining budget in long multi-turn conversations.
+  const olderHistoryReserve =
+    maxTokens >= 3_500 && history.length > pinned.length
+      ? Math.min(600, Math.floor(remainingAfterFixed * 0.2))
+      : 0;
+  const tools = pickTools(
+    request.tools,
+    request.messages,
+    Math.max(0, remainingAfterFixed - olderHistoryReserve),
+  );
+  const mergeHistory = (kept: readonly LlmMessage[]): LlmMessage[] => {
+    const keptSet = new Set(kept);
+    return history.filter((m) => keptSet.has(m) || pinnedSet.has(m));
+  };
   const shaped = (kept: LlmMessage[]): LlmRequest => ({
     ...request,
     tools,
-    messages: [...system, ...kept, ...current],
+    messages: [...system, ...mergeHistory(kept), ...current],
   });
 
   // Add the newest history that still fits, newest first, as whole messages.

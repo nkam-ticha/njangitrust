@@ -29,6 +29,7 @@ import {
 } from '@/theme';
 import { Touchable } from '../primitives/Touchable';
 import { Txt } from '../primitives/Txt';
+import { useKeyboardOpen } from '../primitives/useKeyboardOpen';
 
 export interface BottomSheetProps {
   visible: boolean;
@@ -45,6 +46,13 @@ export interface BottomSheetProps {
   scrollContent?: boolean;
   /** Dialog width on wide screens: 480 default, 520 withdraw, 400 PIN and pickers. */
   dialogWidth?: 400 | 480 | 520;
+  /**
+   * A fixed share of the screen height (0 to 1) instead of growing with the content, for a small
+   * chat panel. While the keyboard is open it takes all the room left, so the field stays visible.
+   */
+  heightRatio?: number;
+  /** Drawn over the whole sheet and scrim, never taking a touch (the agent's glow). */
+  overlay?: ReactNode;
 }
 
 export function BottomSheet({
@@ -57,6 +65,8 @@ export function BottomSheet({
   dismissible = true,
   scrollContent = true,
   dialogWidth = 480,
+  heightRatio,
+  overlay,
 }: BottomSheetProps) {
   const { colors, scheme } = useTheme();
   const { t } = useTranslation();
@@ -64,6 +74,10 @@ export function BottomSheet({
   const reduce = useReduceMotion();
   const insets = useSafeAreaInsets();
   const { height: winH } = useWindowDimensions();
+  const keyboardOpen = useKeyboardOpen();
+  // The gesture-bar space is only needed when the keyboard is closed; with the keyboard up the
+  // sheet already sits on it, and keeping the space would leave a white gap above the keys.
+  const bottomInset = keyboardOpen ? 0 : insets.bottom;
   const [mounted, setMounted] = useState(visible);
   // Mount as soon as the sheet is asked to show (state adjusted during render, not in an effect).
   if (visible && !mounted) setMounted(true);
@@ -180,8 +194,16 @@ export function BottomSheet({
           }}
           style={[
             dialog
-              ? [styles.dialog, { width: dialogWidth, maxHeight: winH * 0.85 }]
-              : [styles.sheet, { maxHeight: winH * 0.92 }],
+              ? [
+                  styles.dialog,
+                  { width: dialogWidth, maxHeight: winH * 0.85 },
+                  heightRatio ? { height: winH * Math.min(heightRatio, 0.85) } : null,
+                ]
+              : [
+                  styles.sheet,
+                  { maxHeight: winH * 0.92 },
+                  heightRatio ? { height: winH * (keyboardOpen ? 0.92 : heightRatio) } : null,
+                ],
             { backgroundColor: colors.surfaceRaised, borderColor: colors.divider },
             elevation(dialog ? 'dialog' : 'sheet', colors, scheme),
             { opacity: surfaceOpacity, transform: [{ translateY }, { scale }] },
@@ -212,16 +234,14 @@ export function BottomSheet({
           )}
           {footer ? (
             <View
-              style={[
-                styles.footer,
-                { paddingBottom: dialog ? space.s5 : insets.bottom + space.s4 },
-              ]}
+              style={[styles.footer, { paddingBottom: dialog ? space.s5 : bottomInset + space.s4 }]}
             >
               {footer}
             </View>
           ) : null}
-          {!footer && !dialog ? <View style={{ height: insets.bottom }} /> : null}
+          {!footer && !dialog ? <View style={{ height: bottomInset }} /> : null}
         </Animated.View>
+        {overlay}
       </KeyboardAvoidingView>
     </Modal>
   );

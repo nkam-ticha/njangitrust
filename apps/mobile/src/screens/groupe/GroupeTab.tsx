@@ -7,12 +7,16 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import {
+  Bot,
   Camera,
   CircleAlert,
+  Copy,
   FileText,
   Image as ImageIcon,
   Info,
   MessagesSquare,
+  Reply,
+  Trash2,
   Video,
 } from 'lucide-react-native';
 import { formatClock, formatDateShort, pick } from '@njangi/shared';
@@ -49,6 +53,7 @@ import { errorMessage } from '@/features/errors/errorMessage';
 import { useSendFile, type PickedFile } from '@/features/chat/useAttachments';
 import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder';
 import { baseMime, kindForMime } from '@/features/chat/media';
+import { copyToClipboard } from '@/ui/chat/clipboard';
 import { ChatAttachment } from './ChatAttachment';
 import { TabScreen } from '../shell/TabScreen';
 
@@ -98,6 +103,26 @@ function buildRows(
   return rows;
 }
 
+export function splitMentionParts(text: string): Array<string | { mention: string }> {
+  if (!text) return [];
+  const parts: Array<string | { mention: string }> = [];
+  const regex = /(@[A-Za-z0-9_À-ÿ]+)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[1] ?? match[0];
+    parts.push({ mention: token.startsWith('@') ? token.slice(1) : token });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length ? parts : [text];
+}
+
 export function GroupeTab() {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -113,6 +138,8 @@ export function GroupeTab() {
   const remove = useDeleteMessage(groupId);
   const markRead = useMarkRead(groupId);
   const [draft, setDraft] = useState('');
+  const [replyToMessage, setReplyToMessage] = useState<ChatMessageDto | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<ChatMessageDto | null>(null);
   const [deleting, setDeleting] = useState<ChatMessageDto | null>(null);
   const sendFile = useSendFile(groupId);
   const voice = useVoiceRecorder();
@@ -167,8 +194,18 @@ export function GroupeTab() {
   const submit = () => {
     const text = draft.trim();
     if (!text || !online || left) return;
+    const currentReply = replyToMessage;
     setDraft('');
-    send.mutate(text, { onError: () => setDraft(text) });
+    setReplyToMessage(null);
+    send.mutate(
+      { text, ...(currentReply ? { replyToId: currentReply.id } : {}) },
+      {
+        onError: () => {
+          setDraft(text);
+          setReplyToMessage(currentReply);
+        },
+      },
+    );
   };
 
   /** A photo, a video or a PDF chosen on the phone (or in the browser): sent as a message. */
@@ -270,6 +307,21 @@ export function GroupeTab() {
             onSend={submit}
             onAttach={() => setAttachOpen(true)}
             onVoice={() => void startVoice()}
+            onTagAgent={() => {
+              setDraft((prev) =>
+                prev.toLowerCase().includes('@njangi')
+                  ? prev
+                  : `${prev ? prev.trim() + ' ' : ''}@njangi `,
+              );
+            }}
+            replyTo={
+              replyToMessage
+                ? {
+                    name: replyToMessage.author?.name ?? t('common.agentName'),
+                    onCancel: () => setReplyToMessage(null),
+                  }
+                : null
+            }
             disabledReason={online ? null : t('common.status.connectionRequired')}
           />
         )
@@ -307,7 +359,24 @@ export function GroupeTab() {
           onEndReached={() => {
             if (messages.hasNextPage && !messages.isFetchingNextPage) void messages.fetchNextPage();
           }}
-          renderItem={({ item }) => <RowView row={item} lang={lang} onDelete={setDeleting} />}
+          renderItem={({ item }) => (
+            <RowView
+              row={item}
+              lang={lang}
+              onSelectMessage={setSelectedMessage}
+              onMentionPress={(name) => {
+                if (name.toLowerCase() === 'njangi') {
+                  setDraft((prev) =>
+                    prev.toLowerCase().includes('@njangi')
+                      ? prev
+                      : `${prev ? prev.trim() + ' ' : ''}@njangi `,
+                  );
+                } else {
+                  setDraft((prev) => `${prev.trim()} @${name} `.trimStart());
+                }
+              }}
+            />
+          )}
           contentContainerStyle={styles.content}
         />
       ) : null}
@@ -370,6 +439,67 @@ export function GroupeTab() {
       </BottomSheet>
 
       <BottomSheet
+        visible={!!selectedMessage}
+        onClose={() => setSelectedMessage(null)}
+        title={t('chat.message.options')}
+      >
+        {selectedMessage ? (
+          <GroupedList>
+            <ListRow
+              title={t('chat.message.reply')}
+              subtitle={selectedMessage.author?.name ?? t('common.agentName')}
+              titleWeight="regular"
+              leading={<Reply size={24} color={colors.iconPrimary} strokeWidth={2} />}
+              onPress={() => {
+                setReplyToMessage(selectedMessage);
+                setSelectedMessage(null);
+              }}
+            />
+            {selectedMessage.text ? (
+              <ListRow
+                title={t('chat.message.copyText')}
+                titleWeight="regular"
+                leading={<Copy size={24} color={colors.iconPrimary} strokeWidth={2} />}
+                onPress={() => {
+                  void copyToClipboard(selectedMessage.text!);
+                  setNotice(t('chat.message.copied'));
+                  setSelectedMessage(null);
+                }}
+              />
+            ) : null}
+            <ListRow
+              title={t('chat.message.tagAgent')}
+              subtitle={t('chat.message.tagAgentHelp')}
+              titleWeight="regular"
+              leading={<Bot size={24} color={colors.iconPrimary} strokeWidth={2} />}
+              onPress={() => {
+                setReplyToMessage(selectedMessage);
+                setDraft((prev) =>
+                  prev.toLowerCase().includes('@njangi')
+                    ? prev
+                    : `${prev ? prev.trim() + ' ' : ''}@njangi `,
+                );
+                setSelectedMessage(null);
+              }}
+            />
+            {selectedMessage.author?.membershipId === group.membershipId &&
+            !selectedMessage.removed ? (
+              <ListRow
+                title={t('chat.message.delete')}
+                titleWeight="regular"
+                leading={<Trash2 size={24} color={colors.statusLate} strokeWidth={2} />}
+                onPress={() => {
+                  const target = selectedMessage;
+                  setSelectedMessage(null);
+                  setDeleting(target);
+                }}
+              />
+            ) : null}
+          </GroupedList>
+        ) : null}
+      </BottomSheet>
+
+      <BottomSheet
         visible={!!deleting}
         onClose={() => setDeleting(null)}
         title={t('chat.message.delete')}
@@ -394,11 +524,13 @@ export function GroupeTab() {
 function RowView({
   row,
   lang,
-  onDelete,
+  onSelectMessage,
+  onMentionPress,
 }: {
   row: Row;
   lang: 'fr' | 'en';
-  onDelete: (message: ChatMessageDto) => void;
+  onSelectMessage: (message: ChatMessageDto) => void;
+  onMentionPress: (name: string) => void;
 }) {
   const { t } = useTranslation();
   if (row.kind === 'date') return <DateSeparator label={row.label} />;
@@ -411,13 +543,23 @@ function RowView({
   const m = row.message;
   const agent = m.kind === 'AGENT';
   const removed = m.removed;
+  const parts = m.text ? splitMentionParts(m.text) : [];
   return (
     <MessageBubble
       author={agent ? 'agent' : row.own ? 'own' : 'other'}
       name={m.author?.name ?? t('common.agentName')}
       firstOfRun={row.firstOfRun}
       time={formatClock(m.createdAt, lang)}
-      parts={m.text ? [m.text] : []}
+      parts={parts}
+      onMentionPress={onMentionPress}
+      reply={
+        m.replyTo
+          ? {
+              name: m.replyTo.author?.name ?? t('common.agentName'),
+              text: m.replyTo.preview ?? '',
+            }
+          : undefined
+      }
       media={
         m.attachment && !removed ? (
           <ChatAttachment
@@ -429,7 +571,7 @@ function RowView({
       deleted={removed === 'DELETED'}
       hidden={removed === 'HIDDEN'}
       delivery="sent"
-      onLongPress={row.own && !removed ? () => onDelete(m) : undefined}
+      onLongPress={!removed ? () => onSelectMessage(m) : undefined}
     />
   );
 }

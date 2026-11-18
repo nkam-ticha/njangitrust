@@ -1,10 +1,11 @@
-// Loads and validates the scenario file (spec 5.4: exactly 30 scenarios, numbered S01 to S30).
+// Loads and validates the scenario file (spec 5.4: exactly 30 scenarios, numbered S01 to S30,
+// plus S31–S32 added in 2026-11-18 for conversational-continuity regression coverage).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { Need, Scenario } from './types';
 
 export const SCENARIO_FILE = fileURLToPath(new URL('./scenarios/scenarios.json', import.meta.url));
-export const SCENARIO_COUNT = 30;
+export const SCENARIO_COUNT = 33;
 
 const NEEDS: readonly Need[] = [
   'money',
