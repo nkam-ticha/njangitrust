@@ -56,7 +56,7 @@ export const preferenceSpecs = {
     channels: GROUP_ONLY,
     name: 'reply_privately',
     description:
-      'Group chat only: use for any question about the asking member’s own situation (what they owe, their debts, turn, money, loan) or any request to do something. The server tells the group you answered privately and continues in the member’s private conversation.',
+      'Group chat only: use ONLY when the asking member asks about their own personal financial situation (what they personally owe, their personal debts, their personal loan) or asks you to prepare an action/confirmation card. Do NOT call this for greetings, general group questions, or group chat summaries: answer those directly in the group.',
     args: s({}),
     example: {},
   }),

@@ -160,7 +160,6 @@ export const chatAdapter: AgentChatPort = {
     const message = await db.message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
       select: {
-        createdAt: true,
         text: true,
         replyTo: {
           select: {
@@ -179,34 +178,7 @@ export const chatAdapter: AgentChatPort = {
       message.replyTo.text
         ? ` ("${message.replyTo.text}")`
         : '';
-    const asksAboutChat =
-      /\b(summar\w*|resum\w*|message\w*|chat|discu\w*|note\w*|said|dit|parl\w*|talk\w*|quoi de neuf)\b/i.test(
-        fold(message.text),
-      );
-    if (!asksAboutChat) return `${message.text}${quoted}`;
-    const recent = await db.message.findMany({
-      where: {
-        groupId,
-        id: { not: messageId },
-        createdAt: { lte: message.createdAt },
-        deletedAt: null,
-        hiddenByAdminAt: null,
-        text: { not: null },
-        kind: { in: ['TEXT', 'AGENT'] },
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 15,
-      select: {
-        text: true,
-        author: { select: { user: { select: { name: true } } } },
-      },
-    });
-    if (recent.length === 0) return `${message.text}${quoted}`;
-    const lines = recent
-      .reverse()
-      .map((m) => `- ${m.author?.user.name ?? 'Njangi'}: ${m.text}`)
-      .join('\n');
-    return `${message.text}${quoted}\n\n[Messages récents du groupe / Recent group messages:\n${lines}]`;
+    return `${message.text}${quoted}`;
   },
 
   async postAgentReply({ groupId, text, replyToMessageId }) {

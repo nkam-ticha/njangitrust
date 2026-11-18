@@ -6,9 +6,8 @@
 import type { PendingActionUpdatedPayload } from '@njangi/shared/contracts/realtime';
 import { toPendingAction } from '../../dto';
 import { currentJobScheduler, dispatchJob } from '../../jobs/dispatch';
-import { processDueJobs, scheduleAt, SLOW_JOB_PREFIX } from '../../jobs/queues';
+import { scheduleAt } from '../../jobs/queues';
 import { componentLogger } from '../../lib/logger';
-import { trackPendingWork } from '../../lib/pending-work';
 import { runAsSystem } from '../../lib/request-context';
 import { getSelfSource } from '../../modules/me';
 import { getOwnPendingAction } from '../../modules/pending-actions';
@@ -104,10 +103,11 @@ export async function onPendingActionUpdated(
   // Only actions the agent prepared have a result to tell in its conversation.
   if (!(await dbConversationStore.findPreparing(userId, payload.id))) return;
   const data: ActionResultJob = { userId, pendingActionId: payload.id, status: payload.status };
-  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload.id}:${payload.status}` });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    await runAsSystem(() => handleActionResult(data));
+    return;
   }
+  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload.id}:${payload.status}` });
 }
 
 /** The job: records the event once, then lets the agent say one sentence about it. */

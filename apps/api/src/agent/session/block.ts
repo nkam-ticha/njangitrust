@@ -24,6 +24,8 @@ export interface SessionFacts {
   /** PRIVATE: open votes the member can still cast; GROUP: open proposals of the group. */
   openVotes: number | null;
   otherGroups: string[];
+  /** Recent group chat lines when answering @njangi in the group channel. */
+  recentChat?: string[];
 }
 
 const T = {
@@ -80,6 +82,11 @@ export function buildSessionBlock(facts: SessionFacts): string {
   if (facts.openVotes !== null) lines.push(`openVotes: ${facts.openVotes}`);
   if (facts.channel === 'PRIVATE' && facts.otherGroups.length) {
     lines.push(`otherGroups: ${facts.otherGroups.map(clean).join(', ')}`);
+  }
+  if (facts.channel === 'GROUP' && facts.recentChat?.length) {
+    lines.push(
+      `recentGroupChat:\n${facts.recentChat.map((line) => `  - ${clean(line).slice(0, 200)}`).join('\n')}`,
+    );
   }
   return `<session>\n${lines.join('\n')}\n</session>`;
 }

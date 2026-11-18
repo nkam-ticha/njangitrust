@@ -23865,36 +23865,36 @@ async function sealClawbackReleases(tx2, input2) {
     debtUnpaid: (seq) => unpaid.has(seq)
   });
   const credited2 = /* @__PURE__ */ new Set();
-  for (const release3 of plan) {
+  for (const release2 of plan) {
     await appendLedgerEntry(tx2, input2.groupId, {
-      type: release3.type,
+      type: release2.type,
       occurredAt: input2.now.toISOString(),
       roundId: null,
-      membershipId: release3.membershipId,
+      membershipId: release2.membershipId,
       refType: "LedgerTransaction",
       refId: returned.id,
       descriptionFr: "Dette de secours lib\xE9r\xE9e",
       descriptionEn: "Solidarity debt released",
-      metadata: release3.metadata,
-      postings: release3.postings
+      metadata: release2.metadata,
+      postings: release2.postings
     });
-    const debt = unpaid.get(release3.metadata.clawbackSeq);
-    if (release3.fromDebt > 0 && debt) {
+    const debt = unpaid.get(release2.metadata.clawbackSeq);
+    if (release2.fromDebt > 0 && debt) {
       await tx2.obligation.update({ where: { id: debt.id }, data: { status: "CANCELLED" } });
-      if (release3.debtLeft > 0) {
+      if (release2.debtLeft > 0) {
         await tx2.obligation.create({
           data: {
             groupId: input2.groupId,
-            membershipId: release3.membershipId,
+            membershipId: release2.membershipId,
             kind: "CORRECTION",
-            amount: release3.debtLeft,
+            amount: release2.debtLeft,
             dueAt: debt.dueAt,
-            clawbackSeq: release3.metadata.clawbackSeq
+            clawbackSeq: release2.metadata.clawbackSeq
           }
         });
       }
     }
-    if (release3.toPayable > 0) credited2.add(release3.membershipId);
+    if (release2.toPayable > 0) credited2.add(release2.membershipId);
   }
   if (plan.length > 0) await assertSoundLedger(tx2, input2.groupId);
   return [...credited2];
@@ -29735,12 +29735,16 @@ turn to carry out what you offered. Always call the tool first before saying a
 card is ready, and say "Voici la carte" / "La carte est pr\xEAte" / "Here is the
 card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
 you have no pending question or no record of a question you just asked. For
-requests to summarize or read group chat messages or notes, call summarize_unread
-(or search_chat).
+requests to summarize or read group chat messages or notes in private chat, call
+summarize_unread (or search_chat). In the group chat (channel: GROUP), answer
+greetings, general group questions, and questions about the group discussion
+(from recentGroupChat in <session>) directly in the group; only call
+reply_privately when a member asks about their own personal financial situation
+or asks you to prepare an action card.
 `;
 
 // src/agent/prompts/index.ts
-var PROMPT_VERSION = "2026-11-18.6";
+var PROMPT_VERSION = "2026-11-18.7";
 function systemPrompt() {
   return SYSTEM_PROMPT_TEXT;
 }
@@ -30205,7 +30209,7 @@ var preferenceSpecs = {
     category: "reading",
     channels: GROUP_ONLY,
     name: "reply_privately",
-    description: "Group chat only: use for any question about the asking member\u2019s own situation (what they owe, their debts, turn, money, loan) or any request to do something. The server tells the group you answered privately and continues in the member\u2019s private conversation.",
+    description: "Group chat only: use ONLY when the asking member asks about their own personal financial situation (what they personally owe, their personal debts, their personal loan) or asks you to prepare an action/confirmation card. Do NOT call this for greetings, general group questions, or group chat summaries: answer those directly in the group.",
     args: s({}),
     example: {}
   })
@@ -30979,6 +30983,12 @@ function buildSessionBlock(facts) {
   if (facts.openVotes !== null) lines.push(`openVotes: ${facts.openVotes}`);
   if (facts.channel === "PRIVATE" && facts.otherGroups.length) {
     lines.push(`otherGroups: ${facts.otherGroups.map(clean).join(", ")}`);
+  }
+  if (facts.channel === "GROUP" && facts.recentChat?.length) {
+    lines.push(
+      `recentGroupChat:
+${facts.recentChat.map((line2) => `  - ${clean(line2).slice(0, 200)}`).join("\n")}`
+    );
   }
   return `<session>
 ${lines.join("\n")}
@@ -32419,6 +32429,7 @@ function getLlm() {
 
 // src/agent/session/facts.ts
 init_logger();
+init_prisma();
 
 // src/agent/ports.ts
 var ports = {};
@@ -32440,6 +32451,29 @@ async function gatherSessionFacts(ctx) {
   const active = groups.find((g) => g.group.id === ctx.groupId) ?? null;
   let openVotes = null;
   let money4 = null;
+  let recentChat;
+  if (active && ctx.channel === "GROUP") {
+    try {
+      const rows = await getPrisma().message.findMany({
+        where: {
+          groupId: active.group.id,
+          deletedAt: null,
+          hiddenByAdminAt: null,
+          text: { not: null },
+          kind: { in: ["TEXT", "AGENT"] }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 15,
+        select: {
+          text: true,
+          author: { select: { user: { select: { name: true } } } }
+        }
+      });
+      recentChat = rows.reverse().map((m) => `${m.author?.user.name ?? "Njangi"}: ${m.text ?? ""}`);
+    } catch {
+      recentChat = void 0;
+    }
+  }
   if (active && active.group.status !== "FORMING") {
     const open2 = await listProposals(ctx.userId, active.group.id, { status: "OPEN" });
     openVotes = ctx.channel === "PRIVATE" ? open2.filter((v) => v.viewer.canVote).length : open2.length;
@@ -32469,7 +32503,8 @@ async function gatherSessionFacts(ctx) {
     } : null,
     money: money4,
     openVotes,
-    otherGroups: groups.filter((g) => g.group.id !== ctx.groupId).map((g) => g.group.name)
+    otherGroups: groups.filter((g) => g.group.id !== ctx.groupId).map((g) => g.group.name),
+    ...recentChat && recentChat.length > 0 ? { recentChat } : {}
   };
 }
 
@@ -33424,9 +33459,6 @@ init_prisma();
 init_registry3();
 import { randomUUID as randomUUID13 } from "node:crypto";
 var log24 = componentLogger("jobs");
-var DEFAULT_BATCH_SIZE = 20;
-var MAX_BATCH_SIZE = 100;
-var LEASE_MS2 = 6e4;
 var MAX_ATTEMPTS = 8;
 async function scheduleAt(name, data, at, jobId) {
   if (!getJobDefinition(name)) throw new Error(`Unknown job ${name}`);
@@ -33438,80 +33470,8 @@ async function scheduleAt(name, data, at, jobId) {
       "payload" = EXCLUDED."payload", "runAt" = LEAST("DeploymentJob"."runAt", EXCLUDED."runAt"), "updatedAt" = NOW()
     WHERE "DeploymentJob"."status" IN ('PENDING', 'RETRY')`;
 }
-async function claimBatch(limit, options = {}) {
-  const only = options.onlyPrefix ? `${options.onlyPrefix}%` : null;
-  const except = options.exceptPrefix ? `${options.exceptPrefix}%` : null;
-  const leaseToken = randomUUID13();
-  const dueAt = demoClockOffsetMs() > 0 ? clock.now() : null;
-  await getPrisma().$executeRaw`
-    UPDATE "DeploymentJob" SET "status"='DEAD', "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW()
-    WHERE "status"='RUNNING' AND "leaseUntil" < NOW() AND "attempts" >= "maxAttempts"`;
-  return getPrisma().$queryRaw`
-    WITH candidates AS (
-      SELECT "id" FROM "DeploymentJob"
-      WHERE (("status" IN ('PENDING', 'RETRY') AND "runAt" <= COALESCE(${dueAt}::timestamptz, NOW()))
-        OR ("status" = 'RUNNING' AND "leaseUntil" < NOW() AND "attempts" < "maxAttempts"))
-        AND (${only}::text IS NULL OR "name" LIKE ${only})
-        AND (${except}::text IS NULL OR "name" NOT LIKE ${except})
-      ORDER BY "runAt", "createdAt"
-      FOR UPDATE SKIP LOCKED LIMIT ${limit}
-    )
-    UPDATE "DeploymentJob" j SET "status" = 'RUNNING', "leaseUntil" = NOW() + (${LEASE_MS2} * INTERVAL '1 millisecond'),
-      "leaseToken" = ${leaseToken}, "attempts" = j."attempts" + 1, "updatedAt" = NOW()
-    FROM candidates c WHERE j."id" = c."id"
-    RETURNING j."id", j."name", j."payload", j."attempts", j."leaseToken"`;
-}
-async function finish2(job) {
-  await getPrisma().$executeRaw`UPDATE "DeploymentJob" SET "status"='SUCCEEDED', "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW() WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
-}
-async function release2(job) {
-  await getPrisma().$executeRaw`
-    UPDATE "DeploymentJob" SET "status"='PENDING', "attempts"=GREATEST("attempts" - 1, 0),
-      "leaseUntil"=NULL, "leaseToken"=NULL, "updatedAt"=NOW()
-    WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
-}
-async function fail2(job, error) {
-  const message = error instanceof Error ? error.message.slice(0, 1e3) : "Job failed";
-  const delay = Math.min(5e3 * 2 ** Math.max(0, job.attempts - 1), 3e5);
-  await getPrisma().$executeRaw`
-    UPDATE "DeploymentJob" SET "status"=CASE WHEN "attempts" >= "maxAttempts" THEN 'DEAD' ELSE 'RETRY' END,
-      "runAt"=NOW() + (${delay} * INTERVAL '1 millisecond'), "leaseUntil"=NULL, "leaseToken"=NULL,
-      "lastError"=${message}, "updatedAt"=NOW() WHERE "id"=${job.id} AND "leaseToken"=${job.leaseToken}`;
-}
-async function processDueJobs(requestedLimit = DEFAULT_BATCH_SIZE, options = {}) {
-  const limit = Math.max(
-    1,
-    Math.min(MAX_BATCH_SIZE, Math.floor(requestedLimit) || DEFAULT_BATCH_SIZE)
-  );
-  const jobs = await claimBatch(limit, options);
-  let succeeded = 0;
-  let failed = 0;
-  let released = 0;
-  for (const job of jobs) {
-    if (options.deadlineMs !== void 0 && clock.nowMs() >= options.deadlineMs) {
-      await release2(job);
-      released++;
-      continue;
-    }
-    const definition = getJobDefinition(job.name);
-    try {
-      if (!definition) throw new Error(`No processor registered for ${job.name}`);
-      const payload5 = typeof job.payload === "string" ? JSON.parse(job.payload) : job.payload;
-      await definition.process({ data: payload5, name: job.name, id: job.id });
-      await finish2(job);
-      succeeded++;
-    } catch (error) {
-      await fail2(job, error);
-      log24.error({ job: job.name, jobId: job.id, err: error }, "job failed");
-      failed++;
-    }
-  }
-  return { claimed: jobs.length, succeeded, failed, released };
-}
-var SLOW_JOB_PREFIX = "agent.";
 
 // src/agent/service/group.ts
-init_pending_work();
 init_request_context();
 
 // src/agent/runtime/personal.ts
@@ -33551,10 +33511,11 @@ async function groupAnswer(ctx, text) {
 var GROUP_MENTION_JOB = "agent.groupMention";
 async function onGroupMention(mention) {
   if (!agentPorts().chat || !agentConfig().configured) return;
-  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    await runAsSystem(() => answerGroupMention(mention));
+    return;
   }
+  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
 }
 async function answerGroupMention(mention) {
   const chat = agentPorts().chat;
@@ -33606,7 +33567,6 @@ async function answerGroupMention(mention) {
 init_dto();
 init_dispatch();
 init_logger();
-init_pending_work();
 init_request_context();
 init_pending_actions4();
 
@@ -33699,10 +33659,11 @@ async function onPendingActionUpdated(userId, payload5) {
   if (!isEventStatus(payload5.status) || !agentConfig().configured) return;
   if (!await dbConversationStore.findPreparing(userId, payload5.id)) return;
   const data = { userId, pendingActionId: payload5.id, status: payload5.status };
-  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload5.id}:${payload5.status}` });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    await runAsSystem(() => handleActionResult(data));
+    return;
   }
+  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload5.id}:${payload5.status}` });
 }
 async function handleActionResult(job) {
   await withTurnLease(job.userId, () => react(job.userId, job.pendingActionId, job.status), {
@@ -33862,7 +33823,6 @@ var chatAdapter = {
     const message = await db.message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
       select: {
-        createdAt: true,
         text: true,
         replyTo: {
           select: {
@@ -33875,33 +33835,7 @@ var chatAdapter = {
     });
     if (!message?.text) return null;
     const quoted = message.replyTo && !message.replyTo.deletedAt && !message.replyTo.hiddenByAdminAt && message.replyTo.text ? ` ("${message.replyTo.text}")` : "";
-    const asksAboutChat = /\b(summar\w*|resum\w*|message\w*|chat|discu\w*|note\w*|said|dit|parl\w*|talk\w*|quoi de neuf)\b/i.test(
-      fold(message.text)
-    );
-    if (!asksAboutChat) return `${message.text}${quoted}`;
-    const recent = await db.message.findMany({
-      where: {
-        groupId,
-        id: { not: messageId },
-        createdAt: { lte: message.createdAt },
-        deletedAt: null,
-        hiddenByAdminAt: null,
-        text: { not: null },
-        kind: { in: ["TEXT", "AGENT"] }
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 15,
-      select: {
-        text: true,
-        author: { select: { user: { select: { name: true } } } }
-      }
-    });
-    if (recent.length === 0) return `${message.text}${quoted}`;
-    const lines = recent.reverse().map((m) => `- ${m.author?.user.name ?? "Njangi"}: ${m.text}`).join("\n");
-    return `${message.text}${quoted}
-
-[Messages r\xE9cents du groupe / Recent group messages:
-${lines}]`;
+    return `${message.text}${quoted}`;
   },
   async postAgentReply({ groupId, text, replyToMessageId }) {
     await postAgentMessage(groupId, text, void 0, replyToMessageId);

@@ -12081,6 +12081,7 @@ import { z as z4 } from "zod";
 var int, monthlyAnchorKindSchema, monthlyAnchorSchema, payoutTimeSchema, ruleSetParamsSchema, ruleSetInputSchema, createGroupRequestSchema, groupSchema, myMembershipSchema, groupCreatedSchema, groupOverviewSchema, publicMemberSchema, adminMemberSchema, membersResponseSchema, ruleSetSchema, rulesResponseSchema;
 var init_groups = __esm({
   "../../packages/shared/src/contracts/groups.ts"() {
+    "use strict";
     init_common2();
     init_me();
     int = z4.number().int();
@@ -26376,12 +26377,16 @@ turn to carry out what you offered. Always call the tool first before saying a
 card is ready, and say "Voici la carte" / "La carte est pr\xEAte" / "Here is the
 card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
 you have no pending question or no record of a question you just asked. For
-requests to summarize or read group chat messages or notes, call summarize_unread
-(or search_chat).
+requests to summarize or read group chat messages or notes in private chat, call
+summarize_unread (or search_chat). In the group chat (channel: GROUP), answer
+greetings, general group questions, and questions about the group discussion
+(from recentGroupChat in <session>) directly in the group; only call
+reply_privately when a member asks about their own personal financial situation
+or asks you to prepare an action card.
 `;
 
 // src/agent/prompts/index.ts
-var PROMPT_VERSION = "2026-11-18.6";
+var PROMPT_VERSION = "2026-11-18.7";
 function systemPrompt() {
   return SYSTEM_PROMPT_TEXT;
 }
@@ -26846,7 +26851,7 @@ var preferenceSpecs = {
     category: "reading",
     channels: GROUP_ONLY,
     name: "reply_privately",
-    description: "Group chat only: use for any question about the asking member\u2019s own situation (what they owe, their debts, turn, money, loan) or any request to do something. The server tells the group you answered privately and continues in the member\u2019s private conversation.",
+    description: "Group chat only: use ONLY when the asking member asks about their own personal financial situation (what they personally owe, their personal debts, their personal loan) or asks you to prepare an action/confirmation card. Do NOT call this for greetings, general group questions, or group chat summaries: answer those directly in the group.",
     args: s({}),
     example: {}
   })
@@ -27577,6 +27582,12 @@ function buildSessionBlock(facts) {
   if (facts.openVotes !== null) lines.push(`openVotes: ${facts.openVotes}`);
   if (facts.channel === "PRIVATE" && facts.otherGroups.length) {
     lines.push(`otherGroups: ${facts.otherGroups.map(clean).join(", ")}`);
+  }
+  if (facts.channel === "GROUP" && facts.recentChat?.length) {
+    lines.push(
+      `recentGroupChat:
+${facts.recentChat.map((line2) => `  - ${clean(line2).slice(0, 200)}`).join("\n")}`
+    );
   }
   return `<session>
 ${lines.join("\n")}
@@ -29017,6 +29028,7 @@ function getLlm() {
 
 // src/agent/session/facts.ts
 init_logger();
+init_prisma();
 
 // src/agent/ports.ts
 var ports = {};
@@ -29035,6 +29047,29 @@ async function gatherSessionFacts(ctx) {
   const active = groups.find((g) => g.group.id === ctx.groupId) ?? null;
   let openVotes = null;
   let money4 = null;
+  let recentChat;
+  if (active && ctx.channel === "GROUP") {
+    try {
+      const rows = await getPrisma().message.findMany({
+        where: {
+          groupId: active.group.id,
+          deletedAt: null,
+          hiddenByAdminAt: null,
+          text: { not: null },
+          kind: { in: ["TEXT", "AGENT"] }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 15,
+        select: {
+          text: true,
+          author: { select: { user: { select: { name: true } } } }
+        }
+      });
+      recentChat = rows.reverse().map((m) => `${m.author?.user.name ?? "Njangi"}: ${m.text ?? ""}`);
+    } catch {
+      recentChat = void 0;
+    }
+  }
   if (active && active.group.status !== "FORMING") {
     const open2 = await listProposals(ctx.userId, active.group.id, { status: "OPEN" });
     openVotes = ctx.channel === "PRIVATE" ? open2.filter((v) => v.viewer.canVote).length : open2.length;
@@ -29064,7 +29099,8 @@ async function gatherSessionFacts(ctx) {
     } : null,
     money: money4,
     openVotes,
-    otherGroups: groups.filter((g) => g.group.id !== ctx.groupId).map((g) => g.group.name)
+    otherGroups: groups.filter((g) => g.group.id !== ctx.groupId).map((g) => g.group.name),
+    ...recentChat && recentChat.length > 0 ? { recentChat } : {}
   };
 }
 
@@ -30206,7 +30242,6 @@ async function processCronRun(startedMs = clock.nowMs()) {
 }
 
 // src/agent/service/group.ts
-init_pending_work();
 init_request_context();
 
 // src/agent/runtime/personal.ts
@@ -30246,10 +30281,11 @@ async function groupAnswer(ctx, text) {
 var GROUP_MENTION_JOB = "agent.groupMention";
 async function onGroupMention(mention) {
   if (!agentPorts().chat || !agentConfig().configured) return;
-  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    await runAsSystem(() => answerGroupMention(mention));
+    return;
   }
+  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
 }
 async function answerGroupMention(mention) {
   const chat = agentPorts().chat;
@@ -30301,7 +30337,6 @@ async function answerGroupMention(mention) {
 init_dto();
 init_dispatch();
 init_logger();
-init_pending_work();
 init_request_context();
 init_pending_actions4();
 
@@ -30394,10 +30429,11 @@ async function onPendingActionUpdated(userId, payload5) {
   if (!isEventStatus(payload5.status) || !agentConfig().configured) return;
   if (!await dbConversationStore.findPreparing(userId, payload5.id)) return;
   const data = { userId, pendingActionId: payload5.id, status: payload5.status };
-  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload5.id}:${payload5.status}` });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    await runAsSystem(() => handleActionResult(data));
+    return;
   }
+  await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload5.id}:${payload5.status}` });
 }
 async function handleActionResult(job) {
   await withTurnLease(job.userId, () => react(job.userId, job.pendingActionId, job.status), {
@@ -30557,7 +30593,6 @@ var chatAdapter = {
     const message = await db.message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
       select: {
-        createdAt: true,
         text: true,
         replyTo: {
           select: {
@@ -30570,33 +30605,7 @@ var chatAdapter = {
     });
     if (!message?.text) return null;
     const quoted = message.replyTo && !message.replyTo.deletedAt && !message.replyTo.hiddenByAdminAt && message.replyTo.text ? ` ("${message.replyTo.text}")` : "";
-    const asksAboutChat = /\b(summar\w*|resum\w*|message\w*|chat|discu\w*|note\w*|said|dit|parl\w*|talk\w*|quoi de neuf)\b/i.test(
-      fold(message.text)
-    );
-    if (!asksAboutChat) return `${message.text}${quoted}`;
-    const recent = await db.message.findMany({
-      where: {
-        groupId,
-        id: { not: messageId },
-        createdAt: { lte: message.createdAt },
-        deletedAt: null,
-        hiddenByAdminAt: null,
-        text: { not: null },
-        kind: { in: ["TEXT", "AGENT"] }
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 15,
-      select: {
-        text: true,
-        author: { select: { user: { select: { name: true } } } }
-      }
-    });
-    if (recent.length === 0) return `${message.text}${quoted}`;
-    const lines = recent.reverse().map((m) => `- ${m.author?.user.name ?? "Njangi"}: ${m.text}`).join("\n");
-    return `${message.text}${quoted}
-
-[Messages r\xE9cents du groupe / Recent group messages:
-${lines}]`;
+    return `${message.text}${quoted}`;
   },
   async postAgentReply({ groupId, text, replyToMessageId }) {
     await postAgentMessage(groupId, text, void 0, replyToMessageId);

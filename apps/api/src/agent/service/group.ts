@@ -11,8 +11,7 @@ import { agentConfig } from '../config';
 import { tryConsumeAgentMessage } from '../guards/rate-limit';
 import { withTurnLease } from '../guards/turn-lease';
 import { currentJobScheduler, dispatchJob } from '../../jobs/dispatch';
-import { processDueJobs, scheduleAt, SLOW_JOB_PREFIX } from '../../jobs/queues';
-import { trackPendingWork } from '../../lib/pending-work';
+import { scheduleAt } from '../../jobs/queues';
 import { runAsSystem } from '../../lib/request-context';
 import { agentPorts } from '../ports';
 import { looksPersonal } from '../runtime/personal';
@@ -67,10 +66,13 @@ export const GROUP_MENTION_JOB = 'agent.groupMention';
  */
 export async function onGroupMention(mention: GroupMention): Promise<void> {
   if (!agentPorts().chat || !agentConfig().configured) return;
-  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
   if (currentJobScheduler() === scheduleAt) {
-    trackPendingWork(runAsSystem(() => processDueJobs(1, { onlyPrefix: SLOW_JOB_PREFIX })));
+    // Run this exact mention immediately in the current serverless/HTTP invocation so it never
+    // sits behind older jobs in DeploymentJob or misses due to container/database clock skew.
+    await runAsSystem(() => answerGroupMention(mention));
+    return;
   }
+  await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
 }
 
 /** The job: answers the mention. A failure is logged and not retried (no double answer). */
