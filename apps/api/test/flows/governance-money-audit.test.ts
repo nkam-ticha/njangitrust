@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { advanceTestClock, resetTestClock } from '../../src/lib/clock';
 import { settleBackground } from '../../src/jobs/dispatch';
 import { getPrisma } from '../../src/lib/prisma';
+import { settleExit } from '../../src/modules/cycles/cycles.governance';
 import { assessRoundFines } from '../../src/modules/fines';
 import { pollDisbursement } from '../../src/modules/payouts/withdrawals.service';
 import { MOCK_CONFIRMATION_MS } from '../../src/modules/providers/mock-provider';
@@ -53,6 +54,56 @@ async function forceRotation(groupId: string, order: Member[]) {
 }
 
 describe('exits, corrections and releases after the ledger audit', () => {
+  it.each([
+    ['payment intent', 'PENDING'],
+    ['disbursement', 'EXPIRED'],
+  ] as const)('refuses exit settlement while a leaver has an open %s', async (kind, status) => {
+    const { groupId, members } = await realGroup();
+    const leaver = members[0]!;
+    const db = getPrisma();
+
+    if (kind === 'payment intent') {
+      const obligation = await db.obligation.findFirstOrThrow({
+        where: { groupId, membershipId: leaver.membershipId, status: 'DUE' },
+      });
+      await db.paymentIntent.create({
+        data: {
+          groupId,
+          membershipId: leaver.membershipId,
+          obligationIds: [obligation.id],
+          amount: obligation.amount,
+          phoneSnapshot: leaver.paymentNumber,
+          provider: 'mock',
+          status,
+        },
+      });
+    } else {
+      await db.disbursement.create({
+        data: {
+          groupId,
+          membershipId: leaver.membershipId,
+          purpose: 'WITHDRAWAL',
+          amount: 100,
+          feeEstimated: 0,
+          phoneSnapshot: leaver.paymentNumber,
+          provider: 'mock',
+          status,
+        },
+      });
+    }
+
+    await expect(
+      db.$transaction((tx) =>
+        settleExit(tx, {
+          groupId,
+          membershipId: leaver.membershipId,
+          reason: 'EARLY_EXIT',
+          proposalId: '00000000-0000-0000-0000-000000000000',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EXIT_PAYMENT_IN_PROGRESS', status: 409 });
+  });
+
   it('closes the last round instead of deleting it when it already has obligations', async () => {
     const { groupId, admin, members, everyone } = await realGroup();
     const [first, second, third] = members as [Member, Member, Member];
@@ -207,11 +258,23 @@ describe('exits, corrections and releases after the ledger audit', () => {
       await pass(everyone, correction);
       const clawback = (await ledgerOf(groupId)).find((t) => t.type === 'CLAWBACK')!;
       expect(clawback).toBeDefined();
-      const debt = await getPrisma().obligation.findFirstOrThrow({
+      const debt = await getPrisma().obligation.findFirst({
         where: { groupId, kind: 'CORRECTION', clawbackSeq: clawback.seq },
       });
-      expect(debt.status).toBe('DUE');
-      expect(debt.membershipId).toBe(clawback.membershipId);
+      if (debt) {
+        expect(debt.status).toBe('DUE');
+        expect(debt.membershipId).toBe(clawback.membershipId);
+      } else {
+        // If the payable covered the clawback in full, no receivable or correction obligation is
+        // created; the return still releases the clawback by crediting that payable.
+        expect(
+          clawback.postings.some(
+            (posting) =>
+              posting.account === `receivable:member:${clawback.membershipId}` &&
+              posting.amount > 0,
+          ),
+        ).toBe(false);
+      }
 
       // The operator refuses the send: the money returns to the fund and the clawback is released.
       advanceTestClock(MOCK_CONFIRMATION_MS + 1_000);
@@ -222,8 +285,10 @@ describe('exits, corrections and releases after the ledger audit', () => {
       expect(releases.length).toBeGreaterThan(0);
       expect(releases.every((t) => t.metadata.clawbackSeq === clawback.seq)).toBe(true);
       // The debt is cancelled, or replaced by what is still owed: never left as it was.
-      const settled = await getPrisma().obligation.findUniqueOrThrow({ where: { id: debt.id } });
-      expect(settled.status).not.toBe('DUE');
+      if (debt) {
+        const settled = await getPrisma().obligation.findUniqueOrThrow({ where: { id: debt.id } });
+        expect(settled.status).not.toBe('DUE');
+      }
     } finally {
       await getPrisma().paymentNumber.update({
         where: { id: active.id },

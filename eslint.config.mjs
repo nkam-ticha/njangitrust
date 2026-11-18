@@ -39,8 +39,12 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.expo/**',
       '**/web-build/**',
+      // Temporary browser/QA profiles generated during local runs.
+      '**/.tmp-*/**',
       'apps/api/prisma/migrations/**',
       'apps/api/generated/**',
+      // Bundled Vercel functions are produced from src/ and are validated by the build instead.
+      'apps/api/api/**/*.mjs',
       'docs/design/board/**',
       '**/*.config.js',
       // Plain Node helper scripts that run outside any TypeScript project.
@@ -75,7 +79,7 @@ export default tseslint.config(
   {
     files: ['**/*.{js,mjs,cjs}'],
     ...tseslint.configs.disableTypeChecked,
-    languageOptions: { globals: globals.node },
+    languageOptions: { globals: globals.node, parserOptions: { projectService: false } },
   },
   {
     files: ['packages/rules/src/**/*.ts'],

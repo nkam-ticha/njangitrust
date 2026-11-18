@@ -161,6 +161,7 @@ enum DisbursementStatus {
   CREATED
   PENDING
   SUCCESSFUL
+  REFUNDED
   FAILED
   EXPIRED
 }
@@ -198,6 +199,7 @@ enum LoanStatus {
   REPAID
   OVERDUE
   EXPIRED
+  REFUNDED
 }
 
 /// R7. R7.1: one active loan per member (partial unique index in SQL).

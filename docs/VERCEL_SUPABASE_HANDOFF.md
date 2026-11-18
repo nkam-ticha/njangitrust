@@ -244,3 +244,17 @@ has been corrected and `/health` now reports the database as up. Apply the
 same parameters to any replacement production URL. See Supabase's
 [PostgreSQL connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres)
 for SSL modes and certificate options.
+
+## Operator-confirmed disbursement refunds (D22.1)
+
+When the provider confirms that it reversed a completed withdrawal, loan or
+solidarity payout, the trusted operator callback is
+`POST /ops/disbursements/:disbursementId/refund`. Configure a dedicated
+`DISBURSEMENT_REFUND_SECRET` in the API environment; it must be a random value
+of at least 32 characters and must not reuse `CRON_SECRET`. Send it as a Bearer
+token with JSON `{ "feeKept": <whole FCFA>, "reason": "..." }`. `feeKept` must
+come from the operator's reversal record; the API never infers it. Repeated
+callbacks are idempotent. The handler rejects incomplete sends and loan
+refunds while an installment payment is still in flight, records the ledger
+entry and system audit log atomically, and releases solidarity clawbacks when
+applicable. Keep this secret only in the backend environment.

@@ -1,4 +1,4 @@
-// The production dependencies of a turn: OpenRouter (or the test model), the tool registry, the
+// The production dependencies of a turn: the model providers (or the test model), the tool registry, the
 // PostgreSQL store, the session facts from the services, realtime to the member's room, the audit.
 import { componentLogger } from '../../lib/logger';
 import { audit } from '../../modules/audit';

@@ -37,6 +37,18 @@ export function loadTestEnv(): Record<string, string> {
     STORAGE_DRIVER: 'local',
     STORAGE_LOCAL_DIR: path.join(tmpdir(), 'njangitrust-test-storage'),
     PAYMENT_PROVIDER: 'mock',
+    DISBURSEMENT_REFUND_SECRET: 'test-operator-refund-secret-0123456789',
+    // Tests never use the developer's model keys from apps/api/.env: the agent is off unless a
+    // test installs a scripted model, so nothing here can reach a provider.
+    OPENROUTER_API_KEY: '',
+    OPENROUTER_API_KEYS: '',
+    OPENROUTER_MODEL: '',
+    GROQ_API_KEY: '',
+    GROQ_API_KEYS: '',
+    GROQ_MODEL: '',
+    GOOGLE_AI_API_KEY: '',
+    GOOGLE_AI_API_KEYS: '',
+    GOOGLE_AI_MODEL: '',
     PUBLIC_BASE_URL: 'http://localhost:3000',
     WEB_ORIGINS: TEST_ORIGIN,
   };

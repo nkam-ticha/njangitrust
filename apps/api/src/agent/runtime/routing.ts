@@ -31,7 +31,8 @@ export async function routeCategories(
       model,
       purpose: 'routing',
       temperature: 0,
-      maxTokens: 40,
+      // A reasoning model thinks before it answers: 40 tokens would leave it nothing to say.
+      maxTokens: 300,
       tools: [],
       messages: [
         { role: 'system', content: ROUTING_PROMPT },

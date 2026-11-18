@@ -25,9 +25,9 @@ const print = (line: string) => process.stdout.write(`${line}\n`);
 const NO_KEY = [
   'Njangi is not configured, so the live evaluation cannot run.',
   '',
-  '  1. Put these two lines in apps/api/.env (and in the API environment on Vercel):',
-  '       OPENROUTER_API_KEY=<your OpenRouter key>',
-  '       OPENROUTER_MODEL=<a model id from openrouter.ai/models, see docs/AGENT.md>',
+  '  1. Put a provider’s key and model in apps/api/.env (and in the API environment on Vercel):',
+  '       OPENROUTER_API_KEY / OPENROUTER_MODEL, GROQ_API_KEY / GROQ_MODEL or',
+  '       GOOGLE_AI_API_KEY / GOOGLE_AI_MODEL (docs/AGENT.md), then check:  pnpm llm:check',
   '  2. Run:  pnpm agent:smoke     (one harmless message through the real API)',
   '  3. Run:  pnpm agent:eval      (the 30 scenarios, three times each)',
   '',

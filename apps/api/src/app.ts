@@ -16,6 +16,7 @@ import { agentHealth } from './agent';
 import { getPrisma } from './lib/prisma';
 import { registerActionHandlers, registerJobs } from './modules/register';
 import { campayWebhookRoutes } from './modules/providers';
+import { operatorRefundRoutes } from './modules/payouts/operator-refunds.routes';
 import { getStorage, LocalStorage, LOCAL_STORAGE_ROUTE } from './storage';
 import { localStorageRoutes } from './storage/local.routes';
 import { attachSupabaseRealtimePublisher } from './realtime/emitter';
@@ -64,6 +65,7 @@ export function createApp(): Express {
   app.use(express.json({ limit: JSON_LIMIT, strict: true, type: 'application/json' }));
   // Spec 2.6.4: the payment provider's callback (signed; it only triggers a status check).
   app.use('/webhooks/payments/campay', campayWebhookRoutes());
+  app.use('/ops', operatorRefundRoutes());
   app.use('/v1', v1Router());
 
   app.use(notFound());

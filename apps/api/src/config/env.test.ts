@@ -47,6 +47,13 @@ describe('environment (spec 2.16)', () => {
     );
   });
 
+  it('accepts a separate, sufficiently long operator refund secret', () => {
+    expect(
+      parseEnv({ ...valid, DISBURSEMENT_REFUND_SECRET: 'r'.repeat(32) }).DISBURSEMENT_REFUND_SECRET,
+    ).toBe('r'.repeat(32));
+    expect(() => parseEnv({ ...valid, DISBURSEMENT_REFUND_SECRET: 'short' })).toThrow(EnvError);
+  });
+
   it('requires the S3 settings with the s3 driver and CamPay credentials with campay', () => {
     expect(() => parseEnv({ ...valid, STORAGE_DRIVER: 's3' })).toThrow(/S3_BUCKET/);
     expect(() => parseEnv({ ...valid, PAYMENT_PROVIDER: 'campay' })).toThrow(/CAMPAY_USERNAME/);
@@ -132,5 +139,31 @@ describe('FEE_SCHEDULE with a per-thousand part', () => {
         FEE_SCHEDULE: '{"collection":0,"disbursement":0,"collectionPermille":2.5}',
       }),
     ).toThrow();
+  });
+});
+
+describe('model providers in the environment (docs/AGENT.md, D24)', () => {
+  it('has the providers’ own https addresses by default and accepts several keys', () => {
+    const env = parseEnv({
+      ...valid,
+      GROQ_API_KEY: 'g1',
+      GROQ_API_KEYS: 'g2, g3',
+      GROQ_MODEL: 'qwen/qwen3.8-27b',
+    });
+    expect(env.OPENROUTER_BASE_URL).toBe('https://openrouter.ai/api/v1');
+    expect(env.GROQ_BASE_URL).toBe('https://api.groq.com/openai/v1');
+    expect(env.GOOGLE_AI_BASE_URL).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
+    expect(env.GROQ_API_KEYS).toBe('g2, g3');
+    expect(env.GROQ_MAX_INPUT_TOKENS).toBe(3_500);
+    expect(env.LLM_PROVIDER_ORDER).toBe('openrouter,groq,google');
+  });
+
+  it.each([
+    ['GROQ_BASE_URL', 'http://api.groq.com/openai/v1'],
+    ['GROQ_BASE_URL', 'https://evil.example.com/openai/v1'],
+    ['OPENROUTER_BASE_URL', 'https://user:pw@openrouter.ai/api/v1'],
+    ['GOOGLE_AI_BASE_URL', 'https://generativelanguage.googleapis.com.evil.com/v1beta/openai'],
+  ])('refuses %s=%s: the key and the member’s text would go there', (name, value) => {
+    expect(() => parseEnv({ ...valid, [name]: value })).toThrow(EnvError);
   });
 });

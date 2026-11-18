@@ -1,6 +1,7 @@
 // Prompt-injection defences (spec 4.8 point 6, system prompt rule 6): everything that did not come
 // from the server is data. Tool results, summaries and events go to the model inside blocks that
 // their content cannot close or imitate; a member's text cannot fake one of these blocks either.
+import { redactTokens } from '../../lib/redact';
 import { maskPhonesDeep } from './phone-guard';
 
 /** A PIN or code the member typed next to the word for it: `mon PIN est 123456`. */
@@ -31,7 +32,8 @@ export function neutralise(text: string): string {
 }
 
 function neutraliseDeep(value: unknown): unknown {
-  if (typeof value === 'string') return neutralise(value);
+  // A link token or a JWT inside a chat message or a note never goes to a provider.
+  if (typeof value === 'string') return neutralise(redactTokens(value));
   if (Array.isArray(value)) return value.map(neutraliseDeep);
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, neutraliseDeep(v)]));
@@ -50,7 +52,7 @@ export function wrapToolResult(tool: string, result: unknown): string {
 
 /** The member's own message: their typed numbers stay (they may be the subject), blocks don't. */
 export function wrapMemberText(text: string): string {
-  return neutralise(maskTypedSecrets(text));
+  return neutralise(redactTokens(maskTypedSecrets(text)));
 }
 
 /** An action result written by the server (spec 4.5 step 5). */

@@ -23,7 +23,7 @@ export const actionSpecs = {
     name: 'pay',
     needs: 'money',
     description:
-      'Prepares paying the member’s obligations for a round (the oldest unpaid one when round is omitted), optionally with their due debts.',
+      'Prepares payment of the member’s obligations for a round (the oldest unpaid one when round is omitted), optionally with due debts. If the member does not name a round, omit round entirely; never pass a guessed value, null, or the string "None".',
     args: s({ round: roundArg.optional(), includeDueDebts: z.boolean().optional() }),
     example: {},
   }),
@@ -32,7 +32,7 @@ export const actionSpecs = {
     name: 'pay_debts',
     needs: 'money',
     description:
-      'Prepares paying the member’s due fines and installments (all due ones by default).',
+      'Prepares paying the member’s due fines and installments (all due ones by default). Use only when the member specifically asks to pay debts or fines; for a general request to pay, use pay so the oldest unpaid round is handled first.',
     args: s({ items: z.array(z.string().uuid()).min(1).max(50).optional() }),
     example: {},
   }),

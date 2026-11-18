@@ -28,6 +28,7 @@ import { runTool, type ToolRun } from '../tools/execute';
 import { toLlmTool, type ToolRegistry } from '../tools/registry';
 import type { AgentCtx } from '../types';
 import { HISTORY_LIMIT, historyMessages, memberMessage, systemMessage } from './messages';
+import { guidePrefetch } from './prefetch';
 import { routeCategories } from './routing';
 
 /** Tool calls the runtime runs in one step, at most. */
@@ -121,14 +122,25 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     ...(summary ? { after: new Date(summary.upTo) } : {}),
   });
   const sessionBlock = buildSessionBlock(await deps.sessionFacts(ctx));
+  // The member's message as every provider receives it: numbers replaced by markers, typed PINs
+  // and tokens masked. The routing call below gets this same text, never the raw one.
+  const asked = input.text
+    ? memberMessage(input.text, ctx.lang, input.fromGroup, ctx.numberSlots)
+    : null;
   const messages: LlmMessage[] = [
     systemMessage(sessionBlock, summary?.text ?? null),
     ...historyMessages(lines, ctx.lang),
-    ...(input.text ? [memberMessage(input.text, ctx.lang, input.fromGroup, ctx.numberSlots)] : []),
+    ...(asked ? [asked] : []),
   ];
+  // A how-to question gets the guide to the app before the first call (runtime/prefetch.ts).
+  const guide =
+    input.text && ctx.channel === 'PRIVATE' && deps.registry.get('get_app_guide')
+      ? guidePrefetch(input.text, ctx.lang)
+      : null;
+  if (guide) messages.push(...guide);
   const categories =
-    deps.toolRouting && input.text
-      ? await routeCategories(deps.llm, deps.model, input.text, callSignal())
+    deps.toolRouting && asked
+      ? await routeCategories(deps.llm, deps.model, asked.content ?? '', callSignal())
       : undefined;
   const tools = deps.registry.toolsFor(ctx, categories).map(toLlmTool);
 
@@ -138,6 +150,8 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
   );
   let reply: string | null = null;
   let privateReply = false;
+  /** Which provider and model answered each call of this turn (the audit records it). */
+  const answeredBy = new Set<string>();
   for (let step = 0; step < MAX_TOOL_STEPS && reply === null && !privateReply; step += 1) {
     if (remaining() < MIN_STEP_MS) break;
     let res: LlmResponse;
@@ -147,12 +161,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
         { onDelta: (delta) => guard.push(delta), signal: callSignal() },
       );
     } catch (error) {
-      // Out of time after tools already ran: keep what they prepared and end the turn plainly.
-      // With nothing done yet the failure goes up and becomes AGENT_UNAVAILABLE.
-      const timedOut = isLlmError(error) && ['LLM_ABORTED', 'LLM_TIMEOUT'].includes(error.code);
-      if (!timedOut || runs.length === 0) throw error;
+      // The model failed (out of time, or every provider rate-limited or down) after tools already
+      // ran: keep what they prepared, store and audit it, and end the turn plainly. Throwing here
+      // would lose the audit of those tools and make the member's retry prepare the same cards
+      // again. With nothing done yet, the failure goes up and becomes AGENT_UNAVAILABLE.
+      if (!isLlmError(error) || runs.length === 0) throw error;
       break;
     }
+    answeredBy.add(res.provider ? `${res.provider}:${res.model ?? deps.model}` : deps.model);
     if (res.toolCalls.length === 0) {
       reply = guard.finish();
       break;
@@ -160,7 +176,12 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     if (guard.emitted) deps.emit.delta({ turnId: ctx.turnId, text: '', reset: true });
     guard.reset();
     const calls = res.toolCalls.slice(0, MAX_CALLS_PER_STEP);
-    messages.push({ role: 'assistant', content: res.text || null, toolCalls: calls });
+    messages.push({
+      role: 'assistant',
+      content: res.text || null,
+      toolCalls: calls,
+      ...(res.provider ? { by: res.provider } : {}),
+    });
     for (const call of calls) {
       deps.emit.activity({ turnId: ctx.turnId, tool: activityName(call, deps.registry) });
       const run = await runTool(deps.registry, ctx, call);
@@ -171,6 +192,15 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
         content: wrapToolResult(call.name, run.modelData),
       });
       if (run.outcome.status === 'OK' && run.outcome.privateReply) privateReply = true;
+    }
+    if (!privateReply) {
+      messages.push({
+        role: 'system',
+        content:
+          ctx.lang === 'fr'
+            ? 'Write the next reply entirely in French, use tu, and copy all dates and amounts exactly from the session or tool results.'
+            : 'Write the next reply entirely in English, and copy all dates and amounts exactly from the session or tool results.',
+      });
     }
   }
   if (reply === null && !privateReply) {
@@ -186,7 +216,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
   const confidential = ok.some((o) => o.confidential);
   const switched = ok.find((o) => o.activeGroupId !== undefined);
   const stored = await persist(deps, input, runs, finalReply, confidential);
-  await auditTurn(deps, ctx, runs, stored.tools, confidential);
+  await auditTurn(deps, ctx, runs, stored.tools, confidential, [...answeredBy]);
   if (remaining() >= MIN_SUMMARY_MS) {
     await foldSummary(deps, conversation, older, ctx.lang, callSignal());
   }
@@ -262,6 +292,7 @@ async function auditTurn(
   runs: ToolRun[],
   rows: StoredMessage[],
   confidential: boolean,
+  answeredBy: string[],
 ): Promise<void> {
   for (const [i, run] of runs.entries()) {
     await deps.audit({
@@ -278,7 +309,7 @@ async function auditTurn(
     action: 'agent.turn',
     details: {
       promptVersion: PROMPT_VERSION,
-      model: deps.model,
+      model: answeredBy.length > 0 ? answeredBy.join(',') : deps.model,
       channel: ctx.channel,
       toolCalls: runs.length,
     },

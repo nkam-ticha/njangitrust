@@ -165,7 +165,23 @@ The owner asked for the smallest settings the operator allows, typed by the crea
 5. **Rule sets saved before this decision** have no `customPeriodMinutes`: it reads as the default 1 440 (`completeRuleSet`); nothing is rewritten.
 6. The monthly payout day (Q1) and payout time of day do not apply to a custom period.
 
+## D24. Model providers with failover, small contexts, and an app guide (2026-11-17)
+
+The owner chose three free model providers and asked that when one is rate-limited or down the next takes over at once, that a second set of accounts back them up, and that the assistant explains the app well. Spec 4.2 and 4.11 name OpenRouter only; this extends them.
+
+1. **Providers and order.** OpenRouter (`nvidia/nemotron-3.5-lightning:free`), then Groq (`qwen/qwen3.8-27b`), then Google AI Studio (`gemini-3.5-flash-lite`: Google is last because its models are often overloaded, and `gemini-3.8-flash` was refused with 503 in testing). Each is spoken to through its OpenAI-compatible endpoint, so one client class serves all three. Models come from `*_MODEL` variables, never from code. `LLM_PROVIDER_ORDER` reorders them.
+2. **Batches of accounts.** Extra keys go in `OPENROUTER_API_KEYS`, `GROQ_API_KEYS`, `GOOGLE_AI_API_KEYS` (comma separated). The first key of every provider is batch 1, the second key of every provider batch 2, and so on. A later batch is asked only when every entry of the earlier ones has failed or is resting. Six models today: two batches of three.
+3. **Failover rules.** A model call only produces text and tool calls; the runtime runs the tools. So moving a call to another provider can never replay money or a change. A failed entry rests (rate limit 60 s, outage and timeout 30 s, refused key 10 min) so the next messages skip it. Once any text has reached the member the call is never moved. Errors carry a code only; keys, requests and answers are never logged.
+4. **Handover keeps the work.** The new provider receives the conversation and this turn's tool calls and results, plus a short note that another model began the reply and that results above are facts not to fetch again. Gemini 3 needs a "thought signature" on every replayed function call: its own is kept, and calls made by other models get Google's documented placeholder.
+5. **Small context for small tiers.** A provider may have an input budget (`GROQ_MAX_INPUT_TOKENS`, default 3 500: Groq's free tier takes about 7 000 input tokens a minute; the full request is over 9 000). A larger request is cut to the system prompt, the current question, this turn's work (long results trimmed), the tools that fit (used ones, reading ones, then the categories the message is about) and as much recent history as still fits.
+6. **New tool `get_app_guide` (private chat only), and a server-side prefetch.** How to use the app is not in spec 4.6, which has `explain_rule` for rules only. The guide (`apps/api/src/agent/knowledge/app-guide.ts`, French with "tu" and English) describes the five tabs and every flow with no amount, date or rule value in it. When a message is clearly a how, where or what-is question, the runtime adds the matching entry before the first call as if the model had called the tool, so a weak model cannot skip it or, worse, prepare a card for a question. The system prompt got a closing section "TEACHING THE APP" (the spec block above it is unchanged) and a rule never to name tools to the member.
+7. **Not changed:** the model never confirms; tools act as the member; phone numbers in a typed message are replaced by markers before they reach any provider (see guards/number-slots.ts).
+
 ## Open questions (to confirm before the phase that needs them)
 
 - **Q1 (resolved by D13.2):** monthly frequency. R2.2 says `payoutAt(k) = first + (k − 1) × frequency`, but the example payout time is "last Saturday of the month". Proposed default: monthly rounds keep the **same anchor** as the first payout (if the first payout is the last Saturday, every round is the last Saturday; if it is the 28th, every round is the 28th, clamped to the month's last day). Weekly and two-weekly add 7 or 14 days.
-- **Q2 (Phase 4):** OpenRouter model and API key. The owner puts the key in `apps/api/.env` themselves.
+- **Q2 (resolved by D24):** OpenRouter model and API key. The owner puts the key in `apps/api/.env` themselves.
+
+## D25. Unserved-member refund preserves beneficiary credits (2026-11-17)
+
+When an unserved member leaves mid-cycle, contributions already paid and credited to beneficiaries remain credited to those beneficiaries. The leaver is refunded under R12.3: the general fund pays up to the amount available for loans, and the remaining members cover any shortfall through `SHORTFALL_SHARE` obligations. Do not claw back an existing beneficiary payable or create a beneficiary debt for this refund.

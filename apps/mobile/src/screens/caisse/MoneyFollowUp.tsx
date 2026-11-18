@@ -44,7 +44,8 @@ function FollowUp({
   const current = kind === 'payment' ? payment : withdrawal;
   const status = kind === 'payment' ? payment.data?.status : withdrawal.data?.status;
   const amount = kind === 'payment' ? payment.data?.amount : withdrawal.data?.amount;
-  const final = status === 'SUCCESSFUL' || status === 'FAILED' || status === 'EXPIRED';
+  const final =
+    status === 'SUCCESSFUL' || status === 'FAILED' || status === 'EXPIRED' || status === 'REFUNDED';
 
   // A final answer: the card and the money figures catch up with it.
   useEffect(() => {
@@ -83,6 +84,15 @@ function FollowUp({
           ? t('agent.results.paymentFailed', { amount: money, operator: operatorName })
           : t('agent.results.paymentExpired', { amount: money, operator: operatorName });
     return <Banner kind="error" icon={CircleAlert} text={text} />;
+  }
+  if (status === 'REFUNDED') {
+    return (
+      <Banner
+        kind="info"
+        icon={CircleCheck}
+        text={t('agent.results.withdrawalRefunded', { amount: money })}
+      />
+    );
   }
   return (
     <Banner

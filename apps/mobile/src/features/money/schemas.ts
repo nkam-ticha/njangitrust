@@ -121,7 +121,7 @@ export const paymentSchema = z.object({
   payment: z.object({
     id: uuidSchema,
     amount: int,
-    status: z.enum(['CREATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'EXPIRED']),
+    status: z.enum(['CREATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'EXPIRED', 'REFUNDED']),
     createdAt: instantSchema,
     settledAt: instantSchema.nullable(),
     operatorRef: z.string().nullable(),

@@ -80,6 +80,26 @@ describe('the checks of spec 5.4', () => {
     });
     expect(failed(s, run(turn()))).toEqual(['tools-called', 'tools-forbidden', 'tool-arguments']);
   });
+  it('requires exact hold/deadline strings to be repeated from tool results', () => {
+    const exact = scenario({ mustRepeatToolFields: [{ tool: 'withdraw', field: 'holdEnds' }] });
+    const grounded = turn({
+      reply: 'Le retrait attend jusqu’à jeudi 19 novembre à 14 h 39.',
+      toolCalls: [{ name: 'withdraw', status: 'REFUSED', args: {} }],
+      toolResults: [JSON.stringify({ status: 'REFUSED', holdEnds: 'jeudi 19 novembre à 14 h 39' })],
+    });
+    expect(failed(exact, run(grounded))).toEqual([]);
+    expect(
+      failed(
+        exact,
+        run(
+          turn({
+            ...grounded,
+            reply: 'Le retrait attend jusqu’à minuit.',
+          }),
+        ),
+      ),
+    ).toEqual(['tool-field-repeat']);
+  });
   it('fails an amount, a date or a time that no tool result holds', () => {
     expect(failed(scenario(), run(turn({ reply: 'Tu dois 12 000 FCFA.' })))).toEqual(['grounding']);
     expect(failed(scenario(), run(turn({ reply: 'Avant le 9 novembre.' })))).toEqual(['grounding']);

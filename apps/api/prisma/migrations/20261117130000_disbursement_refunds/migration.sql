@@ -1,0 +1,3 @@
+ALTER TYPE "DisbursementStatus" ADD VALUE 'REFUNDED';
+ALTER TYPE "LoanStatus" ADD VALUE 'REFUNDED';
+ALTER TYPE "SolidarityRequestStatus" ADD VALUE 'REFUNDED';

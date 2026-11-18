@@ -11,4 +11,5 @@ export const payoutError = defineErrors({
   BELOW_MINIMUM_WITHDRAWAL: { status: 400, text: commonErrorTexts.VALIDATION_FAILED },
   ABOVE_AVAILABLE: { status: 409, text: commonErrorTexts.CONFLICT },
   INVALID_AMOUNT: { status: 400, text: commonErrorTexts.VALIDATION_FAILED },
+  INSTALLMENT_PAYMENT_PENDING: { status: 409, text: commonErrorTexts.CONFLICT },
 });

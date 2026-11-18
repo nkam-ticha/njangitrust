@@ -28,6 +28,17 @@ export async function scheduleLoanDisbursement(loanId: string): Promise<void> {
 export async function disburseApprovedLoan(loanId: string): Promise<void> {
   const db = getPrisma();
   const created = await db.$transaction(async (tx) => {
+    // Exit settlement locks the membership before expiring an approved loan. Use the same
+    // lock order here so an exit cannot miss a disbursement created concurrently.
+    const owner = await tx.loan.findUnique({
+      where: { id: loanId },
+      select: { groupId: true, membershipId: true },
+    });
+    if (!owner) return null;
+    // Exit refunds and other disbursements both spend the loan-available general fund.
+    // Serialize that balance check with the group lock used by exit settlement.
+    await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${owner.groupId}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT "id" FROM "Membership" WHERE "id" = ${owner.membershipId}::uuid FOR UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "Loan" WHERE "id" = ${loanId}::uuid FOR UPDATE`;
     const loan = await tx.loan.findUnique({
       where: { id: loanId },
@@ -39,7 +50,12 @@ export async function disburseApprovedLoan(loanId: string): Promise<void> {
         },
       },
     });
-    if (!loan || loan.status !== 'APPROVED') return null;
+    if (
+      !loan ||
+      loan.status !== 'APPROVED' ||
+      !['ACTIVE', 'LEAVING'].includes(loan.membership.status)
+    )
+      return null;
     const linked = loan.disbursementId
       ? await tx.disbursement.findUnique({
           where: { id: loan.disbursementId },

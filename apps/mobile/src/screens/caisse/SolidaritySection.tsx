@@ -40,6 +40,7 @@ const STATUS_KEY = {
   VOTING: 'OPEN',
   APPROVED: 'PASSED',
   PAID: 'PAID',
+  REFUNDED: 'REFUNDED',
   REJECTED: 'REJECTED',
   FAILED: 'FAILED',
 } as const;

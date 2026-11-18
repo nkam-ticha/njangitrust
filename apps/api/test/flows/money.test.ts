@@ -7,7 +7,10 @@ import { settleBackground } from '../../src/jobs/dispatch';
 import { getPrisma } from '../../src/lib/prisma';
 import { pollPaymentIntent } from '../../src/modules/payments/payments.service';
 import { openPayout } from '../../src/modules/payouts/payouts.service';
-import { pollDisbursement } from '../../src/modules/payouts/withdrawals.service';
+import {
+  pollDisbursement,
+  recordDisbursementRefund,
+} from '../../src/modules/payouts/withdrawals.service';
 import { MOCK_CONFIRMATION_MS } from '../../src/modules/providers/mock-provider';
 import { runDailyReconciliation } from '../../src/modules/reconciliation/reconciliation.service';
 import { api, type TestUser } from '../helpers/client';
@@ -291,5 +294,29 @@ describe('payout and withdrawal (R5, D18.1)', () => {
     ).toBeGreaterThanOrEqual(400);
     // The books still match the operator after the money left.
     expect((await runDailyReconciliation(providerAccount)).status).not.toBe('ALERT');
+
+    // A separately confirmed operator reversal is recorded once, and the member's payable is
+    // restored according to D22.1. Repeating the trusted callback cannot double-credit it.
+    const refund = await recordDisbursementRefund({
+      disbursementId,
+      feeKept: 0,
+      reason: 'Provider confirmed reversal',
+    });
+    expect(refund).toEqual({ alreadyRecorded: false });
+    expect(
+      await recordDisbursementRefund({
+        disbursementId,
+        feeKept: 0,
+        reason: 'Repeated provider reversal callback',
+      }),
+    ).toEqual({ alreadyRecorded: true });
+    expect(
+      (await getPrisma().disbursement.findUniqueOrThrow({ where: { id: disbursementId } })).status,
+    ).toBe('REFUNDED');
+    ledger = await ledgerOf(groupId);
+    expect(
+      ledger.filter((t) => t.type === 'DISBURSEMENT_REFUNDED' && t.refId === disbursementId),
+    ).toHaveLength(1);
+    expect(checkLedger(groupId, ledger)).toEqual([]);
   });
 });

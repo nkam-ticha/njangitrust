@@ -124,12 +124,13 @@ const ACTOR_FIELDS = [
 ];
 
 describe('tool catalogue (spec 4.6)', () => {
-  it('has exactly the tools of spec 4.6, at their level, plus the group hand-off', () => {
+  it('has exactly the tools of spec 4.6, at their level, plus the group hand-off and the app guide', () => {
     const levels = Object.fromEntries(ALL_SPECS.map((s) => [s.name, s.level]));
     for (const [level, names] of Object.entries(SPEC_46)) {
       for (const name of names) expect(levels[name], name).toBe(level);
     }
-    const all = [...SPEC_46.L0, ...SPEC_46.L1, ...SPEC_46.L2, 'reply_privately'];
+    // Beyond spec 4.6: the group hand-off, and the guide to the app (docs/DECISIONS.md).
+    const all = [...SPEC_46.L0, ...SPEC_46.L1, ...SPEC_46.L2, 'reply_privately', 'get_app_guide'];
     expect(ALL_SPECS.map((s) => s.name).sort()).toEqual([...all].sort());
   });
 

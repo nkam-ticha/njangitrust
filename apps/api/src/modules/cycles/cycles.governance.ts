@@ -21,6 +21,7 @@ import { clock } from '../../lib/clock';
 import type { Prisma } from '../../lib/prisma';
 import { appendLedgerEntry } from '../ledger';
 import { settleDueDebts } from '../payouts/payouts.settlement';
+import { proposalError } from '../proposals/proposals.errors';
 import { getCurrentParams } from '../rulesets';
 import { readChain } from '../statements/ledger-read';
 
@@ -163,6 +164,25 @@ export async function settleExit(
   },
 ): Promise<void> {
   await lockGroup(tx, input.groupId);
+  // Match payment/withdrawal confirmation: serialize against their membership lock so an intent
+  // either commits before this check (and blocks the exit) or revalidates after the exit.
+  await tx.$queryRaw`SELECT "id" FROM "Membership" WHERE "id" = ${input.membershipId}::uuid FOR UPDATE`;
+  const payments = await tx.paymentIntent.count({
+    where: {
+      groupId: input.groupId,
+      membershipId: input.membershipId,
+      status: { in: [...OPEN_PAYMENT] },
+    },
+  });
+  const disbursements = await tx.disbursement.count({
+    where: {
+      groupId: input.groupId,
+      membershipId: input.membershipId,
+      status: { in: [...OPEN_PAYMENT] },
+    },
+  });
+  if (payments + disbursements > 0) throw proposalError('EXIT_PAYMENT_IN_PROGRESS');
+
   const cycle = await currentCycle(tx, input.groupId);
   if (!cycle) return;
   const now = clock.now();

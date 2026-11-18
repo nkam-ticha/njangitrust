@@ -11,7 +11,7 @@ import { agentConfig, setAgentConfigForTests } from '../config';
 import { EVENT_TOOL } from '../store/types';
 import { agentMessageLimiter } from '../guards/rate-limit';
 import { release as releaseTurnLease } from '../guards/turn-lease';
-import { OpenRouterClient } from '../llm/openrouter';
+import { buildLlm } from '../llm/provider';
 import { setLlmForTests } from '../llm/provider';
 import type { LlmCallOptions, LlmClient, LlmRequest, LlmResponse } from '../llm/types';
 import { PROMPT_VERSION } from '../prompts';
@@ -19,7 +19,9 @@ import { handleUserMessage } from '../service/turns';
 import { agentStatus } from '../status';
 import { settleBackground, useJobScheduler } from '../../jobs/dispatch';
 import { settlePendingWork } from '../../lib/pending-work';
+import { clock } from '../../lib/clock';
 import { getPrisma } from '../../lib/prisma';
+import { resetEnvCache } from '../../config/env';
 import { runAsSystem } from '../../lib/request-context';
 import { sendMessage } from '../../modules/chat/chat.messages';
 import { listMyGroups } from '../../modules/me';
@@ -118,11 +120,19 @@ export interface EvaluationDriver extends AgentDriver {
 }
 
 /**
- * Opens the driver. Scripted mode needs no key. Live mode needs OPENROUTER_API_KEY and
- * OPENROUTER_MODEL in apps/api/.env and returns null without them.
+ * Opens the driver. Scripted mode needs no key. Live mode needs at least one provider (a key and a
+ * model: OPENROUTER_*, GROQ_* or GOOGLE_AI_*) in apps/api/.env and returns null without one.
  */
 export function openDriver(mode: Mode): EvaluationDriver | null {
   process.env.NJANGI_AGENT_EVAL = mode;
+  // If EVAL_DATABASE_URL is set, point Prisma at the evaluation database so the driver
+  // reads eval-world data (Carine's payable balance, Joël's overdue dues, etc.) instead
+  // of the shared development database.
+  const evalDbUrl = process.env.EVAL_DATABASE_URL;
+  if (evalDbUrl) {
+    process.env.DATABASE_URL = evalDbUrl;
+    resetEnvCache();
+  }
   let model: RecordedModel;
   let modelName: string | null;
   if (mode === 'scripted') {
@@ -131,15 +141,10 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     modelName = null;
   } else {
     const config = agentConfig();
-    if (!config.configured || !config.apiKey || !config.model) return null;
-    model = new RecordedModel(
-      new OpenRouterClient({
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        timeoutMs: config.requestTimeoutMs,
-      }),
-    );
-    modelName = config.model;
+    const live = buildLlm(config);
+    if (!live) return null;
+    model = new RecordedModel(live);
+    modelName = config.providers.map((p) => `${p.name}:${p.model}`).join(' > ');
   }
   setLlmForTests(model);
   // As at server start-up; without a job scheduler, jobs run in this process.
@@ -167,6 +172,12 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     const db = getPrisma();
     await db.agentMessage.deleteMany({ where: { conversation: { userId } } });
     await db.agentConversation.deleteMany({ where: { userId } });
+    // Scenarios can prepare cards but never confirm them. Expire a prior run's cards so retries
+    // start from the same state and do not accumulate stale money actions in the eval database.
+    await db.pendingAction.updateMany({
+      where: { userId, origin: 'AGENT', status: 'PENDING' },
+      data: { status: 'EXPIRED' },
+    });
     await agentMessageLimiter.get().delete(userId);
     // A run that was cut off can leave its lease behind: the next one must not wait for it.
     await releaseTurnLease(userId);
@@ -205,7 +216,7 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
           async say(text, steps): Promise<Omit<TurnEvidence, 'index'>> {
             const db = getPrisma();
             model.startTurn(steps);
-            const since = new Date(Date.now() - 1_000);
+            const since = new Date(clock.nowMs() - 1_000);
             const posted = await sendMessage(userId, groupId, { text });
             await settlePendingWork();
             await settleBackground();
@@ -307,7 +318,7 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
           if (!prepared) throw new NotAvailable('the turn before did not prepare a card');
           await getPrisma().pendingAction.update({
             where: { id: prepared.id },
-            data: { status: 'CONFIRMED', confirmedAt: new Date() },
+            data: { status: 'CONFIRMED', confirmedAt: clock.now() },
           });
           model.startTurn(steps);
           await completePendingAction(
@@ -354,6 +365,10 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
 
     async close() {
       setLlmForTests(null);
+      await getPrisma().pendingAction.updateMany({
+        where: { origin: 'AGENT', status: 'PENDING' },
+        data: { status: 'EXPIRED' },
+      });
       await getPrisma().$disconnect();
     },
   };

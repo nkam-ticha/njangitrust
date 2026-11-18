@@ -206,6 +206,23 @@ export const checkExpectations: Check = (scenario, run) => {
     if (!pattern(source).test(last))
       add('must-match', `the last reply does not match ${source}`, last);
   }
+  for (const wanted of expect.mustRepeatToolFields ?? []) {
+    const values = run.turns.flatMap((turn) =>
+      turn.toolCalls.flatMap((call, index) => {
+        if (call.name !== wanted.tool) return [];
+        let result: unknown;
+        try {
+          result = JSON.parse(turn.toolResults[index] ?? 'null') as unknown;
+        } catch {
+          return [];
+        }
+        return stringValuesForField(result, wanted.field);
+      }),
+    );
+    if (!values.some((value) => text.includes(value))) {
+      add('tool-field-repeat', `no reply repeats ${wanted.tool}.${wanted.field} exactly`);
+    }
+  }
   if (expect.noDigits && all.some(hasDigit)) add('no-digits', 'a reply contains a digit');
   if (expect.namesOnly && all.some((r) => amountsIn(r).length > 0 || phonesIn(r).length > 0)) {
     add('names-only', 'the reply gives more than names');
@@ -240,6 +257,17 @@ export const checkExpectations: Check = (scenario, run) => {
   }
   return failures;
 };
+
+function stringValuesForField(value: unknown, field: string): string[] {
+  if (Array.isArray(value)) return value.flatMap((item) => stringValuesForField(item, field));
+  if (value === null || typeof value !== 'object') return [];
+  const out: string[] = [];
+  for (const [key, child] of Object.entries(value)) {
+    if (key === field && typeof child === 'string') out.push(child);
+    else out.push(...stringValuesForField(child, field));
+  }
+  return out;
+}
 
 export const ALL_CHECKS: readonly Check[] = [
   checkTools,

@@ -35,24 +35,51 @@ Set these in `apps/api/.env` for local work, and in the API project's environmen
 
 | Variable | Needed | Meaning |
 |---|---|---|
-| `OPENROUTER_API_KEY` | yes | Your key from openrouter.ai. Without it the agent is off. |
-| `OPENROUTER_MODEL` | yes | The model id, written exactly as OpenRouter shows it. |
-| `OPENROUTER_BASE_URL` | no | Defaults to `https://openrouter.ai/api/v1`. |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | one provider at least | OpenRouter: your key and the model id, written exactly as OpenRouter shows it (today `nvidia/nemotron-3.5-lightning:free`). |
+| `GROQ_API_KEY`, `GROQ_MODEL` | optional | Groq: key and model id (today `qwen/qwen3.8-27b`). |
+| `GOOGLE_AI_API_KEY`, `GOOGLE_AI_MODEL` | optional | Google AI Studio: key and model id (today `gemini-3.5-flash-lite`). |
+| `OPENROUTER_API_KEYS`, `GROQ_API_KEYS`, `GOOGLE_AI_API_KEYS` | optional | More keys (accounts) for the same provider and model, comma separated. See "Providers, batches and failover". |
+| `LLM_PROVIDER_ORDER` | no | Who is asked first. Default `openrouter,groq,google`. |
+| `GROQ_MAX_INPUT_TOKENS` | no | Groq's free tier takes about 7 000 input tokens a minute: a larger request is cut to this size (default 3 500). `OPENROUTER_MAX_INPUT_TOKENS` and `GOOGLE_AI_MAX_INPUT_TOKENS` do the same if you ever need it. |
+| `OPENROUTER_BASE_URL`, `GROQ_BASE_URL`, `GOOGLE_AI_BASE_URL` | no | Defaults are the providers' OpenAI-compatible addresses. |
 | `AGENT_TOOL_ROUTING` | no | `on` to send the model fewer tools (see below). `off` by default. |
 
-When the key or the model is missing, the rest of the app works normally. `POST /v1/agent/messages` answers 503 `AGENT_NOT_CONFIGURED` with a message in French and English, and `GET /v1/agent/status` says `configured: false`, so the app can show the message instead of the composer.
+A provider is used only when it has a key **and** a model. When none is configured, the rest of the app works normally. `POST /v1/agent/messages` answers 503 `AGENT_NOT_CONFIGURED` with a message in French and English, and `GET /v1/agent/status` says `configured: false`, so the app can show the message instead of the composer.
+
+### Providers, batches and failover
+
+The agent asks the providers in order. When one is rate-limited, overloaded, too slow, or refuses the key, the next answers at once, and the member notices nothing.
+
+- **Batches.** The first key of each provider is batch 1 (OpenRouter, Groq, Google). The second key of each is batch 2, and so on. A later batch is asked only when every entry of the earlier ones has stopped. To add accounts: put the second key of each provider in `OPENROUTER_API_KEYS`, `GROQ_API_KEYS`, `GOOGLE_AI_API_KEYS`. Use keys from accounts you own and that the provider's terms allow; free tiers generally forbid opening extra accounts to get round their limits.
+- **Safe to switch.** A model call only produces text and tool calls; the server runs the tools. Another provider can therefore never replay a payment or a change. Once text has reached the member, the call is not moved.
+- **Resting.** A failed entry is skipped for a while (rate limit 60 s, outage or timeout 30 s, wrong key 10 minutes), so the next messages do not wait for it again.
+- **Handover.** The new model gets the conversation and what this turn already did (tool calls and results), with a short note that another model began the reply, so it continues instead of starting over or repeating tools.
+- **Small contexts.** A provider with an input limit is sent a small important context: the system prompt, the current question, this turn's work, the tools that fit and as much recent history as fits.
+- **Which model answered** is recorded with every turn in the audit log (`agent.turn`, field `model`), and failures are logged by provider label and code (for example `groq#2 LLM_RATE_LIMITED`), never with a key or a message.
+
+Check the models before starting the API:
+
+```
+pnpm llm:check
+```
+
+It asks each configured model, alone, to call a tool and then answer from the result, and prints OK or FAIL with the time taken.
+
+### Explaining the app
+
+When a member asks how or where or what something is ("comment je paie ?", "where are my loans?"), the server adds the matching page of the app guide (`apps/api/src/agent/knowledge/app-guide.ts`, French and English, no amounts in it) before the model's first call. The tool `get_app_guide` gives the same text when the model asks for it. To change what the assistant says about the app, edit that file and its test; nothing else.
 
 ## First run
 
 1. Start the local services and the API: `pnpm services:start`, then `pnpm dev:api`.
 2. Load the demo people and groups: `pnpm demo:seed`.
-3. Add `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` to `apps/api/.env` and restart the API.
-4. Run `pnpm agent:smoke`. It signs in as the demo member Paul, asks for the group's rules, and prints the reply and the tools that were called. Nothing is paid or changed. If something is missing, it tells you exactly what.
+3. Add the keys and models of the providers you use to `apps/api/.env` (table above), then run `pnpm llm:check`.
+4. Restart the API and run `pnpm agent:smoke`. It signs in as the demo member Paul, asks for the group's rules, and prints the reply and the tools that were called. Nothing is paid or changed. If something is missing, it tells you exactly what.
 5. Run `pnpm agent:eval`.
 
 ## Choosing the model
 
-No model is written in the code: `OPENROUTER_MODEL` decides. Models change quickly, so choose by these criteria (spec 4.11) and let the evaluation decide.
+No model is written in the code: the `*_MODEL` variables decide. Models change quickly, so choose by these criteria (spec 4.11) and let the evaluation decide.
 
 - **Tool calling with many tools.** The agent sends up to about 60 tool definitions. The model must support tool (function) calling on OpenRouter, pick the right tool, and fill arguments that match the schema. This matters most.
 - **French and English.** It must answer in the language of the member's last message and use "tu" in French.

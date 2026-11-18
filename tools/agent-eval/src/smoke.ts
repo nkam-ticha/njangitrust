@@ -1,4 +1,4 @@
-// pnpm agent:smoke: the first check after putting OPENROUTER_API_KEY and OPENROUTER_MODEL in the
+// pnpm agent:smoke: the first check after putting a model provider's key and model in the
 // API environment. It signs in as a demo member through the real API, sends one harmless message
 // to Njangi and prints the reply and the tools the agent called. Nothing is paid, proposed or
 // changed. Without a key it prints exactly what to do.
@@ -15,16 +15,17 @@ const api = createClient(baseUrl, print);
 const MESSAGE = 'Bonjour Njangi. Quelles sont les règles de mon groupe ?';
 
 const HOW_TO_CONFIGURE = [
-  'Njangi is not configured on this API yet. To switch it on:',
+  'Njangi is not configured on this API yet. To switch it on, give it at least one provider:',
   '',
-  '  1. Create a key at https://openrouter.ai/keys',
-  '  2. Choose a model at https://openrouter.ai/models (docs/AGENT.md, "Choosing the model")',
+  '  1. Create a key at openrouter.ai/keys, console.groq.com/keys or aistudio.google.com/apikey',
+  '  2. Choose a model with tool calling (docs/AGENT.md, "Choosing the model")',
   '  3. Add both to apps/api/.env (local) and to the API project on Vercel (production):',
-  '       OPENROUTER_API_KEY=<the key>',
-  '       OPENROUTER_MODEL=<the model id, written as OpenRouter shows it>',
-  '  4. Restart the API (pnpm dev:api), or redeploy it on Vercel',
-  '  5. Run again:  pnpm agent:smoke',
-  '  6. Then:       pnpm agent:eval',
+  '       OPENROUTER_API_KEY / OPENROUTER_MODEL, and/or GROQ_API_KEY / GROQ_MODEL,',
+  '       and/or GOOGLE_AI_API_KEY / GOOGLE_AI_MODEL (more accounts: OPENROUTER_API_KEYS ...)',
+  '  4. Check them:  pnpm llm:check',
+  '  5. Restart the API (pnpm dev:api), or redeploy it on Vercel',
+  '  6. Run again:  pnpm agent:smoke',
+  '  7. Then:       pnpm agent:eval',
 ].join('\n');
 
 interface Status {

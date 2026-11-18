@@ -12,7 +12,18 @@ export interface ChatBody {
   stream: true;
 }
 
-function toWire(message: LlmMessage): Record<string, unknown> {
+/** Differences between providers in how a request is written. */
+export interface WireFlavor {
+  /**
+   * Google AI Studio (Gemini 3) refuses a replayed function call without its thought signature.
+   * A call made by another model has none: Google documents this placeholder for that case.
+   */
+  googleSignatures?: boolean;
+}
+
+export const GOOGLE_SKIP_SIGNATURE = 'skip_thought_signature_validator';
+
+function toWire(message: LlmMessage, flavor: WireFlavor): Record<string, unknown> {
   switch (message.role) {
     case 'system':
     case 'user':
@@ -27,6 +38,13 @@ function toWire(message: LlmMessage): Record<string, unknown> {
                 id: call.id,
                 type: 'function',
                 function: { name: call.name, arguments: call.arguments },
+                ...(flavor.googleSignatures
+                  ? {
+                      extra_content: {
+                        google: { thought_signature: call.signature ?? GOOGLE_SKIP_SIGNATURE },
+                      },
+                    }
+                  : {}),
               })),
             }
           : {}),
@@ -36,10 +54,10 @@ function toWire(message: LlmMessage): Record<string, unknown> {
   }
 }
 
-export function toChatBody(request: LlmRequest): ChatBody {
+export function toChatBody(request: LlmRequest, flavor: WireFlavor = {}): ChatBody {
   return {
     model: request.model,
-    messages: request.messages.map(toWire),
+    messages: request.messages.map((message) => toWire(message, flavor)),
     ...(request.tools.length
       ? {
           tools: request.tools.map((tool) => ({

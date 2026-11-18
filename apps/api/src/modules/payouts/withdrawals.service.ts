@@ -7,7 +7,10 @@ import {
   availableToWithdraw,
   completionType,
   disbursementCompletedPostings,
+  disbursementRefundedPostings,
   disbursementReturnedPostings,
+  loanRefundSettlement,
+  checkLedger,
   loanSentPostings,
   naturalBalance,
   payableAccount,
@@ -15,7 +18,7 @@ import {
   validateWithdrawal,
   withdrawalSentPostings,
 } from '@njangi/rules';
-import { formatXAF, maskNumber } from '@njangi/shared';
+import { formatDateTime, formatXAF, maskNumber } from '@njangi/shared';
 import { getEnv } from '../../config/env';
 import { clock } from '../../lib/clock';
 import { getPrisma, type Db, type Prisma } from '../../lib/prisma';
@@ -29,6 +32,8 @@ import { dispatchJob } from '../../jobs/dispatch';
 import { settleDueDebts } from './payouts.settlement';
 import { payoutError } from './payouts.errors';
 import { componentLogger } from '../../lib/logger';
+import { audit } from '../audit/audit.service';
+import { readChain } from '../statements/ledger-read';
 
 const log = componentLogger('payouts');
 
@@ -242,7 +247,7 @@ export async function readMyMoney(
 
 async function loadWithdrawal(
   db: Db,
-  input: { userId: string; groupId: string; amount: number | 'ALL' },
+  input: { userId: string; groupId: string; amount: number | 'ALL'; lang?: 'fr' | 'en' },
 ) {
   const state = await loadMoneyState(db, input);
   const { access, member, payableBalance, credits, hold, latestCheck } = state;
@@ -260,7 +265,17 @@ async function loadWithdrawal(
     hasActivePaymentNumber: member.user.paymentNumbers.length === 1,
     debts: withdrawalDebts,
   });
-  if (!withdrawal.ok) throw payoutError(withdrawal.code);
+  if (!withdrawal.ok) {
+    if (withdrawal.code === 'HOLD_ACTIVE') {
+      throw payoutError('HOLD_ACTIVE', {
+        details: {
+          holdEnds: formatDateTime(withdrawal.until, input.lang ?? 'fr'),
+          until: withdrawal.until.toISOString(),
+        },
+      });
+    }
+    throw payoutError(withdrawal.code);
+  }
   const number = member.user.paymentNumbers[0];
   if (!number) throw payoutError('NO_ACTIVE_PAYMENT_NUMBER');
   return {
@@ -631,6 +646,156 @@ async function returnFailedDisbursement(id: string) {
         en: 'The withdrawal failed. Your money is available again.',
       },
     });
+}
+
+/**
+ * D22.1: record an operator-confirmed reversal of a completed disbursement. This is deliberately
+ * separate from provider status polling: the operator must supply the fee the provider kept.
+ * The row lock and ledger lookup make repeated operator callbacks idempotent.
+ */
+export async function recordDisbursementRefund(input: {
+  disbursementId: string;
+  feeKept: number;
+  reason: string;
+}): Promise<{ alreadyRecorded: boolean }> {
+  const db = getPrisma();
+  const now = clock.now();
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Disbursement" WHERE "id" = ${input.disbursementId}::uuid FOR UPDATE`;
+    const row = await tx.disbursement.findUnique({
+      where: { id: input.disbursementId },
+      include: { loan: true, solidarityRequest: true },
+    });
+    if (!row) throw payoutError('ACTION_NOT_AVAILABLE');
+    const prior = await tx.ledgerTransaction.findFirst({
+      where: {
+        groupId: row.groupId,
+        refType: 'Disbursement',
+        refId: row.id,
+        type: 'DISBURSEMENT_REFUNDED',
+      },
+      select: { id: true, metadata: true },
+    });
+    if (prior) {
+      const metadata = prior.metadata as { feeKept?: unknown };
+      if (metadata.feeKept !== input.feeKept) throw payoutError('ACTION_NOT_AVAILABLE');
+      return { alreadyRecorded: true };
+    }
+    if (row.status !== 'SUCCESSFUL' || row.feeActual === null)
+      throw payoutError('ACTION_NOT_AVAILABLE');
+    if (input.feeKept > row.feeActual) throw payoutError('INVALID_AMOUNT');
+    const sent = await tx.ledgerTransaction.findFirst({
+      where: {
+        groupId: row.groupId,
+        refType: 'Disbursement',
+        refId: row.id,
+        type: 'DISBURSEMENT_SENT',
+      },
+      include: { postings: true },
+    });
+    const completed = await tx.ledgerTransaction.findFirst({
+      where: {
+        groupId: row.groupId,
+        refType: 'Disbursement',
+        refId: row.id,
+        type: completionType(row.purpose),
+      },
+      include: { postings: true },
+    });
+    if (!sent || !completed) throw payoutError('ACTION_NOT_AVAILABLE');
+
+    let paidBack = 0;
+    let installmentIds: string[] = [];
+    if (row.purpose === 'LOAN') {
+      if (!row.loan) throw payoutError('ACTION_NOT_AVAILABLE');
+      const installments = await tx.obligation.findMany({
+        where: { loanId: row.loan.id },
+        select: { id: true, amount: true, status: true },
+      });
+      const openPayments = await tx.paymentIntent.findMany({
+        where: {
+          groupId: row.groupId,
+          membershipId: row.membershipId,
+          status: { in: ['CREATED', 'PENDING', 'EXPIRED'] },
+        },
+        select: { obligationIds: true },
+      });
+      const inPayment = new Set(openPayments.flatMap((payment) => payment.obligationIds));
+      const settlement = loanRefundSettlement({
+        totalDue: row.loan.totalDue,
+        installments: installments.map((installment) => ({
+          ...installment,
+          inPendingPayment: inPayment.has(installment.id),
+        })),
+      });
+      if (!settlement.ok) throw payoutError('INSTALLMENT_PAYMENT_PENDING');
+      paidBack = settlement.paidBack;
+      installmentIds = settlement.cancelInstallmentIds;
+    }
+
+    const refunded = disbursementRefundedPostings({
+      sent: { postings: sent.postings, metadata: sent.metadata as Record<string, unknown> },
+      completed: {
+        postings: completed.postings,
+        metadata: completed.metadata as Record<string, unknown>,
+      },
+      completedSeq: completed.seq,
+      feeKept: input.feeKept,
+      ...(row.purpose === 'LOAN' ? { paidBack } : {}),
+    });
+    const entry = await appendLedgerEntry(tx, row.groupId, {
+      type: 'DISBURSEMENT_REFUNDED',
+      occurredAt: now.toISOString(),
+      roundId: null,
+      membershipId: row.membershipId,
+      refType: 'Disbursement',
+      refId: row.id,
+      descriptionFr: 'Versement remboursÃ© par l’opÃ©rateur',
+      descriptionEn: 'Disbursement refunded by the operator',
+      metadata: refunded.metadata,
+      postings: refunded.postings,
+    });
+    const changed = await tx.disbursement.updateMany({
+      where: { id: row.id, status: 'SUCCESSFUL' },
+      data: { status: 'REFUNDED', settledAt: now },
+    });
+    if (changed.count !== 1) throw payoutError('ACTION_NOT_AVAILABLE');
+
+    if (row.purpose === 'LOAN' && row.loan) {
+      await tx.obligation.updateMany({
+        where: { id: { in: installmentIds }, status: 'DUE' },
+        data: { status: 'CANCELLED' },
+      });
+      await tx.loan.update({ where: { id: row.loan.id }, data: { status: 'REFUNDED' } });
+    } else if (row.purpose === 'SOLIDARITY') {
+      await tx.solidarityRequest.updateMany({
+        where: { disbursementId: row.id, status: 'PAID' },
+        data: { status: 'REFUNDED' },
+      });
+      const credited = await sealClawbackReleases(tx, {
+        groupId: row.groupId,
+        returnedSeq: entry.seq,
+        now,
+      });
+      for (const membershipId of credited)
+        await settleDueDebts(tx, { groupId: row.groupId, membershipId, now });
+    } else {
+      await settleDueDebts(tx, { groupId: row.groupId, membershipId: row.membershipId, now });
+    }
+    const problems = checkLedger(row.groupId, await readChain(tx, row.groupId));
+    if (problems.length > 0) throw new Error('Disbursement refund would leave the ledger unsound');
+    await audit(
+      {
+        action: 'payout.disbursement.refunded',
+        groupId: row.groupId,
+        target: `Disbursement:${row.id}`,
+        details: { purpose: row.purpose, feeKept: input.feeKept, reason: input.reason },
+        system: true,
+      },
+      tx,
+    );
+    return { alreadyRecorded: false };
+  });
 }
 
 export async function scheduleDisbursementPoll(id: string, delayMs: number) {

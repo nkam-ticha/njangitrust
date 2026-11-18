@@ -5,6 +5,7 @@
 import type { TransactionType } from '@njangi/rules';
 import { formatDateTime, formatXAF, type Lang } from '@njangi/shared';
 import { readBids, placeBid } from '../../modules/bids';
+import { getPrisma } from '../../lib/prisma';
 import { readFunds, readLedger } from '../../modules/ledger';
 import {
   getLoanQuote,
@@ -292,9 +293,13 @@ export const moneyAdapter: AgentMoneyPort = {
     }
     const from = day(input.from, false);
     const to = day(input.to, true);
+    // When querying FINE_ASSESSED without a specific member, scope to the caller's own
+    // membership so that group-level fine entries (e.g. reserve fund seeding) are excluded.
+    const fineScope =
+      !input.member && input.type === 'FINE_ASSESSED' ? ctx.membershipId : undefined;
     const page = await readLedger(ctx.userId, groupId, {
       limit: Math.max(1, Math.min(50, input.limit)),
-      ...(membershipId ? { membershipId } : {}),
+      ...(membershipId ? { membershipId } : fineScope ? { membershipId: fineScope } : {}),
       ...(input.type && LEDGER_TYPES.has(input.type)
         ? { type: input.type as TransactionType }
         : {}),
@@ -302,15 +307,33 @@ export const moneyAdapter: AgentMoneyPort = {
       ...(to ? { to } : {}),
     });
     return {
-      entries: page.entries.map((entry) => ({
-        seq: entry.seq,
-        date: formatDateTime(entry.occurredAt, ctx.lang),
-        what: ctx.lang === 'fr' ? entry.descriptionFr : entry.descriptionEn,
-        amount: money(
-          entry.postings.reduce((sum, p) => (p.amount > 0 ? sum + p.amount : sum), 0),
-          ctx.lang,
-        ),
-      })),
+      entries: await Promise.all(
+        page.entries.map(async (entry) => {
+          const entryAmount = entry.postings.reduce(
+            (sum, p) => (p.amount > 0 ? sum + p.amount : sum),
+            0,
+          );
+          let deadline: string | undefined;
+          const meta = entry.metadata as { deadline?: unknown } | null;
+          if (typeof meta?.deadline === 'string') {
+            deadline = formatDateTime(new Date(meta.deadline), ctx.lang);
+          } else if (entry.roundId) {
+            const round = await getPrisma().round.findUnique({
+              where: { id: entry.roundId },
+              select: { dueAt: true },
+            });
+            if (round) deadline = formatDateTime(round.dueAt, ctx.lang);
+          }
+          return {
+            seq: entry.seq,
+            date: formatDateTime(entry.occurredAt, ctx.lang),
+            what: ctx.lang === 'fr' ? entry.descriptionFr : entry.descriptionEn,
+            amount: money(entryAmount, ctx.lang),
+            ...(entry.type === 'FINE_ASSESSED' ? { fine: money(entryAmount, ctx.lang) } : {}),
+            ...(deadline ? { deadline } : {}),
+          };
+        }),
+      ),
       more: page.nextBefore !== null,
     };
   },
@@ -403,8 +426,12 @@ export const moneyAdapter: AgentMoneyPort = {
 
   async pay(ctx, input) {
     const groupId = groupOf(ctx);
-    const round = await roundOf(ctx, input.round);
     const dues = await listMyDues(ctx.userId, groupId);
+    const oldestDueRound = dues.find(
+      (d) => typeof d.roundNumber === 'number' && ['CONTRIBUTION', 'SOLIDARITY'].includes(d.kind),
+    )?.roundNumber ?? undefined;
+    const targetRoundNumber = input.round ?? oldestDueRound;
+    const round = await roundOf(ctx, targetRoundNumber);
     const chosen = dues.filter(
       (d) =>
         (d.roundNumber === round.number && ['CONTRIBUTION', 'SOLIDARITY'].includes(d.kind)) ||

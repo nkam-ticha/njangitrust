@@ -88,6 +88,15 @@ export const readingSpecs = {
     args: s({ topic: z.string().min(1).max(120) }),
     example: { topic: 'amende' },
   }),
+  get_app_guide: defineSpec({
+    ...L0,
+    name: 'get_app_guide',
+    channels: PRIVATE,
+    description:
+      'Use for any HOW, WHERE or WHAT-IS question about the app ("comment je paie ?", "where are my loans?"): never prepare a card for those. Explains how the app works and where things are, in the member’s language: the five tabs, signing up, creating a group, paying, withdrawing, loans, bids, votes, the funds and records, fines, meetings, the chat, statements, the account and privacy. Use it when the member asks how to do something in the app or what something is. Without a topic it lists the topics. It states no amounts: use the other reading tools for facts.',
+    args: s({ topic: z.string().min(1).max(120).optional() }),
+    example: { topic: 'payer' },
+  }),
   list_members: defineSpec({
     ...L0,
     name: 'list_members',
@@ -141,7 +150,7 @@ export const readingSpecs = {
     channels: PRIVATE,
     needs: 'money',
     description:
-      'For a possible loan of the member: their limit, interest, estimated fee, total and installments, computed by the server.',
+      'For a possible loan of the member: their limit, interest, estimated fee, total and installments, computed by the server. The result always carries the member’s limit: when they ask how much they can borrow without naming an amount, call it once with amount 1000 and months 1 and report only the limit (and the reason if the loan is not possible), never the probe amount.',
     args: s({
       amount: z.number().int().min(1).max(100_000_000).describe('Whole FCFA the member asked for.'),
       months: z.number().int().min(1).max(6),

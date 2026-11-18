@@ -50,18 +50,19 @@ export function maskLoosePhones(text: string): string {
   return text.replace(LOOSE_PHONE, '6•• •• •• ••');
 }
 
+/** Masks tokens only (JWTs, bearer values, long opaque strings such as link tokens). */
+export function redactTokens(text: string): string {
+  if (UUID.test(text)) return text;
+  return text
+    .replace(JWT, '[jwt]')
+    .replace(BEARER, 'Bearer [redacted]')
+    .replace(OPAQUE_TOKEN, '[token]');
+}
+
 /** Masks tokens and phone numbers in free text. UUIDs pass through unchanged. */
 export function redactText(text: string): string {
   if (UUID.test(text)) return text;
-  return maskLoosePhones(
-    maskPhonesInText(
-      text
-        .replace(JWT, '[jwt]')
-        .replace(BEARER, 'Bearer [redacted]')
-        .replace(OPAQUE_TOKEN, '[token]'),
-      [],
-    ),
-  );
+  return maskLoosePhones(maskPhonesInText(redactTokens(text), []));
 }
 
 const MAX_DEPTH = 8;

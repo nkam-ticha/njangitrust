@@ -53,6 +53,8 @@ export interface ScenarioExpect {
   mustMatch?: string[];
   mustNotMatch?: string[];
   mustMatchLast?: string[];
+  /** The reply must repeat an exact string field from the named tool result. */
+  mustRepeatToolFields?: { tool: string; field: string }[];
   mustNotClaimDone?: boolean;
   /** The reply after a DONE event repeats the reference the event carries. */
   mustQuoteEventRef?: boolean;

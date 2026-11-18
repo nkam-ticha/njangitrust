@@ -119,6 +119,10 @@ describe('the agent loop (spec 4.2)', () => {
     expect(result.reply).toBe('Il y a Carine Fotso.');
     const second = llm.bodyTexts()[1]!;
     expect(second).toContain('<tool_result name=\\"list_members\\">');
+    expect(llm.requests[1]!.messages.at(-1)).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('entirely in French'),
+    });
     expect(llm.bodies[0]!.messages[0]).toMatchObject({ role: 'system' });
     expect(String(llm.bodies[0]!.messages[0]!.content)).toContain(
       '<session>\nuser: Paul Mbarga (fr, MEMBER)',
@@ -254,12 +258,100 @@ describe('the time budget of a turn (one serverless request)', () => {
       budget: { turnMs: 40_000, requestMs: 20_000, nowMs: ticking(11_000) },
     });
     const conversation = await store.open({ userId: 'u1', channel: 'PRIVATE', groupId: 'g1' });
-    for (let i = 0; i < 40; i += 1) {
-      await store.append(conversation.id, [
-        { role: i % 2 ? 'assistant' : 'user', content: `ligne ${i}` },
-      ]);
-    }
-    await runTurn(deps, { ctx: ctx(), conversation, text: 'Encore' });
+    await store.append(
+      conversation.id,
+      Array.from({ length: 40 }, (_, index) => ({
+        role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+        content: `Earlier line ${index}`,
+      })),
+    );
+
+    const result = await turn(deps, 'Encore une question');
+
+    expect(result.reply).toBe('Oui.');
     expect(summaries).toHaveLength(0);
+    expect(conversation.rollingSummary).toBeNull();
+  });
+});
+
+describe('the guide to the app, handed over before the first call', () => {
+  const guideTool = implement(SPECS.get_app_guide, () =>
+    Promise.resolve({ status: 'OK', data: {} }),
+  );
+  const withGuide = { registry: new ToolRegistry([...fakeTools, guideTool]) };
+
+  it('adds the guide as a tool call and its result for a how-to question, and runs no tool', async () => {
+    const { llm, deps, audits } = setup([{ text: 'Voici comment faire.' }], withGuide);
+    const result = await turn(deps, 'Comment je paie ma cotisation ?');
+    expect(result.reply).toBe('Voici comment faire.');
+    expect(llm.requests).toHaveLength(1);
+    const messages = llm.requests[0]!.messages;
+    expect(messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'tool']);
+    expect(messages[2]).toMatchObject({
+      role: 'assistant',
+      toolCalls: [{ name: 'get_app_guide', arguments: '{"topic":"pay"}' }],
+    });
+    const result0 = (messages[3] as { content: string }).content;
+    expect(result0).toContain('<tool_result name="get_app_guide">');
+    expect(result0).toContain('Mobile Money');
+    // The model did not call anything: only the turn itself is audited, and no card was made.
+    expect(audits.map((a) => a.action)).toEqual(['agent.turn']);
+    expect(result.runs).toHaveLength(0);
+  });
+
+  it('gives the guide in the member’s language', async () => {
+    const { llm, deps } = setup([{ text: 'Here is how.' }], withGuide);
+    await turn(deps, 'Where can I see my loans?', ctx({ lang: 'en' }));
+    const result0 = (llm.requests[0]!.messages[3] as { content: string }).content;
+    expect(result0).toContain('"title":"Loans"');
+    expect(result0).toContain('You can borrow');
+  });
+
+  it('adds nothing to an order, a greeting or a question the guide does not cover', async () => {
+    for (const text of ['Paie ma cotisation', 'Bonjour', 'Comment va la météo ?']) {
+      const { llm, deps } = setup([{ text: 'ok' }], withGuide);
+      await turn(deps, text);
+      expect(
+        llm.requests[0]!.messages.map((m) => m.role),
+        text,
+      ).toEqual(['system', 'user']);
+    }
+  });
+
+  it('adds nothing in the group chat, nor when the tool is not in the registry', async () => {
+    const group = setup([{ text: 'ok' }], withGuide);
+    await turn(group.deps, 'Comment je paie ma cotisation ?', ctx({ channel: 'GROUP' }));
+    expect(group.llm.requests[0]!.messages.map((m) => m.role)).toEqual(['system', 'user']);
+    const bare = setup([{ text: 'ok' }]);
+    await turn(bare.deps, 'Comment je paie ma cotisation ?');
+    expect(bare.llm.requests[0]!.messages.map((m) => m.role)).toEqual(['system', 'user']);
+  });
+});
+
+describe('routing and failures keep what the member must be protected from and keeps', () => {
+  it('sends the routing call the masked message, never the raw text', async () => {
+    const { llm, deps } = setup([{ text: '["reading"]' }, { text: 'Bonjour.' }], {
+      toolRouting: true,
+    });
+    await turn(deps, 'mon PIN est 482615, ajoute le 699123456');
+    const routing = JSON.stringify(llm.requests[0]!.messages);
+    expect(llm.requests[0]!.purpose).toBe('routing');
+    expect(routing).not.toContain('482615');
+    // The turn's own call carries the same masked text.
+    expect(JSON.stringify(llm.requests[1]!.messages)).not.toContain('482615');
+  });
+
+  it('after tools ran, a failing model ends the turn plainly and keeps the audit and the story', async () => {
+    // Step 1 asks for a tool; step 2 finds the script empty, which fails like every provider down.
+    const { deps, audits } = setup([{ toolCalls: [{ name: 'list_members' }] }]);
+    const result = await turn(deps, 'Qui est dans le groupe ?');
+    expect(result.reply).toBe('Je n’ai pas pu terminer. Reformule ta demande, plus simplement.');
+    expect(result.runs).toHaveLength(1);
+    expect(audits.map((a) => a.action)).toEqual(['agent.tool', 'agent.turn']);
+  });
+
+  it('with nothing done yet, the failure still goes up', async () => {
+    const { deps } = setup([]);
+    await expect(turn(deps, 'Bonjour')).rejects.toMatchObject({ name: 'LlmError' });
   });
 });

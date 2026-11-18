@@ -4,7 +4,7 @@
 // source for amounts (those keep coming from tools).
 import type { Lang } from '@njangi/shared';
 import { agentConfig } from './config';
-import { maskForeignPhones } from './guards/phone-guard';
+import { redactForStorage } from './guards/redaction';
 import { wrapData } from './guards/wrap';
 import { getLlm } from './llm/provider';
 import type { LlmClient, LlmRequest } from './llm/types';
@@ -28,13 +28,14 @@ async function summarise(
     model: config.model ?? 'scripted',
     purpose: 'summary',
     temperature: config.temperature,
-    maxTokens: 600,
+    // Room for a reasoning model to think before it writes the few lines asked for.
+    maxTokens: 1_500,
     tools: [],
     messages: [
       { role: 'system', content: `${SUMMARY_PROMPT}\nLanguage: ${LANGUAGE_NAME[lang]}.` },
       {
         role: 'user',
-        content: `${instruction}\n${wrapData(lines.map((line) => maskForeignPhones(line)))}`,
+        content: `${instruction}\n${wrapData(lines.map((line) => redactForStorage(line)))}`,
       },
     ],
   };
@@ -42,7 +43,7 @@ async function summarise(
   const response = await llm.chat(request, {
     signal: signal ?? AbortSignal.timeout(SUMMARY_TIMEOUT_MS),
   });
-  return maskForeignPhones(response.text.trim());
+  return redactForStorage(response.text.trim());
 }
 
 /** 3 to 8 short lines about the unread chat; media listed by sender, voice notes never transcribed. */

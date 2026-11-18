@@ -64,6 +64,7 @@ export function toLlmTool(spec: ToolSpec): LlmToolSpec {
       name: spec.name,
       description: spec.level === 'L0' ? spec.description : spec.description + ACTION_NOTE,
       parameters: argumentsSchema(spec),
+      category: spec.category,
     };
     schemaCache.set(spec, cached);
   }

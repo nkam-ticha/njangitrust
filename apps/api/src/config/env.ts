@@ -5,6 +5,21 @@ import { z } from 'zod';
 const secret = (name: string) =>
   z.string().min(32, `${name} must be at least 32 characters (generate it, never type it)`);
 
+/**
+ * A model provider's address: https, and the provider's own host. Every request carries the API key
+ * and the member's text, so a wrong address in the environment must not be able to receive them.
+ */
+function llmBaseUrl(host: string, fallback: string) {
+  return z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'https:' && url.hostname === host && !url.username && !url.password;
+    }, `must be an https address on ${host}`)
+    .default(fallback);
+}
+
 const optionalString = z
   .string()
   .optional()
@@ -54,6 +69,8 @@ const schema = z
     JWT_SECRET: secret('JWT_SECRET'),
     JWT_REFRESH_SECRET: secret('JWT_REFRESH_SECRET'),
     CRON_SECRET: optionalString.pipe(z.string().min(32).optional()),
+    /** Separate shared secret for trusted operator disbursement-refund callbacks. */
+    DISBURSEMENT_REFUND_SECRET: optionalString.pipe(z.string().min(32).optional()),
     /** Key for hashing invited phone numbers. Falls back to a key derived from JWT_REFRESH_SECRET. */
     HASH_SECRET: optionalString.pipe(z.string().min(32).optional()),
 
@@ -98,7 +115,30 @@ const schema = z
     EXPO_ACCESS_TOKEN: optionalString,
     OPENROUTER_API_KEY: optionalString,
     OPENROUTER_MODEL: optionalString,
-    OPENROUTER_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
+    OPENROUTER_BASE_URL: llmBaseUrl('openrouter.ai', 'https://openrouter.ai/api/v1'),
+    /**
+     * Second and third model providers: when one is rate-limited or down, the next answers. More
+     * keys for the same provider and model go in the *_API_KEYS lists (docs/AGENT.md).
+     */
+    OPENROUTER_API_KEYS: optionalString,
+    GROQ_API_KEYS: optionalString,
+    GOOGLE_AI_API_KEYS: optionalString,
+    GROQ_API_KEY: optionalString,
+    GROQ_MODEL: optionalString,
+    GROQ_BASE_URL: llmBaseUrl('api.groq.com', 'https://api.groq.com/openai/v1'),
+    /** Groq's free tier takes about 7,000 input tokens a minute: a request is cut to this size. */
+    GROQ_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(200_000).default(3_500),
+    GOOGLE_AI_API_KEY: optionalString,
+    GOOGLE_AI_MODEL: optionalString,
+    GOOGLE_AI_BASE_URL: llmBaseUrl(
+      'generativelanguage.googleapis.com',
+      'https://generativelanguage.googleapis.com/v1beta/openai',
+    ),
+    /** Optional input limits for the other two (unset: no cutting). */
+    OPENROUTER_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(2_000_000).optional(),
+    GOOGLE_AI_MAX_INPUT_TOKENS: z.coerce.number().int().min(500).max(2_000_000).optional(),
+    /** Who is asked first: names from `openrouter,groq,google`, comma separated. */
+    LLM_PROVIDER_ORDER: z.string().default('openrouter,groq,google'),
     /** Spec 4.11: a short first call picks the tool categories. Off unless the model needs it. */
     AGENT_TOOL_ROUTING: z.enum(['on', 'off']).default('off'),
     /** Set by tools/agent-eval for its own process only; refused in production (below). */

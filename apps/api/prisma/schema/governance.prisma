@@ -119,6 +119,7 @@ enum SolidarityRequestStatus {
   APPROVED
   REJECTED
   PAID
+  REFUNDED
   FAILED
 }
 

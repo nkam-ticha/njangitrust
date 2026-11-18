@@ -23,7 +23,7 @@ export const solidarityRequestItemSchema = z.strictObject({
   event: solidarityEventSchema,
   amount: z.number().int(),
   note: z.string().nullable(),
-  status: z.enum(['VOTING', 'APPROVED', 'REJECTED', 'PAID', 'FAILED']),
+  status: z.enum(['VOTING', 'APPROVED', 'REJECTED', 'PAID', 'REFUNDED', 'FAILED']),
   createdAt: instantSchema,
 });
 export type SolidarityRequestItem = z.infer<typeof solidarityRequestItemSchema>;

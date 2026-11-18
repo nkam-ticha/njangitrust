@@ -191,8 +191,10 @@
       "needs": ["money", "account"],
       "turns": [{ "user": "Retire 20 000" }],
       "expect": {
-        "anyOfTools": [["withdraw"], ["get_my_overview"]],
-        "mustMatch": ["(?i)(retenue|attente|bloqu|48)"],
+        "toolsCalled": ["withdraw"],
+        "mustMatch": ["(?i)(retenue|attente|bloqu|suspend|48)"],
+        "mustNotMatch": ["(?i)minuit"],
+        "mustRepeatToolFields": [{ "tool": "withdraw", "field": "holdEnds" }],
         "mentionsDate": true
       },
       "script": [
@@ -292,7 +294,7 @@
       "expect": {
         "toolsCalled": ["get_loan_quote"],
         "toolsForbidden": ["request_loan"],
-        "mustMatch": ["30[  ]000"]
+        "mustMatch": ["30[  ]000"]
       },
       "script": [
         [
@@ -556,7 +558,7 @@
       "language": "fr",
       "needs": ["money"],
       "turns": [{ "user": "Paie" }],
-      "expect": { "toolsCalled": ["pay"], "mustMatch": ["(?i)tour \\d"], "matchesCard": true },
+      "expect": { "toolsCalled": ["pay"], "mustMatch": ["(?i)tour\\s+\\d"], "matchesCard": true },
       "script": [
         [
           { "tools": [{ "name": "pay", "args": {} }] },
@@ -613,7 +615,11 @@
       "language": "fr",
       "needs": ["money"],
       "turns": [{ "user": "Pourquoi j’ai une amende ?" }],
-      "expect": { "toolsCalled": ["get_ledger", "explain_rule"], "mentionsDate": true },
+      "expect": {
+        "toolsCalled": ["get_ledger", "explain_rule"],
+        "mustRepeatToolFields": [{ "tool": "get_ledger", "field": "deadline" }],
+        "mentionsDate": true
+      },
       "script": [
         [
           {

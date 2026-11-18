@@ -27,6 +27,7 @@
     "campay:check": "pnpm --filter @njangi/api exec tsx --env-file=.env scripts/campay-check.ts",
     "campay:collect-test": "pnpm --filter @njangi/api exec tsx --env-file=.env scripts/campay-collect-test.ts",
     "agent:smoke": "pnpm --filter @njangi/agent-eval smoke",
+    "llm:check": "pnpm --filter @njangi/api llm:check",
     "verify-ledger": "pnpm --filter @njangi/verify-ledger verify"
   },
   "devDependencies": {

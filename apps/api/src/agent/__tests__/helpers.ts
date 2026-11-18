@@ -56,7 +56,14 @@ export function agentApi(user: TestUser) {
 /** The agent configured with a scripted model in place of OpenRouter. */
 export function scriptedAgent(script: ScriptedStep[] | ScriptFn): ScriptedLlm {
   const llm = new ScriptedLlm(script);
-  setAgentConfigForTests({ configured: true, apiKey: 'test-only', model: 'test/model' });
+  // Scripted steps describe turn calls. Keep environment-only routing disabled so an
+  // AGENT_TOOL_ROUTING setting cannot consume a scripted step before the turn begins.
+  setAgentConfigForTests({
+    configured: true,
+    apiKey: 'test-only',
+    model: 'test/model',
+    toolRouting: false,
+  });
   setLlmForTests(llm);
   return llm;
 }
