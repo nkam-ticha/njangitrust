@@ -17,6 +17,7 @@ export { PinPad, PIN_LENGTH, type PinPadProps } from './inputs/PinPad';
 export { AmountInput, type QuickAmount } from './inputs/AmountInput';
 export { Slider } from './inputs/Slider';
 export { ChoiceRow } from './inputs/ChoiceRow';
+export { PickerField } from './inputs/PickerField';
 export { SwitchRow } from './inputs/SwitchRow';
 export { DateField } from './inputs/DateField';
 export { TimeField } from './inputs/TimeField';

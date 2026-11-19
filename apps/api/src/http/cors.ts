@@ -10,11 +10,14 @@ const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE';
 
 export function cors(allowedOrigins: readonly string[]): RequestHandler {
   const allowed = new Set(allowedOrigins);
+  const isDev = process.env.NODE_ENV === 'development';
   return (req, res, next) => {
     res.vary('Origin');
     const origin = req.get('origin');
     if (!origin) return next();
-    if (!allowed.has(origin)) return next(commonError('ORIGIN_NOT_ALLOWED'));
+    const isAllowed =
+      allowed.has(origin) || (isDev && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    if (!isAllowed) return next(commonError('ORIGIN_NOT_ALLOWED'));
 
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');

@@ -8,12 +8,20 @@ export const PRIVATE = ['PRIVATE'] as const;
 export const BOTH = ['PRIVATE', 'GROUP'] as const;
 export const GROUP_ONLY = ['GROUP'] as const;
 
-export const roundArg = z
-  .number()
-  .int()
-  .min(1)
-  .max(60)
-  .describe('Round number (tour) in the current cycle. Omit for the current round.');
+export const roundArg = z.preprocess(
+  (val) =>
+    val === 'None' || val === 'null' || val === null || val === undefined || val === ''
+      ? undefined
+      : typeof val === 'string' && /^\d+$/.test(val)
+        ? Number(val)
+        : val,
+  z
+    .number()
+    .int()
+    .min(1)
+    .max(60)
+    .describe('Round number (tour) in the current cycle. Omit for the current round.'),
+);
 
 export const memberArg = z
   .string()

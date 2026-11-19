@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ban, Check, CircleAlert, Clock, EyeOff } from 'lucide-react-native';
-import { contentWidth, radius, space, useTheme } from '@/theme';
+import { radius, space, useTheme } from '@/theme';
 import { Avatar } from '../identity/Avatar';
 import { Touchable } from '../primitives/Touchable';
 import { Txt } from '../primitives/Txt';
@@ -33,6 +33,8 @@ export interface MessageBubbleProps {
   onMentionPress?: (name: string) => void;
   /** Agent in the group: the "Ouvrir" button for the member it answered privately. */
   footer?: ReactNode;
+  /** Highlighted temporarily when jumped to from a reply quote. */
+  highlighted?: boolean;
 }
 
 export function MessageBubble(p: MessageBubbleProps) {
@@ -72,6 +74,7 @@ export function MessageBubble(p: MessageBubbleProps) {
         agent
           ? { borderWidth: 1, borderColor: colors.divider }
           : { backgroundColor: own ? colors.bubbleOwn : colors.bubbleOther },
+        p.highlighted && { borderWidth: 2, borderColor: colors.focusRing },
       ]}
     >
       {p.reply ? (
@@ -95,7 +98,7 @@ export function MessageBubble(p: MessageBubbleProps) {
       ) : null}
       {p.media}
       {p.parts?.length ? (
-        <Txt>
+        <Txt style={styles.bubbleText}>
           {p.parts.map((part, i) =>
             typeof part === 'string' ? (
               part
@@ -153,6 +156,7 @@ export function MessageBubble(p: MessageBubbleProps) {
           pressedLayer={null}
           hoverLayer={null}
           accessibilityRole="text"
+          style={styles.touchableBubble}
         >
           {bubble}
         </Touchable>
@@ -176,19 +180,22 @@ export function MessageBubble(p: MessageBubbleProps) {
 }
 
 const styles = StyleSheet.create({
-  lane: { flexDirection: 'row', paddingHorizontal: space.s4, gap: space.s2 },
+  lane: { flexDirection: 'row', paddingHorizontal: space.s2, gap: space.s2 },
   laneOwn: { justifyContent: 'flex-end' },
   avatarSlot: { width: 32 },
-  column: { maxWidth: '80%', gap: 2 },
+  column: { maxWidth: '85%', flexShrink: 1, gap: 2 },
   columnOwn: { alignItems: 'flex-end' },
   nameRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.s1 },
+  touchableBubble: { maxWidth: '100%' },
   bubble: {
     borderRadius: radius.group,
     paddingHorizontal: space.s3,
     paddingVertical: space.s2,
     gap: space.s1,
-    maxWidth: contentWidth.bubble,
+    maxWidth: '100%',
+    flexShrink: 1,
   },
+  bubbleText: { flexShrink: 1 },
   quote: { borderRadius: radius.group, padding: space.s2 },
   meta: { flexDirection: 'row', alignSelf: 'flex-end', alignItems: 'center', gap: 2 },
   placeholder: {

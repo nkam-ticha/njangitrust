@@ -15,12 +15,30 @@ import { fontSources } from '@/theme/fonts';
 // Stop the whole-screen blue selection on long-press/hold: the page background and containers are
 // not selectable, but text (see Txt) and inputs are, so members can still select and copy text.
 // Buttons stay unselectable so pressing and holding one never highlights its label.
+// Also prevent horizontal overscroll, window bouncing, and white edge lines on web.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const styleId = 'disable-long-press-selection';
   if (!document.getElementById(styleId)) {
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        overflow-x: hidden !important;
+        overscroll-behavior-x: none !important;
+        background-color: #141B3D;
+      }
+      #root {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-height: 100% !important;
+        overflow-x: hidden !important;
+      }
       :where(html, body, #root, #root *) {
         -webkit-user-select: none;
         user-select: none;
@@ -59,7 +77,7 @@ export default function RootLayout() {
   const signedIn = status === 'signedIn';
 
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider style={{ flex: 1, width: '100%', minHeight: '100%' }}>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <Stack screenOptions={{ headerShown: false }}>

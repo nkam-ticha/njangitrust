@@ -1,7 +1,7 @@
 // Groupe tab (SCREENS.md S-11; spec 1.5, 2.7 Chat, CHT-01..02): the group's chat, newest at the bottom.
 // Messages page back in time; system events (payments, votes, rules, meetings) are compact rows; removed
 // messages keep a placeholder. The unread line is captured before the read marker is sent.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -40,8 +40,10 @@ import {
 } from '@/ui';
 import { ApiError } from '@/api/client';
 import { useConnectivity } from '@/state/connectivity';
+import { useSession } from '@/state/session';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import {
+  newMessageId,
   useChatRealtime,
   useChatState,
   useDeleteMessage,
@@ -128,25 +130,46 @@ export function GroupeTab() {
   const { colors } = useTheme();
   const lang = useLang();
   const online = useConnectivity((s) => s.online);
+  const userName = useSession((s) => s.user?.name);
   const { group, loading } = useActiveGroup();
   const groupId = group?.groupId ?? null;
   const left =
     !!group && (group.membershipStatus === 'LEFT' || group.membershipStatus === 'REMOVED');
   const messages = useMessages(groupId);
   const state = useChatState(groupId);
-  const send = useSendMessage(groupId);
+  const send = useSendMessage(groupId, {
+    membershipId: group?.membershipId,
+    name: userName ?? group?.name,
+  });
   const remove = useDeleteMessage(groupId);
   const markRead = useMarkRead(groupId);
   const [draft, setDraft] = useState('');
   const [replyToMessage, setReplyToMessage] = useState<ChatMessageDto | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<ChatMessageDto | null>(null);
   const [deleting, setDeleting] = useState<ChatMessageDto | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const flatListRef = useRef<FlatList<Row>>(null);
   const sendFile = useSendFile(groupId);
   const voice = useVoiceRecorder();
   const [attachOpen, setAttachOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useChatRealtime(groupId);
+
+  const scrollToMessage = (messageId: string) => {
+    const index = rows.findIndex(
+      (r) => r.key === messageId || (r.kind === 'message' && r.message.id === messageId),
+    );
+    if (index !== -1 && flatListRef.current) {
+      try {
+        flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+        setHighlightedId(messageId);
+        setTimeout(() => setHighlightedId(null), 2000);
+      } catch {
+        // Fallback handled by onScrollToIndexFailed
+      }
+    }
+  };
 
   // The unread line uses the read time from before this visit: captured once per group.
   const [seen, setSeen] = useState<{
@@ -170,14 +193,14 @@ export function GroupeTab() {
   // The groups are still loading: a skeleton, not "no group yet".
   if (!group && loading) {
     return (
-      <TabScreen>
+      <TabScreen width="full">
         <SkeletonRows rows={4} />
       </TabScreen>
     );
   }
   if (!group) {
     return (
-      <TabScreen>
+      <TabScreen width="full">
         <EmptyState
           icon={MessagesSquare}
           title={t('nav.tabs.groupe')}
@@ -197,8 +220,23 @@ export function GroupeTab() {
     const currentReply = replyToMessage;
     setDraft('');
     setReplyToMessage(null);
+    const id = newMessageId();
     send.mutate(
-      { text, ...(currentReply ? { replyToId: currentReply.id } : {}) },
+      {
+        id,
+        text,
+        ...(currentReply
+          ? {
+              replyToId: currentReply.id,
+              replyTo: {
+                id: currentReply.id,
+                kind: currentReply.kind,
+                author: currentReply.author,
+                preview: currentReply.text?.slice(0, 80) ?? null,
+              },
+            }
+          : {}),
+      },
       {
         onError: () => {
           setDraft(text);
@@ -291,6 +329,7 @@ export function GroupeTab() {
   return (
     <TabScreen
       scroll={false}
+      width="full"
       footer={
         left ? undefined : voice.phase !== 'idle' ? (
           <RecordingBar
@@ -351,11 +390,18 @@ export function GroupeTab() {
       ) : null}
       {all.length ? (
         <FlatList
+          ref={flatListRef}
           style={styles.list}
           inverted
           data={rows}
           keyExtractor={(row) => row.key}
           onEndReachedThreshold={0.4}
+          onScrollToIndexFailed={(info) => {
+            flatListRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: true,
+            });
+          }}
           onEndReached={() => {
             if (messages.hasNextPage && !messages.isFetchingNextPage) void messages.fetchNextPage();
           }}
@@ -363,7 +409,9 @@ export function GroupeTab() {
             <RowView
               row={item}
               lang={lang}
+              highlighted={item.kind === 'message' && item.message.id === highlightedId}
               onSelectMessage={setSelectedMessage}
+              onReplyPress={scrollToMessage}
               onMentionPress={(name) => {
                 if (name.toLowerCase() === 'njangi') {
                   setDraft((prev) =>
@@ -524,13 +572,17 @@ export function GroupeTab() {
 function RowView({
   row,
   lang,
+  highlighted,
   onSelectMessage,
   onMentionPress,
+  onReplyPress,
 }: {
   row: Row;
   lang: 'fr' | 'en';
+  highlighted?: boolean;
   onSelectMessage: (message: ChatMessageDto) => void;
   onMentionPress: (name: string) => void;
+  onReplyPress: (messageId: string) => void;
 }) {
   const { t } = useTranslation();
   if (row.kind === 'date') return <DateSeparator label={row.label} />;
@@ -551,12 +603,14 @@ function RowView({
       firstOfRun={row.firstOfRun}
       time={formatClock(m.createdAt, lang)}
       parts={parts}
+      highlighted={highlighted}
       onMentionPress={onMentionPress}
       reply={
         m.replyTo
           ? {
               name: m.replyTo.author?.name ?? t('common.agentName'),
               text: m.replyTo.preview ?? '',
+              onPress: () => onReplyPress(m.replyTo!.id),
             }
           : undefined
       }
@@ -578,6 +632,6 @@ function RowView({
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  content: { paddingHorizontal: space.s4, paddingVertical: space.s2, gap: space.s2 },
+  content: { paddingHorizontal: space.s2, paddingVertical: space.s2, gap: space.s2 },
   pinned: { gap: space.s1, padding: space.s3, marginBottom: space.s2 },
 });

@@ -63,7 +63,13 @@ export function deliverSession(req: Request, res: Response, tokens: SessionToken
 export function assertCookieRequestAllowed(req: Request): void {
   if (req.get(CLIENT_HEADER) !== 'web') throw commonError('CSRF_HEADER_MISSING');
   const origin = req.get('origin');
-  if (origin && !getEnv().WEB_ORIGINS.includes(origin)) throw commonError('ORIGIN_NOT_ALLOWED');
+  if (origin) {
+    const isAllowed =
+      getEnv().WEB_ORIGINS.includes(origin) ||
+      (getEnv().NODE_ENV === 'development' &&
+        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+    if (!isAllowed) throw commonError('ORIGIN_NOT_ALLOWED');
+  }
 }
 
 /**

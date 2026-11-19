@@ -83,7 +83,7 @@ export function buildSessionBlock(facts: SessionFacts): string {
   if (facts.channel === 'PRIVATE' && facts.otherGroups.length) {
     lines.push(`otherGroups: ${facts.otherGroups.map(clean).join(', ')}`);
   }
-  if (facts.channel === 'GROUP' && facts.recentChat?.length) {
+  if (facts.recentChat?.length) {
     lines.push(
       `recentGroupChat:\n${facts.recentChat.map((line) => `  - ${clean(line).slice(0, 200)}`).join('\n')}`,
     );

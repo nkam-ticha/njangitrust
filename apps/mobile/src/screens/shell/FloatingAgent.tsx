@@ -198,6 +198,6 @@ export function FloatingAgent() {
 }
 
 const styles = StyleSheet.create({
-  layer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  layer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, overflow: 'hidden' },
   orb: { position: 'absolute', left: 0, top: 0, width: ORB, height: ORB, borderRadius: ORB / 2 },
 });

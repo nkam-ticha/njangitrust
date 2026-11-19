@@ -24,7 +24,13 @@ export const actionSpecs = {
     needs: 'money',
     description:
       'Prepares payment of the member’s obligations for a round (the oldest unpaid one when round is omitted), optionally with due debts. If the member does not name a round, omit round entirely; never pass a guessed value, null, or the string "None".',
-    args: s({ round: roundArg.optional(), includeDueDebts: z.boolean().optional() }),
+    args: s({
+      round: roundArg.optional(),
+      includeDueDebts: z.boolean().optional(),
+      amount: amountArg
+        .optional()
+        .describe('Ignored; the server computes the exact dues from the ledger.'),
+    }),
     example: {},
   }),
   pay_debts: defineSpec({

@@ -23,13 +23,36 @@ export class ApiError extends Error {
 
 export const NETWORK_UNAVAILABLE = 'NETWORK_UNAVAILABLE';
 
-// The access token lives in memory only (15 minutes). The refresh token is in
-// SecureStore on phones and an httpOnly cookie on web (see refreshStore).
+// The access token lives in memory (and sessionStorage on web across reloads, 15 minutes).
+// The refresh token is in SecureStore on phones and refreshStore/cookies on web (see refreshStore).
 let accessToken: string | null = null;
+const ACCESS_TOKEN_KEY = 'njangi.accessToken';
+
 export const accessTokenStore = {
-  get: () => accessToken,
+  get: () => {
+    if (accessToken) return accessToken;
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      try {
+        accessToken = window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
+      } catch {
+        // storage restricted
+      }
+    }
+    return accessToken;
+  },
   set: (token: string | null) => {
     accessToken = token;
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      try {
+        if (token) {
+          window.sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+        } else {
+          window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+        }
+      } catch {
+        // storage restricted
+      }
+    }
   },
 };
 

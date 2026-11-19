@@ -77,8 +77,9 @@ A tool result with "status": "UNAVAILABLE" means that part of the app is not
 built yet: say so plainly with the message given, and suggest the app's
 screens. Amounts and dates in tool results are already written for the member:
 copy them as they are.
-In the group chat, for any question about one member's own situation or any
-request to do something, call reply_privately and add nothing else.
+In the group chat, call reply_privately only when a member asks about their own
+personal finances or asks you to prepare an action card. For all group matters,
+greetings, and group chat summaries, answer directly in the group.
 
 EXAMPLES
 Member: "Je dois combien ?"
@@ -127,8 +128,10 @@ card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
 you have no pending question or no record of a question you just asked. For
 requests to summarize or read group chat messages or notes in private chat, call
 summarize_unread (or search_chat). In the group chat (channel: GROUP), answer
-greetings, general group questions, and questions about the group discussion
-(from recentGroupChat in <session>) directly in the group; only call
+greetings, general group questions, and questions about the group discussion or
+chat summary (from recentGroupChat in <session>) directly in the group. You have
+full access to recent group chat history via recentGroupChat in <session>. Always
+summarize or answer group discussion questions directly in the group. Only call
 reply_privately when a member asks about their own personal financial situation
-or asks you to prepare an action card.
+(personal debt/dues/loans) or asks you to prepare an action card.
 `;

@@ -46,6 +46,7 @@ export function useMessages(groupId: string | null) {
       });
     },
     getNextPageParam: (last) => last.nextBefore,
+    refetchInterval: 2500,
   });
 }
 
@@ -55,6 +56,7 @@ export function useChatState(groupId: string | null) {
     queryKey: chatKeys.state(groupId ?? 'none'),
     enabled: !!groupId,
     queryFn: () => api.get(`/v1/groups/${groupId}/chat`, { schema: chatStateSchema }),
+    refetchInterval: 5000,
   });
 }
 
@@ -64,6 +66,7 @@ export function useUnreadTotal(): number {
     queryKey: chatKeys.unread,
     queryFn: () => api.get('/v1/chat/unread', { schema: chatUnreadAllSchema }),
     staleTime: 60_000,
+    refetchInterval: 10_000,
   });
   return (data?.groups ?? []).reduce((sum, g) => sum + g.unread, 0);
 }
@@ -79,26 +82,77 @@ export function useMarkRead(groupId: string | null) {
   });
 }
 
-export function useSendMessage(groupId: string | null) {
+export function useSendMessage(
+  groupId: string | null,
+  authorInfo?: { membershipId?: string; name?: string } | null,
+) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: string | { text: string; replyToId?: string | null }) => {
-      const id = newMessageId();
-      const payload = typeof input === 'string' ? { id, text: input } : { id, ...input };
+    mutationFn: async (
+      input:
+        | string
+        | {
+            text: string;
+            replyToId?: string | null;
+            replyTo?: ChatMessageDto['replyTo'];
+            id?: string;
+          },
+    ) => {
+      const id = typeof input === 'object' && input.id ? input.id : newMessageId();
+      const payload =
+        typeof input === 'string'
+          ? { id, text: input }
+          : { id, text: input.text, ...(input.replyToId ? { replyToId: input.replyToId } : {}) };
       const res = await api.post(`/v1/groups/${groupId}/messages`, payload, {
         schema: messageResponseSchema,
       });
       return res.message;
     },
-    onSuccess: (message) => {
-      insertMessage(qc, groupId, message);
+    onMutate: (input) => {
+      const id = typeof input === 'object' && input.id ? input.id : newMessageId();
+      const text = typeof input === 'string' ? input : input.text;
+      const replyTo = typeof input === 'object' ? (input.replyTo ?? null) : null;
+      const optimisticMessage: ChatMessageDto = {
+        id,
+        groupId: groupId ?? '',
+        author: {
+          membershipId: authorInfo?.membershipId ?? 'me',
+          name: authorInfo?.name ?? 'Moi',
+        },
+        kind: 'TEXT',
+        text,
+        createdAt: new Date().toISOString(),
+        attachment: null,
+        replyTo,
+        mentions: [],
+        isAnnouncement: false,
+        removed: null,
+        systemText: null,
+      };
+      insertMessage(qc, groupId, optimisticMessage);
+      return { id, optimisticMessage };
+    },
+    onSuccess: (message, _variables, context) => {
+      if (context?.id) {
+        updateOrInsertMessage(qc, groupId, context.id, message);
+      } else {
+        insertMessage(qc, groupId, message);
+      }
       if (groupId && message.text && /@njangi\b/i.test(message.text)) {
         void qc.invalidateQueries({ queryKey: chatKeys.messages(groupId) });
         void qc.invalidateQueries({ queryKey: ['agent'] });
-        setTimeout(() => {
-          void qc.invalidateQueries({ queryKey: chatKeys.messages(groupId) });
-          void qc.invalidateQueries({ queryKey: ['agent'] });
-        }, 3_500);
+        const delays = [600, 1200, 2000, 3200, 5000, 8000];
+        delays.forEach((delay) => {
+          setTimeout(() => {
+            void qc.invalidateQueries({ queryKey: chatKeys.messages(groupId) });
+            void qc.invalidateQueries({ queryKey: ['agent'] });
+          }, delay);
+        });
+      }
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.id) {
+        removeOptimisticMessage(qc, groupId, context.id);
       }
     },
   });
@@ -127,6 +181,51 @@ export function insertMessage(
     if (!first) return old;
     if (old.pages.some((p) => p.messages.some((m) => m.id === message.id))) return old;
     return { ...old, pages: [{ ...first, messages: [message, ...first.messages] }, ...rest] };
+  });
+}
+
+export function updateOrInsertMessage(
+  qc: ReturnType<typeof useQueryClient>,
+  groupId: string | null,
+  id: string,
+  message: ChatMessageDto,
+) {
+  if (!groupId) return;
+  qc.setQueryData<Pages>(chatKeys.messages(groupId), (old) => {
+    if (!old) return old;
+    let found = false;
+    const pages = old.pages.map((p) => ({
+      ...p,
+      messages: p.messages.map((m) => {
+        if (m.id === id || m.id === message.id) {
+          found = true;
+          return message;
+        }
+        return m;
+      }),
+    }));
+    if (found) return { ...old, pages };
+    const [first, ...rest] = old.pages;
+    if (!first) return old;
+    return { ...old, pages: [{ ...first, messages: [message, ...first.messages] }, ...rest] };
+  });
+}
+
+export function removeOptimisticMessage(
+  qc: ReturnType<typeof useQueryClient>,
+  groupId: string | null,
+  id: string,
+) {
+  if (!groupId) return;
+  qc.setQueryData<Pages>(chatKeys.messages(groupId), (old) => {
+    if (!old) return old;
+    return {
+      ...old,
+      pages: old.pages.map((p) => ({
+        ...p,
+        messages: p.messages.filter((m) => m.id !== id),
+      })),
+    };
   });
 }
 

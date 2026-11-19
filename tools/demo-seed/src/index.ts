@@ -401,7 +401,152 @@ async function seedGroup(plan: GroupPlan): Promise<void> {
   if (await ensureCycle(groupId, admin)) await seedPayments(plan, groupId);
   await seedChat(plan, groupId, admin);
   if (plan.ruleProposal) await ensureRuleProposal(plan, groupId, plan.ruleProposal);
+  await ensureAllFsdProposals(plan, groupId, admin);
   if (plan.numberChange) await ensureNumberChange(plan.numberChange);
+}
+
+async function ensureAllFsdProposals(
+  plan: GroupPlan,
+  groupId: string,
+  admin: Session,
+): Promise<void> {
+  const { proposals } = await api.get<{ proposals: ProposalRow[] }>(
+    `/v1/groups/${groupId}/proposals?status=OPEN`,
+    admin.token,
+  );
+  const types = new Set(proposals.map((p) => p.type));
+
+  const { members } = await api.get<{
+    members: { membershipId: string; name: string; role: string; status: string }[];
+  }>(`/v1/groups/${groupId}/members`, admin.token);
+  const active = members.filter((m) => m.status === 'ACTIVE');
+  if (active.length < 3) return;
+
+  if (!types.has('MEMBER_ADD')) {
+    try {
+      const { action } = await api.post<PendingActionBody>(
+        `/v1/groups/${groupId}/proposals`,
+        {
+          type: 'MEMBER_ADD',
+          name: 'Hervé Nana',
+          phone: '+237699000202',
+          reason: 'Intégrer Hervé Nana au prochain cycle',
+        },
+        admin.token,
+      );
+      await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+      log('  + vote opened: add Hervé Nana');
+    } catch {
+      /* already exists or ineligible */
+    }
+  }
+
+  if (!types.has('ROTATION_CHANGE') && active.length >= 2) {
+    const nonAdmin = active.filter((m) => m.role !== 'ADMIN');
+    const first = nonAdmin[0];
+    const second = nonAdmin[1];
+    if (first && second) {
+      try {
+        const { action } = await api.post<PendingActionBody>(
+          `/v1/groups/${groupId}/proposals`,
+          {
+            type: 'ROTATION_CHANGE',
+            swap: [first.membershipId, second.membershipId],
+            reason: 'Échange de tour pour concilier nos contraintes',
+          },
+          admin.token,
+        );
+        await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+        log('  + vote opened: rotation swap');
+      } catch {
+        /* already exists or ineligible */
+      }
+    }
+  }
+
+  if (!types.has('ADMIN_CHANGE')) {
+    const candidate = active.find((m) => m.role !== 'ADMIN');
+    if (candidate) {
+      try {
+        const { action } = await api.post<PendingActionBody>(
+          `/v1/groups/${groupId}/proposals`,
+          {
+            type: 'ADMIN_CHANGE',
+            membershipId: candidate.membershipId,
+            reason: `Transmission du rôle d'administrateur à ${candidate.name}`,
+          },
+          admin.token,
+        );
+        await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+        log(`  + vote opened: admin change to ${candidate.name}`);
+      } catch {
+        /* already exists or ineligible */
+      }
+    }
+  }
+
+  if (!types.has('MEMBER_REMOVE')) {
+    const target = active.filter((m) => m.role !== 'ADMIN').slice(-1)[0];
+    if (target) {
+      try {
+        const { action } = await api.post<PendingActionBody>(
+          `/v1/groups/${groupId}/proposals`,
+          {
+            type: 'MEMBER_REMOVE',
+            membershipId: target.membershipId,
+            reason: 'Absences répétées non justifiées et retards',
+          },
+          admin.token,
+        );
+        await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+        log(`  + vote opened: member remove for ${target.name}`);
+      } catch {
+        /* already exists or ineligible */
+      }
+    }
+  }
+
+  if (!types.has('SOLIDARITY_PAYOUT')) {
+    const fallback = active.length > 0 ? active[0] : null;
+    const recipient = active.find((m) => m.role !== 'ADMIN') ?? fallback;
+    if (recipient) {
+      try {
+        const { action } = await api.post<PendingActionBody>(
+          `/v1/groups/${groupId}/solidarity/requests`,
+          {
+            recipientMembershipId: recipient.membershipId,
+            event: 'DEUIL',
+            amount: 25_000,
+            note: 'Assistance pour les obsèques familiales',
+          },
+          admin.token,
+        );
+        await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+        log(`  + vote opened: solidarity payout for ${recipient.name}`);
+      } catch {
+        /* already exists or ineligible */
+      }
+    }
+  }
+
+  if (!types.has('LEDGER_CORRECTION')) {
+    try {
+      const { action } = await api.post<PendingActionBody>(
+        `/v1/groups/${groupId}/proposals`,
+        {
+          type: 'LEDGER_CORRECTION',
+          seq: 1,
+          correction: 'Correction de l’écriture de lancement',
+          reason: 'Harmonisation comptable des libellés du registre',
+        },
+        admin.token,
+      );
+      await api.post(`/v1/pending-actions/${action.id}/confirm`, {}, admin.token);
+      log('  + vote opened: ledger correction for seq 1');
+    } catch {
+      /* already exists or ineligible */
+    }
+  }
 }
 
 function localNumber(e164: string): string {

@@ -13,7 +13,20 @@ export const chatTools = [
     const noGroup = needGroup(ctx);
     if (noGroup) return noGroup;
     const source = await port.unread(ctx);
-    const result = await summarizeUnread(source, ctx.lang);
+    let result;
+    try {
+      result = await summarizeUnread(source, ctx.lang);
+    } catch {
+      const msgs = source.messages.slice(-8);
+      const lines = msgs.map((m) => `${m.author}: ${m.text ?? ''}`);
+      result = {
+        summary:
+          lines.join('\n') || (ctx.lang === 'fr' ? 'Aucun message récent.' : 'No recent messages.'),
+        count: source.messages.length,
+        moreCount: source.moreCount,
+        media: source.media,
+      };
+    }
     // Spec 4.9: the chat is then marked as read.
     await port.markRead(ctx);
     return ok(result);

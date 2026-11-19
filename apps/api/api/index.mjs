@@ -14864,11 +14864,13 @@ var ALLOWED_HEADERS = ["Authorization", "Content-Type", "X-Request-Id", CLIENT_H
 var ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE";
 function cors(allowedOrigins) {
   const allowed = new Set(allowedOrigins);
+  const isDev = process.env.NODE_ENV === "development";
   return (req, res, next) => {
     res.vary("Origin");
     const origin = req.get("origin");
     if (!origin) return next();
-    if (!allowed.has(origin)) return next(commonError("ORIGIN_NOT_ALLOWED"));
+    const isAllowed2 = allowed.has(origin) || isDev && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    if (!isAllowed2) return next(commonError("ORIGIN_NOT_ALLOWED"));
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Expose-Headers", "X-Request-Id, Retry-After");
@@ -15450,7 +15452,10 @@ function deliverSession(req, res, tokens) {
 function assertCookieRequestAllowed(req) {
   if (req.get(CLIENT_HEADER) !== "web") throw commonError("CSRF_HEADER_MISSING");
   const origin = req.get("origin");
-  if (origin && !getEnv().WEB_ORIGINS.includes(origin)) throw commonError("ORIGIN_NOT_ALLOWED");
+  if (origin) {
+    const isAllowed2 = getEnv().WEB_ORIGINS.includes(origin) || getEnv().NODE_ENV === "development" && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    if (!isAllowed2) throw commonError("ORIGIN_NOT_ALLOWED");
+  }
 }
 function refreshTokenOf(req, bodyToken) {
   if (bodyToken) return bodyToken;
@@ -29687,8 +29692,9 @@ A tool result with "status": "UNAVAILABLE" means that part of the app is not
 built yet: say so plainly with the message given, and suggest the app's
 screens. Amounts and dates in tool results are already written for the member:
 copy them as they are.
-In the group chat, for any question about one member's own situation or any
-request to do something, call reply_privately and add nothing else.
+In the group chat, call reply_privately only when a member asks about their own
+personal finances or asks you to prepare an action card. For all group matters,
+greetings, and group chat summaries, answer directly in the group.
 
 EXAMPLES
 Member: "Je dois combien ?"
@@ -29737,14 +29743,16 @@ card" (never "C'est fait" or "It is done" before an <event> arrives). Never say
 you have no pending question or no record of a question you just asked. For
 requests to summarize or read group chat messages or notes in private chat, call
 summarize_unread (or search_chat). In the group chat (channel: GROUP), answer
-greetings, general group questions, and questions about the group discussion
-(from recentGroupChat in <session>) directly in the group; only call
+greetings, general group questions, and questions about the group discussion or
+chat summary (from recentGroupChat in <session>) directly in the group. You have
+full access to recent group chat history via recentGroupChat in <session>. Always
+summarize or answer group discussion questions directly in the group. Only call
 reply_privately when a member asks about their own personal financial situation
-or asks you to prepare an action card.
+(personal debt/dues/loans) or asks you to prepare an action card.
 `;
 
 // src/agent/prompts/index.ts
-var PROMPT_VERSION = "2026-11-18.7";
+var PROMPT_VERSION = "2026-11-19.1";
 function systemPrompt() {
   return SYSTEM_PROMPT_TEXT;
 }
@@ -29862,7 +29870,10 @@ var s = z63.strictObject;
 var PRIVATE = ["PRIVATE"];
 var BOTH = ["PRIVATE", "GROUP"];
 var GROUP_ONLY = ["GROUP"];
-var roundArg = z63.number().int().min(1).max(60).describe("Round number (tour) in the current cycle. Omit for the current round.");
+var roundArg = z63.preprocess(
+  (val) => val === "None" || val === "null" || val === null || val === void 0 || val === "" ? void 0 : typeof val === "string" && /^\d+$/.test(val) ? Number(val) : val,
+  z63.number().int().min(1).max(60).describe("Round number (tour) in the current cycle. Omit for the current round.")
+);
 var memberArg = z63.string().min(1).max(80).describe(
   "A member of the active group, by name as shown by list_members. Never a phone number."
 );
@@ -29883,7 +29894,11 @@ var actionSpecs = {
     name: "pay",
     needs: "money",
     description: 'Prepares payment of the member\u2019s obligations for a round (the oldest unpaid one when round is omitted), optionally with due debts. If the member does not name a round, omit round entirely; never pass a guessed value, null, or the string "None".',
-    args: s({ round: roundArg.optional(), includeDueDebts: z64.boolean().optional() }),
+    args: s({
+      round: roundArg.optional(),
+      includeDueDebts: z64.boolean().optional(),
+      amount: amountArg.optional().describe("Ignored; the server computes the exact dues from the ledger.")
+    }),
     example: {}
   }),
   pay_debts: defineSpec({
@@ -30209,7 +30224,7 @@ var preferenceSpecs = {
     category: "reading",
     channels: GROUP_ONLY,
     name: "reply_privately",
-    description: "Group chat only: use ONLY when the asking member asks about their own personal financial situation (what they personally owe, their personal debts, their personal loan) or asks you to prepare an action/confirmation card. Do NOT call this for greetings, general group questions, or group chat summaries: answer those directly in the group.",
+    description: "Group chat only: call this ONLY when the asking member asks about their own private financial situation (what they personally owe, their personal debts, their personal loan, their private statement) or asks you to prepare a personal action card (paying, borrowing, withdrawing, voting, proposing). NEVER call this for greetings, group questions, or group chat summaries: answer those directly in the group.",
     args: s({}),
     example: {}
   })
@@ -30984,7 +30999,7 @@ function buildSessionBlock(facts) {
   if (facts.channel === "PRIVATE" && facts.otherGroups.length) {
     lines.push(`otherGroups: ${facts.otherGroups.map(clean).join(", ")}`);
   }
-  if (facts.channel === "GROUP" && facts.recentChat?.length) {
+  if (facts.recentChat?.length) {
     lines.push(
       `recentGroupChat:
 ${facts.recentChat.map((line2) => `  - ${clean(line2).slice(0, 200)}`).join("\n")}`
@@ -31521,6 +31536,129 @@ var APP_GUIDE = [
     text: {
       fr: "Les autres membres ne voient jamais ton num\xE9ro de t\xE9l\xE9phone ni ton num\xE9ro de paiement, et moi non plus je ne les connais pas : l\u2019application les affiche seulement sur ta propre carte. Les votes secrets ne sont li\xE9s \xE0 personne. Je ne re\xE7ois ni ton PIN ni tes jetons de connexion. Tes op\xE9rations d\u2019argent sont visibles dans le registre du groupe, sans num\xE9ros.",
       en: "Other members never see your phone number or payment number, and I do not know them either: the app only shows them on your own card. Secret votes are linked to nobody. I receive neither your PIN nor your sign-in tokens. Your money operations are visible in the group\u2019s records, without numbers."
+    }
+  },
+  {
+    id: "members",
+    title: { fr: "Les membres du groupe", en: "Group members" },
+    keywords: [
+      "membre",
+      "membres",
+      "member",
+      "members",
+      "liste des membres",
+      "member list",
+      "qui est dans le groupe",
+      "who is in the group",
+      "role",
+      "administrateur",
+      "admin",
+      "score",
+      "ponctualite"
+    ],
+    text: {
+      fr: "Pour voir la liste des membres : ouvre l\u2019onglet Moi, puis appuie sur \xAB Membres du groupe \xBB. Tu y trouves chaque membre avec son r\xF4le (administrateur ou membre), son rang dans la rotation et son score de ponctualit\xE9. Pour int\xE9grer une nouvelle personne dans un groupe actif, cela passe obligatoirement par un vote dans l\u2019onglet Votes (\xAB Proposer \xBB puis \xAB Nouveau membre \xBB).",
+      en: "To view the member list: open the Moi tab, then tap \u201CMembres du groupe\u201D. You will see every member with their role (administrator or member), their position in the rotation and their reliability score. Adding a new person to an active group always goes through a vote in the Votes tab (\u201CProposer\u201D then \u201CNouveau membre\u201D)."
+    }
+  },
+  {
+    id: "rules",
+    title: { fr: "Les r\xE8gles du groupe", en: "Group rules" },
+    keywords: [
+      "regle",
+      "regles",
+      "rule",
+      "rules",
+      "reglement",
+      "statuts",
+      "parametres",
+      "parameters",
+      "consulter les regles",
+      "voir les regles",
+      "modifier les regles",
+      "changer les regles"
+    ],
+    text: {
+      fr: "Pour consulter les r\xE8gles du groupe : ouvre l\u2019onglet Moi, puis appuie sur \xAB R\xE8gles du groupe \xBB. Tu y d\xE9couvres tous les param\xE8tres adopt\xE9s : la cotisation par tour, la caisse de secours, l\u2019amende de retard, la dur\xE9e des votes, le mode de tirage et les conditions de pr\xEAt. Les r\xE8gles ne changent que si le groupe vote pour cela avec l\u2019approbation des deux tiers des membres.",
+      en: "To see the group rules: open the Moi tab, then tap \u201CR\xE8gles du groupe\u201D. You will find all the adopted parameters: contribution per round, solidarity fund, late fine, vote duration, rotation mode and loan conditions. Rules only change when the group approves a proposal with two thirds of eligible members."
+    }
+  },
+  {
+    id: "new_proposal",
+    title: { fr: "Faire une nouvelle proposition", en: "Making a new proposal" },
+    keywords: [
+      "nouvelle proposition",
+      "new proposal",
+      "faire une proposition",
+      "make a proposal",
+      "comment proposer",
+      "how to propose",
+      "soumettre proposition",
+      "submit proposal",
+      "lancer un vote",
+      "ouvrir un vote"
+    ],
+    text: {
+      fr: "Pour proposer une d\xE9cision au groupe : va dans l\u2019onglet Votes, puis appuie sur le bouton \xAB Proposer \xBB en haut \xE0 droite. Tu pourras choisir la d\xE9cision \xE0 soumettre : changer une r\xE8gle, ajouter ou exclure un membre, \xE9changer l\u2019ordre des tours, changer d\u2019admin, demander un d\xE9part anticip\xE9, annuler une amende ou corriger une \xE9criture du registre. Tu peux aussi me dire directement ce que tu veux proposer et je pr\xE9pare la carte.",
+      en: "To propose a decision to the group: go to the Votes tab, then tap the \u201CProposer\u201D button at the top right. You can choose the decision to submit: change a rule, add or remove a member, swap rotation turns, change admin, request an early exit, waive a fine or correct a record entry. You can also tell me directly what you want to propose and I will prepare the card."
+    }
+  },
+  {
+    id: "notifications",
+    title: { fr: "Les notifications", en: "Notifications" },
+    keywords: [
+      "notification",
+      "notifications",
+      "cloche",
+      "bell",
+      "alerte",
+      "alert",
+      "rappel",
+      "reminder",
+      "regler notifications",
+      "mes notifications"
+    ],
+    text: {
+      fr: "Tes notifications sont regroup\xE9es sous l\u2019ic\xF4ne de cloche tout en haut \xE0 droite de l\u2019\xE9cran. Tu y re\xE7ois les confirmations de paiement, les alertes d\u2019\xE9ch\xE9ance, les ouvertures et r\xE9sultats de votes, ainsi que les convocations de r\xE9union. Pour choisir quelles alertes recevoir ou d\xE9finir des heures de tranquillit\xE9, va dans l\u2019onglet Moi, puis \xAB R\xE9glages \xBB et \xAB Notifications \xBB.",
+      en: "Your notifications are collected under the bell icon at the very top right of the screen. You receive payment confirmations, due date alerts, vote openings and results, and meeting notices there. To select which alerts to receive or set quiet hours, go to the Moi tab, then \u201CR\xE9glages\u201D and \u201CNotifications\u201D."
+    }
+  },
+  {
+    id: "pin_resets",
+    title: { fr: "R\xE9initialisation de code PIN", en: "PIN reset" },
+    keywords: [
+      "demande de pin",
+      "reinitialiser pin",
+      "reset pin",
+      "pin resets",
+      "code pin oublie",
+      "forgot pin code",
+      "approuver pin",
+      "confirmer pin"
+    ],
+    text: {
+      fr: "Quand un membre oublie son code PIN, il fait une demande depuis l\u2019\xE9cran de connexion (\xAB Code PIN oubli\xE9 ? \xBB). Pour l\u2019administrateur du groupe : ouvre l\u2019onglet Moi, puis appuie sur \xAB Demandes de code PIN \xBB. L\u2019administrateur v\xE9rifie l\u2019identit\xE9 du membre et confirme la demande pour lui envoyer un lien s\xE9curis\xE9 \xE0 usage unique permettant de choisir un nouveau code PIN.",
+      en: "When a member forgets their PIN, they request a reset from the sign-in screen (\u201CCode PIN oubli\xE9 ?\u201D). For the group administrator: open the Moi tab, then tap \u201CDemandes de code PIN\u201D. The administrator verifies the member\u2019s identity and approves the request to generate a secure one-time link to choose a new PIN."
+    }
+  },
+  {
+    id: "founding",
+    title: { fr: "Membres fondateurs et d\xE9marrage", en: "Founding members and start" },
+    keywords: [
+      "fondateur",
+      "fondateurs",
+      "founding",
+      "membres fondateurs",
+      "founding members",
+      "inviter fondateurs",
+      "invite founders",
+      "demarrer le cycle",
+      "lancer le premier cycle",
+      "start first cycle"
+    ],
+    text: {
+      fr: "Avant le tout premier cycle d\u2019un groupe, l\u2019administrateur invite les membres fondateurs. L\u2019\xE9cran \xAB Membres fondateurs \xBB est accessible depuis l\u2019onglet Moi ou depuis l\u2019\xE9cran d\u2019accueil du groupe. D\xE8s que le groupe rassemble au moins trois membres actifs, l\u2019administrateur peut lancer le cycle avec le bouton \xAB D\xE9marrer le cycle \xBB, ce qui d\xE9termine l\u2019ordre du tour.",
+      en: "Before a group\u2019s very first cycle, the administrator invites founding members. The \u201CMembres fondateurs\u201D screen is accessible from the Moi tab or from the group\u2019s home screen. As soon as the group has at least three active members, the administrator can start the cycle with the \u201CD\xE9marrer le cycle\u201D button, which sets the round order."
     }
   }
 ];
@@ -32452,7 +32590,7 @@ async function gatherSessionFacts(ctx) {
   let openVotes = null;
   let money4 = null;
   let recentChat;
-  if (active && ctx.channel === "GROUP") {
+  if (active) {
     try {
       const rows = await getPrisma().message.findMany({
         where: {
@@ -32463,7 +32601,7 @@ async function gatherSessionFacts(ctx) {
           kind: { in: ["TEXT", "AGENT"] }
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        take: 15,
+        take: ctx.channel === "GROUP" ? 30 : 15,
         select: {
           text: true,
           author: { select: { user: { select: { name: true } } } }
@@ -32509,7 +32647,7 @@ async function gatherSessionFacts(ctx) {
 }
 
 // src/agent/summarize.ts
-var SUMMARY_TIMEOUT_MS = 12e3;
+var SUMMARY_TIMEOUT_MS = 3e4;
 var LANGUAGE_NAME = { fr: 'French, using "tu"', en: "English" };
 async function summarise(llm, instruction, lines, lang, signal) {
   const config2 = agentConfig();
@@ -33088,7 +33226,19 @@ var chatTools = [
     const noGroup = needGroup(ctx);
     if (noGroup) return noGroup;
     const source2 = await port3.unread(ctx);
-    const result = await summarizeUnread2(source2, ctx.lang);
+    let result;
+    try {
+      result = await summarizeUnread2(source2, ctx.lang);
+    } catch {
+      const msgs = source2.messages.slice(-8);
+      const lines = msgs.map((m) => `${m.author}: ${m.text ?? ""}`);
+      result = {
+        summary: lines.join("\n") || (ctx.lang === "fr" ? "Aucun message r\xE9cent." : "No recent messages."),
+        count: source2.messages.length,
+        moreCount: source2.moreCount,
+        media: source2.media
+      };
+    }
     await port3.markRead(ctx);
     return ok(result);
   }),

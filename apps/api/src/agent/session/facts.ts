@@ -17,7 +17,7 @@ export async function gatherSessionFacts(ctx: AgentCtx): Promise<SessionFacts> {
   let openVotes: number | null = null;
   let money: SessionFacts['money'] = null;
   let recentChat: string[] | undefined;
-  if (active && ctx.channel === 'GROUP') {
+  if (active) {
     try {
       const rows = await getPrisma().message.findMany({
         where: {
@@ -28,7 +28,7 @@ export async function gatherSessionFacts(ctx: AgentCtx): Promise<SessionFacts> {
           kind: { in: ['TEXT', 'AGENT'] },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: 15,
+        take: ctx.channel === 'GROUP' ? 30 : 15,
         select: {
           text: true,
           author: { select: { user: { select: { name: true } } } },

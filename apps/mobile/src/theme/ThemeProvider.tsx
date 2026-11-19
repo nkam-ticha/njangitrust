@@ -1,6 +1,6 @@
 // Theme context: follows the system colour scheme unless the member overrides it.
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Platform, useColorScheme } from 'react-native';
 import { darkColors, lightColors, type ColorScheme, type ThemeColors } from './colors';
 
 export type ThemePreference = 'system' | ColorScheme;
@@ -25,14 +25,22 @@ export function ThemeProvider({ children, initialPreference = 'system' }: ThemeP
   const [preference, setPreference] = useState<ThemePreference>(initialPreference);
   const scheme: ColorScheme =
     preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : preference;
+  const colors = scheme === 'dark' ? darkColors : lightColors;
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined' && document.body) {
+      document.body.style.backgroundColor = colors.canvas;
+    }
+  }, [colors.canvas]);
+
   const value = useMemo<Theme>(
     () => ({
       scheme,
-      colors: scheme === 'dark' ? darkColors : lightColors,
+      colors,
       preference,
       setPreference,
     }),
-    [scheme, preference],
+    [scheme, colors, preference],
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

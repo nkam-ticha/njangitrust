@@ -12,7 +12,7 @@ import { SUMMARY_PROMPT } from './prompts';
 import type { UnreadSource } from './ports';
 
 /** A summary call made by a tool (summarize_unread), outside the turn's own budget. */
-const SUMMARY_TIMEOUT_MS = 12_000;
+const SUMMARY_TIMEOUT_MS = 30_000;
 
 const LANGUAGE_NAME: Record<Lang, string> = { fr: 'French, using "tu"', en: 'English' };
 

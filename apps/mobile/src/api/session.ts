@@ -55,6 +55,19 @@ setRefreshHandler(refreshSession);
 
 /** At launch: resume the previous session if the server still accepts it. */
 export async function restoreSession(): Promise<void> {
+  const existingToken = accessTokenStore.get();
+  if (existingToken) {
+    try {
+      const { user } = await api.get('/v1/me', { schema: meResponseSchema });
+      useSession.getState().setSignedIn(user);
+      void setLanguage(user.language);
+      void connectSocket();
+      return;
+    } catch {
+      // Access token was invalid or expired; proceed to refresh.
+    }
+  }
+
   if (await refreshAccessToken()) {
     try {
       const { user } = await api.get('/v1/me', { schema: meResponseSchema });

@@ -692,19 +692,19 @@
     },
     {
       "id": "S33",
-      "title": "Continuous 4-turn conversation: summarize group notes, ask capabilities, reply Yes, then check funds",
+      "title": "Continuous 4-turn conversation: summarize group notes, check overview, reply Yes to pay, then check funds",
       "channel": "PRIVATE",
       "member": "paul",
       "language": "en",
       "needs": ["money", "chat", "demoChat"],
       "turns": [
         { "user": "Summarize me notes from my group" },
-        { "user": "What exactly can you help me do in this app" },
+        { "user": "What can you help me with? Check my overview for me" },
         { "user": "Yes" },
-        { "user": "Also read my group's current fund amounts for me" }
+        { "user": "Now tell me the group funds" }
       ],
       "expect": {
-        "toolsCalled": ["summarize_unread", "get_my_overview", "get_funds"],
+        "toolsCalled": ["summarize_unread", "get_my_overview", "pay", "get_funds"],
         "mustNotMatch": [
           "(?i)(no record|don.t have|didn.t ask|no pending question|pas de question|je ne me souviens)"
         ]
@@ -715,20 +715,21 @@
           { "reply": "Here is the summary of your group chat: {{summary}}" }
         ],
         [
+          { "tools": [{ "name": "get_my_overview", "args": {} }] },
           {
-            "reply": "I can help you pay contributions, check your balance, manage loans, votes, and the solidarity fund. Want me to show you what's currently open in your group?"
+            "reply": "You owe {{amount:due}} for round 4. Shall I prepare the payment card for you?"
           }
         ],
         [
-          { "tools": [{ "name": "get_my_overview", "args": {} }] },
+          { "tools": [{ "name": "pay", "args": {} }] },
           {
-            "reply": "You owe {{amount:due}} for the current round, due by {{date:deadline}}. Want me to read your group's current fund amounts for you?"
+            "reply": "Here is the card to pay your contribution."
           }
         ],
         [
           { "tools": [{ "name": "get_funds", "args": {} }] },
           {
-            "reply": "Here are your group's current fund amounts from the general and solidarity funds."
+            "reply": "The general fund balance is {{amount:generalFund}}."
           }
         ]
       ]
