@@ -15,6 +15,7 @@ import {
   Image as ImageIcon,
   Info,
   MessagesSquare,
+  RefreshCw,
   Reply,
   Trash2,
   Video,
@@ -43,7 +44,6 @@ import { useConnectivity } from '@/state/connectivity';
 import { useSession } from '@/state/session';
 import { useActiveGroup } from '@/features/groups/useGroups';
 import {
-  newMessageId,
   useChatRealtime,
   useChatState,
   useDeleteMessage,
@@ -51,6 +51,7 @@ import {
   useMessages,
   useSendMessage,
 } from '@/features/chat/useChat';
+import { mergeOutbox, useOutbox } from '@/features/chat/outbox';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { useSendFile, type PickedFile } from '@/features/chat/useAttachments';
 import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder';
@@ -60,7 +61,15 @@ import { ChatAttachment } from './ChatAttachment';
 import { TabScreen } from '../shell/TabScreen';
 
 type Row =
-  | { kind: 'message'; key: string; message: ChatMessageDto; firstOfRun: boolean; own: boolean }
+  | {
+      kind: 'message';
+      key: string;
+      message: ChatMessageDto;
+      firstOfRun: boolean;
+      own: boolean;
+      /** Set for a message the server has not confirmed yet. */
+      local?: 'sending' | 'failed';
+    }
   | { kind: 'system'; key: string; message: ChatMessageDto }
   | { kind: 'date'; key: string; label: string }
   | { kind: 'unread'; key: string; count: number };
@@ -72,6 +81,7 @@ function buildRows(
   readAt: string | null,
   unread: number,
   lang: 'fr' | 'en',
+  localStatus: ReadonlyMap<string, 'sending' | 'failed'> = new Map(),
 ): Row[] {
   const rows: Row[] = [];
   messages.forEach((message, i) => {
@@ -90,8 +100,17 @@ function buildRows(
         !!older &&
         older.author?.membershipId === message.author?.membershipId &&
         older.kind !== 'SYSTEM';
-      rows.push({ kind: 'message', key: message.id, message, firstOfRun: !sameAsOlder, own });
+      const local = localStatus.get(message.id);
+      rows.push({
+        kind: 'message',
+        key: message.id,
+        message,
+        firstOfRun: !sameAsOlder,
+        own,
+        ...(local ? { local } : {}),
+      });
     }
+
     const dayChanges =
       !older || formatDateShort(older.createdAt, lang) !== formatDateShort(message.createdAt, lang);
     if (dayChanges) {
@@ -137,10 +156,13 @@ export function GroupeTab() {
     !!group && (group.membershipStatus === 'LEFT' || group.membershipStatus === 'REMOVED');
   const messages = useMessages(groupId);
   const state = useChatState(groupId);
-  const send = useSendMessage(groupId, {
+  const { send, retry, discard } = useSendMessage(groupId, {
     membershipId: group?.membershipId,
     name: userName ?? group?.name,
   });
+  const outbox = useOutbox((s) => s.items);
+  const agentWaiting = useOutbox((s) => s.agentWaiting);
+  const [failedMessage, setFailedMessage] = useState<ChatMessageDto | null>(null);
   const remove = useDeleteMessage(groupId);
   const markRead = useMarkRead(groupId);
   const [draft, setDraft] = useState('');
@@ -210,40 +232,44 @@ export function GroupeTab() {
     );
   }
 
-  const all = messages.data?.pages.flatMap((p) => p.messages) ?? [];
-  const rows = buildRows(all, group.membershipId, seen?.readAt ?? null, seen?.unread ?? 0, lang);
+  // The server's messages with the ones still on their way on top (shown at once, never twice).
+  const server = messages.data?.pages.flatMap((p) => p.messages) ?? [];
+  const { messages: all, status: localStatus } = mergeOutbox(
+    server,
+    outbox.filter((i) => i.groupId === groupId),
+  );
+  const rows = buildRows(
+    all,
+    group.membershipId,
+    seen?.readAt ?? null,
+    seen?.unread ?? 0,
+    lang,
+    localStatus,
+  );
   const pinned = all.find((m) => m.isAnnouncement && !m.removed);
+  const agentIsAnswering = server.some((m) => agentWaiting.includes(m.id));
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || !online || left) return;
+    if (!text || left) return;
     const currentReply = replyToMessage;
     setDraft('');
     setReplyToMessage(null);
-    const id = newMessageId();
-    send.mutate(
-      {
-        id,
-        text,
-        ...(currentReply
-          ? {
-              replyToId: currentReply.id,
-              replyTo: {
-                id: currentReply.id,
-                kind: currentReply.kind,
-                author: currentReply.author,
-                preview: currentReply.text?.slice(0, 80) ?? null,
-              },
-            }
-          : {}),
-      },
-      {
-        onError: () => {
-          setDraft(text);
-          setReplyToMessage(currentReply);
-        },
-      },
-    );
+    // On screen at once; a failure stays in the list with a retry (useSendMessage).
+    send({
+      text,
+      ...(currentReply
+        ? {
+            replyTo: {
+              id: currentReply.id,
+              kind: currentReply.kind,
+              author: currentReply.author,
+              preview: currentReply.text?.slice(0, 80) ?? null,
+            },
+          }
+        : {}),
+    });
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   };
 
   /** A photo, a video or a PDF chosen on the phone (or in the browser): sent as a message. */
@@ -361,7 +387,6 @@ export function GroupeTab() {
                   }
                 : null
             }
-            disabledReason={online ? null : t('common.status.connectionRequired')}
           />
         )
       }
@@ -411,6 +436,8 @@ export function GroupeTab() {
               lang={lang}
               highlighted={item.kind === 'message' && item.message.id === highlightedId}
               onSelectMessage={setSelectedMessage}
+              onSelectFailed={setFailedMessage}
+              onRetry={retry}
               onReplyPress={scrollToMessage}
               onMentionPress={(name) => {
                 if (name.toLowerCase() === 'njangi') {
@@ -428,9 +455,9 @@ export function GroupeTab() {
           contentContainerStyle={styles.content}
         />
       ) : null}
-      {send.error ? (
-        <Txt variant="secondary" color="textDanger">
-          {t('agent.errors.notSent')}
+      {agentIsAnswering ? (
+        <Txt variant="secondary" color="textSecondary" accessibilityLiveRegion="polite">
+          {t('chat.typing', { name: t('common.agentName') })}
         </Txt>
       ) : null}
       {sendFile.isPending ? (
@@ -548,6 +575,36 @@ export function GroupeTab() {
       </BottomSheet>
 
       <BottomSheet
+        visible={!!failedMessage}
+        onClose={() => setFailedMessage(null)}
+        title={t('chat.message.failed')}
+      >
+        <GroupedList>
+          <ListRow
+            title={t('chat.message.retry')}
+            titleWeight="regular"
+            leading={<RefreshCw size={24} color={colors.iconPrimary} strokeWidth={2} />}
+            onPress={() => {
+              if (failedMessage) retry(failedMessage.id);
+              setFailedMessage(null);
+            }}
+          />
+          <ListRow
+            title={t('chat.message.discard')}
+            titleWeight="regular"
+            leading={<Trash2 size={24} color={colors.statusLate} strokeWidth={2} />}
+            onPress={() => {
+              if (failedMessage) {
+                setDraft((prev) => (prev ? prev : (failedMessage.text ?? '')));
+                discard(failedMessage.id);
+              }
+              setFailedMessage(null);
+            }}
+          />
+        </GroupedList>
+      </BottomSheet>
+
+      <BottomSheet
         visible={!!deleting}
         onClose={() => setDeleting(null)}
         title={t('chat.message.delete')}
@@ -574,6 +631,8 @@ function RowView({
   lang,
   highlighted,
   onSelectMessage,
+  onSelectFailed,
+  onRetry,
   onMentionPress,
   onReplyPress,
 }: {
@@ -581,6 +640,8 @@ function RowView({
   lang: 'fr' | 'en';
   highlighted?: boolean;
   onSelectMessage: (message: ChatMessageDto) => void;
+  onSelectFailed: (message: ChatMessageDto) => void;
+  onRetry: (messageId: string) => void;
   onMentionPress: (name: string) => void;
   onReplyPress: (messageId: string) => void;
 }) {
@@ -624,8 +685,15 @@ function RowView({
       }
       deleted={removed === 'DELETED'}
       hidden={removed === 'HIDDEN'}
-      delivery="sent"
-      onLongPress={!removed ? () => onSelectMessage(m) : undefined}
+      delivery={row.local === 'failed' ? 'failed' : row.local === 'sending' ? 'queued' : 'sent'}
+      onRetry={() => onRetry(m.id)}
+      onLongPress={
+        row.local === 'failed'
+          ? () => onSelectFailed(m)
+          : row.local || removed
+            ? undefined
+            : () => onSelectMessage(m)
+      }
     />
   );
 }

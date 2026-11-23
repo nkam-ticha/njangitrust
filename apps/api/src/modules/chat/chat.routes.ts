@@ -2,6 +2,7 @@
 // map through the allowlist mapper; the logic is in chat.messages.ts and chat.read.ts.
 //   GET    /v1/groups/:groupId/messages        newest first, `before`, `limit`, `pinned`
 //   POST   /v1/groups/:groupId/messages        post (client `id` makes it idempotent)
+//   POST   /v1/groups/:groupId/messages/:messageId/agent-reply   the author asks for @njangi's answer
 //   GET    /v1/groups/:groupId/chat            unread, mentions, last read, mute
 //   POST   /v1/groups/:groupId/read-marker     mark read
 //   PUT    /v1/groups/:groupId/chat-mute       mute or unmute (push only)
@@ -24,10 +25,11 @@ import { actorOf, requireAuth } from '../../http/auth';
 import { handle } from '../../http/validate';
 import { toPendingAction } from '../../dto';
 import { requestAnnouncement, requestHide } from './chat.actions';
-import { deleteMessage, listMessages, sendMessage } from './chat.messages';
+import { deleteMessage, listMessages, requestAgentReply, sendMessage } from './chat.messages';
 import { getChatState, getChatStates, markChatRead, muteChat } from './chat.read';
 
 const groupParams = z.strictObject({ groupId: uuidSchema });
+const agentReplyParams = z.strictObject({ groupId: uuidSchema, messageId: uuidSchema });
 const messageParams = z.strictObject({ messageId: uuidSchema });
 
 export function chatGroupRoutes(): Router {
@@ -53,6 +55,13 @@ export function chatGroupRoutes(): Router {
         res.status(created ? 201 : 200).json({ message });
       },
     ),
+  );
+
+  router.post(
+    '/:groupId/messages/:messageId/agent-reply',
+    handle({ params: agentReplyParams, body: z.strictObject({}) }, async ({ params }, req, res) => {
+      res.json(await requestAgentReply(actorOf(req).userId, params.groupId, params.messageId));
+    }),
   );
 
   router.get(

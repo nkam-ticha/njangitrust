@@ -68,7 +68,12 @@ export async function getChatState(userId: string, groupId: string): Promise<Cha
 export async function getChatStates(userId: string): Promise<ChatStateDto[]> {
   const [memberships, prefs] = await Promise.all([
     getPrisma().membership.findMany({
-      where: { userId, status: { in: [...READER_STATUSES] } },
+      // D28: nothing from a group a developer closed and hid.
+      where: {
+        userId,
+        status: { in: [...READER_STATUSES] },
+        group: { hiddenByDeveloperAt: null },
+      },
       select: { id: true, groupId: true, chatLastReadAt: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),

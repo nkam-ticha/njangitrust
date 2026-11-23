@@ -36,6 +36,9 @@ const realtimeTokenSchema = z.strictObject({
 });
 const handlers = new Map<EventName, Set<(payload: unknown) => void>>();
 const channels = new Map<string, RealtimeChannel>();
+/** How many screens listen to each group room: the channel closes with the last one. */
+const groupListeners = new Map<string, number>();
+const readyListeners = new Set<(ready: RealtimeEventClient | null) => void>();
 let client: RealtimeEventClient | null = null;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -93,9 +96,11 @@ function addChannel(topic: string): void {
   nextChannel.subscribe((status) => {
     if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) useConnectivity.getState().markOnline();
     else if (
-      status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR ||
-      status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT ||
-      status === REALTIME_SUBSCRIBE_STATES.CLOSED
+      // A channel we closed ourselves (a screen left its group) is not a lost connection.
+      channels.get(topic) === nextChannel &&
+      (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR ||
+        status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT ||
+        status === REALTIME_SUBSCRIBE_STATES.CLOSED)
     ) {
       useConnectivity.getState().markOffline();
     }
@@ -117,11 +122,33 @@ function scheduleTokenRefresh(): void {
 function removeChannel(): void {
   for (const channel of channels.values()) void realtime?.removeChannel(channel);
   channels.clear();
+  groupListeners.clear();
   handlers.clear();
   client = null;
   tokenCache = null;
   if (refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = null;
+  for (const listener of [...readyListeners]) listener(null);
+}
+
+/**
+ * Runs `setup` with the realtime client as soon as there is one, and again after every
+ * reconnection; its cleanup runs when the client goes away or the caller stops. Screens that
+ * open before the connection is made (right after sign-in) would otherwise never listen.
+ */
+export function withSocket(setup: (socket: RealtimeEventClient) => () => void): () => void {
+  let cleanup: (() => void) | null = null;
+  const run = (ready: RealtimeEventClient | null) => {
+    cleanup?.();
+    cleanup = ready ? setup(ready) : null;
+  };
+  readyListeners.add(run);
+  run(client);
+  return () => {
+    readyListeners.delete(run);
+    cleanup?.();
+    cleanup = null;
+  };
 }
 
 export function getSocket(): RealtimeEventClient | null {
@@ -152,19 +179,28 @@ export async function connectSocket(): Promise<RealtimeEventClient | null> {
       return this;
     },
     joinGroup(groupId) {
-      if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(groupId)) addChannel(`group:${groupId}`);
+      if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(groupId)) return;
+      groupListeners.set(groupId, (groupListeners.get(groupId) ?? 0) + 1);
+      addChannel(`group:${groupId}`);
     },
     leaveGroup(groupId) {
+      const left = (groupListeners.get(groupId) ?? 0) - 1;
+      if (left > 0) {
+        groupListeners.set(groupId, left);
+        return;
+      }
+      groupListeners.delete(groupId);
       const topic = `group:${groupId}`;
       const existing = channels.get(topic);
-      if (existing) void realtime.removeChannel(existing);
       channels.delete(topic);
+      if (existing) void realtime.removeChannel(existing);
     },
   };
   client = nextClient;
   addChannel(`user:${tokenCache!.userId}`);
   addChannel(`session:${tokenCache!.sessionId}`);
   scheduleTokenRefresh();
+  for (const listener of [...readyListeners]) listener(nextClient);
   return client;
 }
 

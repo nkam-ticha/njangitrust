@@ -7,6 +7,7 @@ import type {
   MessageListQuery,
   SendMessageRequest,
 } from '@njangi/shared/contracts/chat-messages';
+import { AfterCommit } from '../../lib/after-commit';
 import { clock } from '../../lib/clock';
 import { componentLogger } from '../../lib/logger';
 import { getPrisma, isUniqueViolation, type Db, type Prisma } from '../../lib/prisma';
@@ -15,7 +16,7 @@ import { emitToGroup } from '../../realtime/emitter';
 import { toChatMessage, type ChatMessageSource } from '../../dto/chat';
 import { audit } from '../audit';
 import { removeAttachmentFiles } from '../media';
-import { agentPort, mentionsAgent } from './agent-port';
+import { agentPort, mentionsAgent, type MentionAnswer } from './agent-port';
 import { chatError } from './chat.errors';
 import { notifyAnnouncement, notifyNewMessage } from './chat.notify';
 import { runScoped, type Scope } from './scope';
@@ -126,15 +127,10 @@ async function storeMessage(
   });
   const message = toChatMessage(row);
   const author = row.author!;
+  // Order matters: the members' screens first (realtime), then the agent, then the bell. The
+  // notifications are written after the commit, so the message is stored and announced without
+  // waiting for one insert per member, and a notification failure cannot undo a sent message.
   s.effects.add(() => emitToGroup(groupId, 'message.created', message));
-  await notifyNewMessage(s, {
-    groupId,
-    groupName: access.group.name,
-    messageId: row.id,
-    authorMembershipId: membershipId,
-    authorName: author.user.name,
-    mentions,
-  });
   if (mentionsAgent(input.text)) {
     s.effects.add(() =>
       agentPort().onGroupMention({
@@ -145,6 +141,19 @@ async function storeMessage(
       }),
     );
   }
+  const notice = {
+    groupId,
+    groupName: access.group.name,
+    messageId: row.id,
+    authorMembershipId: membershipId,
+    authorName: author.user.name,
+    mentions,
+  };
+  s.effects.add(async () => {
+    const later = new AfterCommit();
+    await notifyNewMessage({ db: getPrisma(), effects: later }, notice);
+    await later.run();
+  });
   return { message, created: true };
 }
 
@@ -172,6 +181,41 @@ export async function sendMessage(
     }
     throw chatError('ATTACHMENT_NOT_USABLE');
   }
+}
+
+/**
+ * The author asks for the agent's answer to their `@njangi` message. The send returned at once; the
+ * answer needs model calls, so it is made here, in a request of its own, and posted in the group
+ * (everyone sees it through realtime or the next read). Only the author, only once per message.
+ */
+export async function requestAgentReply(
+  userId: string,
+  groupId: string,
+  messageId: string,
+): Promise<{ status: MentionAnswer }> {
+  const access = await authorizeGroup(userId, groupId, 'group.chat.post');
+  const message = await getPrisma().message.findFirst({
+    where: { id: messageId, groupId },
+    select: { text: true, authorMembershipId: true, deletedAt: true, hiddenByAdminAt: true },
+  });
+  if (!message) throw chatError('MESSAGE_NOT_FOUND');
+  if (message.authorMembershipId !== access.membership.id) throw chatError('NOT_YOUR_MESSAGE');
+  const port = agentPort();
+  if (
+    !port.answerGroupMention ||
+    message.deletedAt ||
+    message.hiddenByAdminAt ||
+    !mentionsAgent(message.text)
+  ) {
+    return { status: 'UNAVAILABLE' };
+  }
+  const status = await port.answerGroupMention({
+    groupId,
+    messageId,
+    authorUserId: userId,
+    authorMembershipId: access.membership.id,
+  });
+  return { status };
 }
 
 /** Newest first, `limit` at a time; `before` is the id of the oldest message already shown. */

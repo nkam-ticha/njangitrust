@@ -32,9 +32,11 @@ export async function generateAgenda(meetingId: string, now: Date = clock.now())
   const prisma = getPrisma();
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    include: { group: { select: { name: true } } },
+    include: { group: { select: { name: true, status: true, hiddenByDeveloperAt: true } } },
   });
   if (!meeting || meeting.status !== 'SCHEDULED' || meeting.agenda !== null) return false;
+  // D28: a group a developer closed and hid gets no agenda, message or notification.
+  if (meeting.group.status === 'CLOSED' || meeting.group.hiddenByDeveloperAt) return false;
   if (now.getTime() < agendaDueAt(meeting.scheduledAt).getTime()) return false;
   const admin = await prisma.membership.findFirst({
     where: { groupId: meeting.groupId, role: 'ADMIN', status: { in: ['ACTIVE', 'LEAVING'] } },
@@ -91,6 +93,7 @@ export async function generateDueAgendas(now: Date = clock.now()): Promise<numbe
       status: 'SCHEDULED',
       agenda: noAgenda,
       scheduledAt: { gt: now, lte: new Date(now.getTime() + 24 * 3_600_000) },
+      group: { status: { not: 'CLOSED' }, hiddenByDeveloperAt: null },
     },
     select: { id: true },
     take: 100,
@@ -115,6 +118,8 @@ export async function meetingReminders(now: Date): Promise<NotificationInput[]> 
     where: {
       status: 'SCHEDULED',
       scheduledAt: { gt: now, lte: new Date(now.getTime() + REMINDER_HOURS * 3_600_000) },
+      // D28: no reminder for a group a developer closed and hid.
+      group: { status: { not: 'CLOSED' }, hiddenByDeveloperAt: null },
     },
     include: { group: { select: { name: true } }, attendances: true },
   });

@@ -51,6 +51,16 @@ export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 /** POST /groups/:id/messages answers with the stored message. */
 export const messageResponseSchema = z.strictObject({ message: chatMessageSchema });
 
+/**
+ * POST /groups/:id/messages/:messageId/agent-reply: the author of a message that calls `@njangi`
+ * asks for the answer. The send itself returns at once; the answer is made by this second request
+ * (a serverless host cannot run it after the first response) and is posted in the group.
+ */
+export const agentReplyResponseSchema = z.strictObject({
+  status: z.enum(['ANSWERED', 'ALREADY_ANSWERED', 'UNAVAILABLE']),
+});
+export type AgentReplyResponse = z.infer<typeof agentReplyResponseSchema>;
+
 /** GET /groups/:id/messages: newest first; `before` is the id of the oldest message already shown. */
 export const messageListQuerySchema = z.strictObject({
   before: uuidSchema.optional(),

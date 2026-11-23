@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationListSchema } from '@njangi/shared/contracts/notifications';
 import { api } from '@/api/client';
-import { getSocket } from '@/api/socket';
+import { withSocket } from '@/api/socket';
 import { useSession } from '@/state/session';
 
 const KEY = ['notifications'] as const;
@@ -17,17 +17,22 @@ export function useNotifications() {
     queryKey: KEY,
     enabled: signedIn,
     retry: false,
+    // The poll is the fallback when the realtime link is down or not up yet.
+    refetchInterval: 20_000,
     queryFn: () => api.get('/v1/notifications?limit=50', { schema: notificationListSchema }),
   });
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    const onCreated = () => void qc.invalidateQueries({ queryKey: KEY });
-    socket.on('notification.created', onCreated);
-    return () => {
-      socket.off('notification.created', onCreated);
-    };
-  }, [qc]);
+  useEffect(
+    () =>
+      // Waits for the realtime link when it is not up yet, and listens again after a reconnection.
+      withSocket((socket) => {
+        const onCreated = () => void qc.invalidateQueries({ queryKey: KEY });
+        socket.on('notification.created', onCreated);
+        return () => {
+          socket.off('notification.created', onCreated);
+        };
+      }),
+    [qc],
+  );
   return query;
 }
 

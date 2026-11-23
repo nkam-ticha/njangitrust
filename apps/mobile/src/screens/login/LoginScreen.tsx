@@ -70,6 +70,13 @@ export function LoginScreen() {
               label={t('login.noAccount')}
               onPress={() => router.replace('/signup')}
             />
+            {/* D28: a discreet way in for the app's owner, away from the member flow. */}
+            <Button
+              fullWidth
+              variant="text"
+              label={t('developer.entry')}
+              onPress={() => router.push('/developer')}
+            />
           </>
         }
       >

@@ -15,9 +15,19 @@ export interface GroupMention {
   authorMembershipId: string;
 }
 
+export type MentionAnswer = 'ANSWERED' | 'ALREADY_ANSWERED' | 'UNAVAILABLE';
+
 export interface AgentPort {
-  /** Called after the message is committed. A failure is logged and never undoes the message. */
+  /**
+   * Called after the message is committed. It must return quickly (queue the work): the author's
+   * request waits for it. A failure is logged and never undoes the message.
+   */
   onGroupMention(mention: GroupMention): Promise<void>;
+  /**
+   * Answers one mention now and returns when the answer is posted. Asked by the author's app in a
+   * request of its own, so a send never waits for the model. Answers each mention once.
+   */
+  answerGroupMention?(mention: GroupMention): Promise<MentionAnswer>;
 }
 
 /** Until the agent runtime registers, a mention is stored and logged, nothing more. */

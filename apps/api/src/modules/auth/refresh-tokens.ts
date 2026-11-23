@@ -1,4 +1,4 @@
-// Refresh tokens (spec 2.10, D7): opaque, 30 days, stored as an HMAC, rotated on every use. All
+// Refresh tokens (spec 2.10, D7, D27): opaque, 30 minutes of inactivity (each rotation renews it), stored as an HMAC, rotated on every use. All
 // rotations of one login form a family; presenting an already-used token means it was copied, so
 // the whole family is revoked and the member is warned.
 import { clock } from '../../lib/clock';
@@ -6,8 +6,9 @@ import { hashRefreshToken, newId, randomToken } from '../../lib/crypto';
 import { getPrisma, type Db } from '../../lib/prisma';
 import type { ClientKind } from '../../permissions/actor';
 
-export const REFRESH_TOKEN_TTL_DAYS = 30;
-const DAY_MS = 86_400_000;
+/** D27: a session ends after 30 minutes without any request; every refresh renews the window. */
+export const REFRESH_TOKEN_TTL_MINUTES = 30;
+const MINUTE_MS = 60_000;
 
 type RevokeReason =
   'LOGOUT' | 'LOGOUT_ALL' | 'REUSE_DETECTED' | 'PIN_CHANGED' | 'PIN_RESET' | 'ACCOUNT_DELETED';
@@ -29,7 +30,7 @@ export async function issueRefreshToken(
   input: { userId: string; familyId?: string; client: ClientKind; deviceId?: string | null },
 ): Promise<IssuedRefreshToken> {
   const token = randomToken(32);
-  const expiresAt = new Date(clock.nowMs() + REFRESH_TOKEN_TTL_DAYS * DAY_MS);
+  const expiresAt = new Date(clock.nowMs() + REFRESH_TOKEN_TTL_MINUTES * MINUTE_MS);
   const row = await db.refreshToken.create({
     data: {
       userId: input.userId,

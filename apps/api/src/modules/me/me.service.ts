@@ -59,7 +59,8 @@ export interface MyGroupSource {
 /** Every group the member belongs to or belonged to (R12.4 keeps statements of past groups). */
 export async function listMyGroups(userId: string): Promise<MyGroupSource[]> {
   const memberships = await getPrisma().membership.findMany({
-    where: { userId },
+    // D28: a group a developer closed and hid is no longer listed.
+    where: { userId, group: { hiddenByDeveloperAt: null } },
     orderBy: { createdAt: 'asc' },
     select: {
       id: true,

@@ -10,7 +10,7 @@ import { getEnv } from '../config/env';
 import { commonError } from '../lib/errors';
 import { iso } from '../dto';
 import type { SessionTokens } from '../modules/auth/sessions';
-import { REFRESH_TOKEN_TTL_DAYS } from '../modules/auth/refresh-tokens';
+import { REFRESH_TOKEN_TTL_MINUTES } from '../modules/auth/refresh-tokens';
 import { serializeCookie } from './cookies';
 
 export const REFRESH_COOKIE = 'njangi_rt';
@@ -23,7 +23,7 @@ function setRefreshCookie(res: Response, token: string): void {
     'Set-Cookie',
     serializeCookie(REFRESH_COOKIE, token, {
       path: COOKIE_PATH,
-      maxAge: REFRESH_TOKEN_TTL_DAYS * 86_400,
+      maxAge: REFRESH_TOKEN_TTL_MINUTES * 60,
       httpOnly: true,
       secure: true,
       sameSite: sameSite(),

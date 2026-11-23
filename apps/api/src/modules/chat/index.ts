@@ -6,6 +6,7 @@ export {
   listMessages,
   postAgentMessage,
   postAnnouncement,
+  requestAgentReply,
   sendMessage,
   type SendResult,
 } from './chat.messages';
@@ -34,5 +35,6 @@ export {
   registerAgentPort,
   type AgentPort,
   type GroupMention,
+  type MentionAnswer,
 } from './agent-port';
 export { runScoped, type Scope } from './scope';

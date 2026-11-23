@@ -7,7 +7,14 @@ import { selfSchema } from '@njangi/shared/contracts/me';
 import { z } from 'zod';
 import { setLanguage } from '@/i18n';
 import { useSession } from '@/state/session';
-import { accessTokenStore, api, refreshAccessToken, setRefreshHandler } from './client';
+import {
+  accessTokenStore,
+  api,
+  ApiError,
+  NETWORK_UNAVAILABLE,
+  refreshAccessToken,
+  setRefreshHandler,
+} from './client';
 import { queryClient } from './queryClient';
 import { refreshStore } from './refreshStore';
 import { connectSocket, disconnectSocket } from './socket';
@@ -30,8 +37,20 @@ async function clearLocalSession(): Promise<void> {
   queryClient.clear();
 }
 
-/** Exchanges the refresh token for a new session. False when the session is over. */
+/** True when a failure says nothing about the session: no network, or the server is down. */
+function isUnreachable(error: unknown): boolean {
+  return error instanceof ApiError && (error.code === NETWORK_UNAVAILABLE || error.status >= 500);
+}
+
+let lastRefreshUnreachable = false;
+
+/**
+ * Exchanges the refresh token for a new session. False when it did not work. Only a refusal by
+ * the server (expired after 30 idle minutes, revoked, reused) ends the session; a dropped
+ * connection or a server hiccup keeps it so the next request can try again (D27).
+ */
 async function refreshSession(): Promise<boolean> {
+  lastRefreshUnreachable = false;
   const refreshToken = refreshStore.holdsToken ? await refreshStore.get() : undefined;
   if (refreshStore.holdsToken && !refreshToken) return false;
   try {
@@ -41,8 +60,11 @@ async function refreshSession(): Promise<boolean> {
     });
     await applySession(session);
     return true;
-  } catch {
-    // A rejected refresh (expired, revoked, reused) ends the session on this device.
+  } catch (error) {
+    if (isUnreachable(error)) {
+      lastRefreshUnreachable = true;
+      return false;
+    }
     if (useSession.getState().status === 'signedIn') {
       await clearLocalSession();
       useSession.getState().setSignedOut();
@@ -53,35 +75,34 @@ async function refreshSession(): Promise<boolean> {
 
 setRefreshHandler(refreshSession);
 
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /** At launch: resume the previous session if the server still accepts it. */
 export async function restoreSession(): Promise<void> {
-  const existingToken = accessTokenStore.get();
-  if (existingToken) {
+  // A reload must not look like a log-out: retry briefly when the network or server hiccups.
+  let unreachable = false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await wait(1000 * attempt);
     try {
-      const { user } = await api.get('/v1/me', { schema: meResponseSchema });
-      useSession.getState().setSignedIn(user);
-      void setLanguage(user.language);
-      void connectSocket();
-      return;
-    } catch {
-      // Access token was invalid or expired; proceed to refresh.
-    }
-  }
-
-  if (await refreshAccessToken()) {
-    try {
+      if (!accessTokenStore.get() && !(await refreshAccessToken())) {
+        unreachable = lastRefreshUnreachable;
+        if (unreachable) continue;
+        break;
+      }
+      // A 401 here refreshes once inside the client and repeats the request.
       const { user } = await api.get('/v1/me', { schema: meResponseSchema });
       useSession.getState().setSignedIn(user);
       // The member's saved language wins over the device's (spec 1.6).
       void setLanguage(user.language);
       void connectSocket();
       return;
-    } catch {
-      // Offline at launch with a valid token is handled once offline persistence lands;
-      // for now the member signs in again.
+    } catch (error) {
+      unreachable = isUnreachable(error) || lastRefreshUnreachable;
+      if (!unreachable) break;
     }
   }
-  await clearLocalSession();
+  // Still offline: show the sign-in screen but keep the stored session for the next launch.
+  if (!unreachable) await clearLocalSession();
   useSession.getState().setSignedOut();
 }
 

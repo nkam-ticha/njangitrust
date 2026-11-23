@@ -4,3 +4,5 @@ export { verifyMemberPin } from './auth.service';
 export { authError } from './auth.errors';
 export { startSession, verifyAccessSession, type SessionTokens } from './sessions';
 export { pinResetApproveHandler } from './pin-reset.actions';
+export { burnPinCheck, hashPin, verifyPin } from './pin';
+export { clearFailures, LOCK_SECONDS, recordFailure } from './lockout';

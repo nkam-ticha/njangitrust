@@ -53,6 +53,7 @@ import { placeBidHandler, registerBiddingJobs } from './bids';
 import { registerGovernancePorts } from './proposals';
 import { appendLedgerEntry } from './ledger';
 import {
+  answerGroupMentionNow,
   onGroupMention,
   onPendingActionUpdated,
   registerAgentAdapters,
@@ -69,7 +70,7 @@ function wireAgent(): void {
   if (agentWired) return;
   agentWired = true;
   registerAgentAdapters();
-  registerAgentPort({ onGroupMention });
+  registerAgentPort({ onGroupMention, answerGroupMention: answerGroupMentionNow });
   onPendingActionAnnounced(onPendingActionUpdated);
 }
 

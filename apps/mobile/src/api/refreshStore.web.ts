@@ -1,38 +1,28 @@
-// Web session storage: keeps the refresh token in localStorage so the session
-// survives browser reloads. On platforms where cookies are also supported, both work together.
+// Web: the refresh token is an httpOnly cookie that script cannot read (D1), so the client holds
+// nothing and sends no token in the body; the browser attaches the cookie to /v1/auth/refresh.
+// An older build kept a copy in localStorage: it is removed here and never written again.
 
-const STORAGE_KEY = 'njangi.refreshToken';
+const LEGACY_KEY = 'njangi.refreshToken';
+
+function dropLegacyCopy(): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(LEGACY_KEY);
+    }
+  } catch {
+    // localStorage unavailable or restricted
+  }
+}
 
 export const refreshStore = {
-  holdsToken: true,
-  get: (): Promise<string | null> => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        return Promise.resolve(window.localStorage.getItem(STORAGE_KEY));
-      }
-    } catch {
-      // localStorage unavailable or restricted
-    }
-    return Promise.resolve(null);
-  },
-  set: (token: string): Promise<void> => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(STORAGE_KEY, token);
-      }
-    } catch {
-      // localStorage unavailable or restricted
-    }
+  holdsToken: false,
+  get: (): Promise<string | null> => Promise.resolve(null),
+  set: (_token: string): Promise<void> => {
+    dropLegacyCopy();
     return Promise.resolve();
   },
   clear: (): Promise<void> => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.removeItem(STORAGE_KEY);
-      }
-    } catch {
-      // localStorage unavailable or restricted
-    }
+    dropLegacyCopy();
     return Promise.resolve();
   },
 };

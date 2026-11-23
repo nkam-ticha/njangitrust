@@ -142,6 +142,65 @@ describe('@njangi (spec 4.4)', () => {
     expect(calls).toEqual([]);
   });
 
+  it('returns the send without waiting for the agent, which answers in a request of its own', async () => {
+    const answered: GroupMention[] = [];
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    registerAgentPort({
+      onGroupMention: () => Promise.resolve(),
+      answerGroupMention: async (m) => {
+        await slow;
+        answered.push(m);
+        return 'ANSWERED';
+      },
+    });
+    const res = await post(bea, { text: '@njangi qui doit encore payer ?' });
+    // The model has not even been asked: the send is already done.
+    expect(res.status).toBe(201);
+    expect(answered).toEqual([]);
+
+    const asking = stageApi(bea).post(
+      `/v1/groups/${groupId}/messages/${res.body.message.id}/agent-reply`,
+      {},
+    );
+    release();
+    const reply = await asking;
+    expect(reply.status).toBe(200);
+    expect(reply.body).toEqual({ status: 'ANSWERED' });
+    expect(answered).toEqual([
+      {
+        groupId,
+        messageId: res.body.message.id,
+        authorUserId: bea.id,
+        authorMembershipId: bea.membershipId,
+      },
+    ]);
+  });
+
+  it('lets only the author ask for the answer, and only for a message that calls the agent', async () => {
+    const calls: GroupMention[] = [];
+    registerAgentPort({
+      onGroupMention: () => Promise.resolve(),
+      answerGroupMention: (m) => {
+        calls.push(m);
+        return Promise.resolve('ANSWERED');
+      },
+    });
+    const mine = await post(bea, { text: '@njangi bonjour' });
+    const plain = await post(bea, { text: 'sans appel' });
+    const url = (id: string) => `/v1/groups/${groupId}/messages/${id}/agent-reply`;
+    const stolen = await stageApi(carl).post(url(mine.body.message.id), {});
+    expect(stolen.status).toBe(403);
+    expect(stolen.body.code).toBe('NOT_YOUR_MESSAGE');
+    const notACall = await stageApi(bea).post(url(plain.body.message.id), {});
+    expect(notACall.body).toEqual({ status: 'UNAVAILABLE' });
+    const missing = await stageApi(bea).post(url(randomUUID()), {});
+    expect(missing.status).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
   it('keeps the message when the agent port fails', async () => {
     registerAgentPort({ onGroupMention: () => Promise.reject(new Error('agent down')) });
     const res = await post(bea, { text: '@njangi bonjour' });

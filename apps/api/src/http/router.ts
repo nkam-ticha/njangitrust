@@ -28,11 +28,13 @@ import { attachmentRoutes, mediaGroupRoutes } from '../modules/media';
 import { meetingRoutes, meetingsGroupRoutes } from '../modules/meetings';
 import { meStatementRoutes, verifyRoutes } from '../modules/statements';
 import { auditExportRoutes } from '../modules/audit-export';
+import { developerRoutes } from '../modules/developer';
 import { agentRoutes } from '../agent';
 
 export function v1Router(): Router {
   const v1 = Router();
 
+  v1.use('/developer', developerRoutes());
   v1.use('/auth/invites', invitePublicRoutes());
   v1.use('/auth', authRoutes());
 

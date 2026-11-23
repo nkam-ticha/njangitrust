@@ -50,6 +50,29 @@ describe('refresh tokens (spec 2.10, D7)', () => {
     expect(audit).not.toBeNull();
   });
 
+  it('keeps a session for 30 idle minutes and renews that window on every refresh (D27)', async () => {
+    const user = await signUp();
+    const row = () =>
+      getPrisma().refreshToken.findFirstOrThrow({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+      });
+    const minutesLeft = (at: Date) => (at.getTime() - Date.now()) / 60_000;
+    expect(minutesLeft((await row()).expiresAt)).toBeGreaterThan(29);
+    expect(minutesLeft((await row()).expiresAt)).toBeLessThanOrEqual(30);
+    const first = await refreshWith(user.refreshToken);
+    expect(first.status).toBe(200);
+    const renewed = await row();
+    expect(minutesLeft(renewed.expiresAt)).toBeGreaterThan(29);
+    // A token idle past its 30 minutes is refused.
+    await getPrisma().refreshToken.update({
+      where: { id: renewed.id },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+    const late = await refreshWith(first.body.session.refreshToken);
+    expect(late.status).toBe(401);
+  });
+
   it('refuses unknown and malformed refresh tokens', async () => {
     expect((await refreshWith('x'.repeat(43))).body.code).toBe('SESSION_INVALID');
     expect((await refreshWith('short')).body.code).toBe('VALIDATION_FAILED');

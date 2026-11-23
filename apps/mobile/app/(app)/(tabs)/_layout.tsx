@@ -2,6 +2,8 @@
 // sidebar on wide screens (DESIGN_SYSTEM.md 5.9, 8.1). Same component, different layout.
 import { Tabs } from 'expo-router';
 import { useUnreadTotal } from '@/features/chat/useChat';
+import { useActiveGroup } from '@/features/groups/useGroups';
+import { useVotesWaiting } from '@/features/proposals/useProposals';
 import { useSession } from '@/state/session';
 import { useBreakpoint } from '@/theme';
 import { Navigation, navigationLayoutFor, type TabKey } from '@/ui';
@@ -26,6 +28,8 @@ export default function TabsLayout() {
   const layout = navigationLayoutFor(breakpoint);
   const name = useSession((s) => s.user?.name);
   const unreadChat = useUnreadTotal();
+  const { group } = useActiveGroup();
+  const votesWaiting = useVotesWaiting(group?.groupId ?? null);
   return (
     <Tabs
       screenOptions={{ headerShown: false, tabBarPosition: layout === 'tabs' ? 'bottom' : 'left' }}
@@ -40,7 +44,7 @@ export default function TabsLayout() {
               if (route) navigateToTab(route.key);
             }}
             unreadChat={unreadChat}
-            votesWaiting={0}
+            votesWaiting={votesWaiting}
             agentWaiting={false}
             memberName={name}
           />
