@@ -50,6 +50,8 @@ async function loadGroups(providerAccount: string) {
     where: { providerAccount },
     select: {
       id: true,
+      status: true,
+      hiddenByDeveloperAt: true,
       memberships: {
         where: { status: { in: ['ACTIVE', 'LEAVING', 'INVITED'] } },
         select: { userId: true },
@@ -166,16 +168,20 @@ export async function runDailyReconciliation(providerAccount = 'default') {
                 fr: 'La balance de l’opérateur ne correspond pas au registre, même en tenant compte des opérations en cours. Les retraits et versements sont suspendus jusqu’à la résolution de l’écart.',
                 en: 'The provider balance does not match the records, even after accounting for operations in progress. Withdrawals and disbursements are paused until the difference is resolved.',
               };
-      const memberNotices = groups.flatMap((group) =>
-        group.memberships.map((membership) => ({
-          userId: membership.userId,
-          groupId: group.id,
-          category: 'SECURITY' as const,
-          title: { fr: 'Vérification de la caisse', en: 'Caisse check' },
-          body: alertBody,
-          deepLink: '/caisse',
-        })),
-      );
+      // D28: a group a developer closed or hid stays in the ledger check above (its money is still
+      // in the provider account) but its members are told nothing: it no longer exists for them.
+      const memberNotices = groups
+        .filter((group) => group.status !== 'CLOSED' && group.hiddenByDeveloperAt === null)
+        .flatMap((group) =>
+          group.memberships.map((membership) => ({
+            userId: membership.userId,
+            groupId: group.id,
+            category: 'SECURITY' as const,
+            title: { fr: 'Vérification de la caisse', en: 'Caisse check' },
+            body: alertBody,
+            deepLink: '/caisse',
+          })),
+        );
       await createNotifications(memberNotices, effects, tx);
     }
     return saved;

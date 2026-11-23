@@ -1,6 +1,6 @@
 // Round reads and payout breakdowns (spec 2.7, R2, R5). Money totals come from the ledger and
 // calculations from @njangi/rules; returned records are allowlisted here.
-import { payoutBreakdown } from '@njangi/rules';
+import { dueDebtsTotal, payableAccount, payoutBreakdown, WITHHELD_DEBT_KINDS } from '@njangi/rules';
 import { getPrisma } from '../../lib/prisma';
 import { clock } from '../../lib/clock';
 import { authorizeGroup } from '../../permissions';
@@ -94,18 +94,6 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
   if (!cycle) throw roundError('ROUND_NOT_FOUND');
   const round = await getPrisma().round.findUnique({
     where: { cycleId_number: { cycleId: cycle.id, number } },
-    include: {
-      obligations: {
-        select: {
-          id: true,
-          kind: true,
-          amount: true,
-          status: true,
-          membershipId: true,
-          dueAt: true,
-        },
-      },
-    },
   });
   if (!round) throw roundError('ROUND_NOT_FOUND');
   if (!round.beneficiaryMembershipId) throw roundError('PAYOUT_NOT_ASSIGNED');
@@ -114,7 +102,7 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
     include: { postings: true },
     orderBy: { seq: 'asc' },
   });
-  const payable = `payable:member:${round.beneficiaryMembershipId}`;
+  const payable = payableAccount(round.beneficiaryMembershipId);
   const contributions: { amount: number; feeShare: number }[] = [];
   const deductions: { kind: 'BID' | 'FINE' | 'CORRECTION' | 'LOAN_INSTALLMENT'; amount: number }[] =
     [];
@@ -170,25 +158,36 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
   };
   // Spec 2.11, 4.4: what the beneficiary still owes and may withdraw is theirs alone to see.
   const isBeneficiary = access.membership.id === round.beneficiaryMembershipId;
-  const full = payoutBreakdown({ contributions, deductions, withdrawals, feeSchedule });
+  // D13.3, D18: the debts due are the ones a withdrawal holds back: every unsettled debt of the
+  // beneficiary in the group (not only this round's), corrections included, due by now.
+  const now = clock.now();
+  const debts = isBeneficiary
+    ? await getPrisma().obligation.findMany({
+        where: {
+          groupId,
+          membershipId: round.beneficiaryMembershipId,
+          status: 'DUE',
+          kind: { in: [...WITHHELD_DEBT_KINDS] },
+        },
+        select: { kind: true, amount: true, dueAt: true, status: true },
+      })
+    : [];
+  // The next withdrawal shown holds those debts back too: it never exceeds what a withdrawal allows.
+  const full = payoutBreakdown({
+    contributions,
+    deductions,
+    withdrawals,
+    feeSchedule,
+    heldForDebts: dueDebtsTotal(debts, now),
+  });
   const breakdown = isBeneficiary ? full : { ...full, nextWithdrawal: null };
-  const holds = round.obligations.filter(
-    (item) => item.membershipId === round.beneficiaryMembershipId && item.status === 'DUE',
-  );
   return {
     roundId: round.id,
     round: round.number,
     payoutAt: round.payoutAt.toISOString(),
     breakdown,
-    debtsDue: (isBeneficiary ? holds : []).reduce(
-      (sum, item) =>
-        sum +
-        (item.kind === 'FINE' || item.kind === 'BID' || item.kind === 'LOAN_INSTALLMENT'
-          ? item.amount
-          : 0),
-      0,
-    ),
-    asOf: clock.now().toISOString(),
+    debtsDue: dueDebtsTotal(debts, now),
+    asOf: now.toISOString(),
   };
 }
 

@@ -9,6 +9,7 @@ import {
   disbursementCompletedPostings,
   disbursementRefundedPostings,
   disbursementReturnedPostings,
+  dueDebtsTotal,
   loanRefundSettlement,
   checkLedger,
   loanSentPostings,
@@ -237,9 +238,7 @@ export async function readMyMoney(
     available: figures.available,
     locked: figures.locked,
     unlocksAt: figures.unlocksAt,
-    debtsDue: state.debts
-      .filter((debt) => debt.dueAt <= now)
-      .reduce((sum, debt) => sum + debt.amount, 0),
+    debtsDue: dueDebtsTotal(state.debts, now),
     hold: state.hold,
     withdrawalsPaused: state.latestCheck?.status === 'ALERT',
     withdrawalInProgress: state.withdrawalInProgress,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { dispatchJob } from '../../jobs/dispatch';
 import { lockGroup } from '../../permissions';
 import type { ActionContext } from '../pending-actions';
-import { defineActionHandler } from '../pending-actions';
+import { assertSamePreview, defineActionHandler } from '../pending-actions';
 import { createWithdrawal, withdrawalPreview } from './withdrawals.service';
 
 const args = z.strictObject({
@@ -37,6 +37,10 @@ export const withdrawHandler = defineActionHandler({
     await ctx.db
       .$queryRaw`SELECT "id" FROM "Membership" WHERE "id" = ${first.member.id}::uuid FOR UPDATE`;
     const fresh = await prepare(ctx, input);
+    // Under the locks: what is about to be sent must be exactly the card the member confirmed. The
+    // check before execute ran without them, and a ledger commit may have landed since (an "all"
+    // withdrawal would then send another amount).
+    assertSamePreview(ctx.preview, fresh.preview);
     const disbursement = await createWithdrawal(ctx.db, {
       groupId: input.groupId,
       membershipId: fresh.member.id,

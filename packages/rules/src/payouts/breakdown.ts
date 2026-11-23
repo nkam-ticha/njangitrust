@@ -30,7 +30,15 @@ export function payoutBreakdown(input: {
   deductions: readonly { kind: SettleableDebt['kind']; amount: Fcfa }[];
   withdrawals: readonly { amount: Fcfa; fee: Fcfa }[];
   feeSchedule: FeeSchedule;
+  /**
+   * D13.3: the member's due debts that auto-settlement has not taken yet. A withdrawal holds an
+   * equal amount back (availableToWithdraw), so the next withdrawal shown here does too. It does
+   * not change `remaining`, which is this round's money.
+   */
+  heldForDebts?: Fcfa;
 }): PayoutBreakdown {
+  const held = input.heldForDebts ?? 0;
+  assertNonNegativeFcfa(held, 'heldForDebts');
   for (const c of input.contributions) {
     assertNonNegativeFcfa(c.amount, 'contribution');
     assertNonNegativeFcfa(c.feeShare, 'feeShare');
@@ -44,7 +52,7 @@ export function payoutBreakdown(input: {
   const withdrawalFees = sumFcfa(input.withdrawals.map((w) => w.fee));
   const remaining = credited - deductionsTotal - withdrawn - withdrawalFees;
   if (remaining < 0) throw new RangeError('deductions and withdrawals exceed what was credited');
-  const maxAmount = maxAmountWithinFee(remaining, input.feeSchedule);
+  const maxAmount = maxAmountWithinFee(Math.max(0, remaining - held), input.feeSchedule);
   return {
     collected,
     collectionFees,

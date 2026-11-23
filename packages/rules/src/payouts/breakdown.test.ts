@@ -71,3 +71,29 @@ describe('payout breakdown (CAI-03, Flow B, FEE-03)', () => {
     ).toThrow(RangeError);
   });
 });
+
+describe('payout breakdown with debts due that are not settled yet (D13.3)', () => {
+  const base = { contributions, deductions, withdrawals: [], feeSchedule: MOCK_FEE_SCHEDULE };
+
+  it('holds them back from the next withdrawal and leaves what remains as it is', () => {
+    const held = payoutBreakdown({ ...base, heldForDebts: 1_400 });
+    expect(held.remaining).toBe(81_340);
+    // 81 340 − 1 400 = 79 940 can be spent: the largest amount that still pays its 500 fee.
+    expect(held.nextWithdrawal).toEqual({ maxAmount: 79_440, fee: 500 });
+  });
+
+  it('is the same as before when nothing is held', () => {
+    expect(payoutBreakdown({ ...base, heldForDebts: 0 })).toEqual(payoutBreakdown(base));
+  });
+
+  it('never goes below nothing when the debts exceed what remains', () => {
+    const held = payoutBreakdown({ ...base, heldForDebts: 500_000 });
+    expect(held.remaining).toBe(81_340);
+    expect(held.nextWithdrawal).toBeNull();
+  });
+
+  it('refuses a negative or fractional amount', () => {
+    expect(() => payoutBreakdown({ ...base, heldForDebts: -1 })).toThrow(RangeError);
+    expect(() => payoutBreakdown({ ...base, heldForDebts: 1.5 })).toThrow(RangeError);
+  });
+});

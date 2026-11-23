@@ -45,6 +45,11 @@ export interface ActionContext {
 export interface ExecuteContext extends ActionContext {
   db: Prisma.TransactionClient;
   pendingActionId: string;
+  /**
+   * The card the member confirmed. An action that sends money prepares again under its locks and
+   * compares with this (`assertSamePreview`), so it never sends more or less than the card showed.
+   */
+  preview: ActionPreview;
   /** Runs after the confirm transaction commits. */
   afterCommit(effect: Effect): void;
   /** The same queue, for services that take an EffectSink (system messages, notifications). */

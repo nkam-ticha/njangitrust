@@ -23,3 +23,4 @@ export {
   type CreateActionInput,
 } from './pending-actions.service';
 export { actionError } from './pending-actions.errors';
+export { assertSamePreview } from './pending-actions.preview';

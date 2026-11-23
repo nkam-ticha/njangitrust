@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { holdsMoney, isLiveLoan, LIVE_LOAN_STATUSES, nonZeroBalanceCount } from './holdings';
 
-const none = { obligations: 0, loans: 0, balances: 0 };
+const none = { obligations: 0, loans: 0, balances: 0, pots: 0 };
 
 describe('holdsMoney', () => {
   it('is false when nothing is held', () => {
@@ -22,14 +22,20 @@ describe('holdsMoney', () => {
     expect(holdsMoney({ ...none, balances: 1 })).toBe(true);
   });
 
+  it('is true for a bidding pot that still holds money (D10), whatever else is zero', () => {
+    expect(holdsMoney({ ...none, pots: 1 })).toBe(true);
+  });
+
   it('is true when several kinds are held, whatever the sizes', () => {
-    expect(holdsMoney({ obligations: 3, loans: 2, balances: 7 })).toBe(true);
+    expect(holdsMoney({ obligations: 3, loans: 2, balances: 7, pots: 1 })).toBe(true);
   });
 
   it('refuses counts that are not whole, not safe or negative', () => {
     expect(() => holdsMoney({ ...none, obligations: 1.5 })).toThrow(RangeError);
     expect(() => holdsMoney({ ...none, loans: -1 })).toThrow(RangeError);
     expect(() => holdsMoney({ ...none, balances: Number.NaN })).toThrow(RangeError);
+    expect(() => holdsMoney({ ...none, pots: -1 })).toThrow(RangeError);
+    expect(() => holdsMoney({ ...none, pots: 0.5 })).toThrow(RangeError);
     expect(() => holdsMoney({ ...none, balances: Number.MAX_SAFE_INTEGER + 1 })).toThrow(
       RangeError,
     );

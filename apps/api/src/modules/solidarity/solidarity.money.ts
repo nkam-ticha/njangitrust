@@ -57,7 +57,17 @@ export async function solidarityFund(
  * or null when the request waits (the hourly scan tries again).
  */
 async function sendSolidarity(tx: Tx, requestId: string, now: Date): Promise<string | null> {
+  // Lock order, the same for every writer: the group, then the request. The group lock also makes
+  // the fund balance read below the one the ledger entry is sealed against, and it is taken in
+  // `update` mode because the ledger entry takes it exclusively anyway.
+  const head = await tx.solidarityRequest.findUnique({
+    where: { id: requestId },
+    select: { groupId: true },
+  });
+  if (!head) return null;
+  await lockGroup(tx, head.groupId, 'update');
   await tx.$queryRaw`SELECT "id" FROM "SolidarityRequest" WHERE "id" = ${requestId}::uuid FOR UPDATE`;
+  // Read again under both locks: it may have been sent or refused while this waited.
   const request = await tx.solidarityRequest.findUnique({
     where: { id: requestId },
     include: {
@@ -72,8 +82,6 @@ async function sendSolidarity(tx: Tx, requestId: string, now: Date): Promise<str
   if (!request || request.status !== 'APPROVED') return null;
   if (request.disbursement && LIVE_SEND.includes(request.disbursement.status)) return null;
 
-  // The group lock: the fund balance read here is the one the ledger entry is sealed against.
-  await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${request.groupId}::uuid FOR UPDATE`;
   const group = await tx.group.findUniqueOrThrow({
     where: { id: request.groupId },
     select: { providerAccount: true, status: true },

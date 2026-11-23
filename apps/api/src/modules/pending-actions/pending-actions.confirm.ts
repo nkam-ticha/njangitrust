@@ -5,7 +5,6 @@
 // also re-checks, executes and records the result. A second confirm waits on the row lock, then
 // finds the action no longer pending. If execution fails, the transaction rolls back and the
 // action is marked FAILED; nothing half-done is ever committed.
-import { canonicalJSON } from '@njangi/rules';
 import { actionPreviewSchema } from '@njangi/shared/contracts/pending-actions';
 import { AfterCommit } from '../../lib/after-commit';
 import { clock } from '../../lib/clock';
@@ -16,6 +15,7 @@ import type { AuthActor } from '../../permissions';
 import { verifyMemberPin } from '../auth';
 import { actionError, notPendingError } from './pending-actions.errors';
 import { announce, getOwnPendingAction } from './pending-actions.service';
+import { samePreview } from './pending-actions.preview';
 import { openAction, redactionFor } from './pending-actions.storage';
 import type { ExecuteResult } from './pending-actions.types';
 import { getActionHandler } from './registry';
@@ -27,12 +27,6 @@ type Outcome =
   | { kind: 'lost' }
   | { kind: 'refused'; error: AppError; row: PendingAction }
   | { kind: 'executed'; result: ExecuteResult; row: PendingAction };
-
-function samePreview(a: unknown, b: unknown): boolean {
-  return (
-    canonicalJSON(actionPreviewSchema.parse(a)) === canonicalJSON(actionPreviewSchema.parse(b))
-  );
-}
 
 /** `confirmedAt`: set when the claim in the same transaction stamped it. */
 function failedData(action: PendingAction, error: AppError, confirmedAt: Date | null) {
@@ -129,7 +123,14 @@ export async function confirmPendingAction(
         }
 
         const result = await handler.execute(
-          { ...ctx, pendingActionId: id, afterCommit: (effect) => effects.add(effect), effects },
+          {
+            ...ctx,
+            pendingActionId: id,
+            // The card the member confirmed: a money action compares it again under its locks.
+            preview: actionPreviewSchema.parse(action.preview),
+            afterCommit: (effect) => effects.add(effect),
+            effects,
+          },
           parsedArgs.data,
         );
         const completedAt = clock.now();

@@ -1,6 +1,7 @@
 // Derived values (2.5): what a member can withdraw and what the group can lend.
 
 import { maxAmountWithinFee, type FeeSchedule } from '../fees';
+import { dueDebtsTotal } from '../holdings/due-debts';
 import { assertNonNegativeFcfa, type Fcfa } from '../money';
 import { assertDate } from '../time';
 import type { BalanceSummary } from './balances';
@@ -49,15 +50,11 @@ export function availableToWithdraw(input: {
   now: Date;
   feeSchedule: FeeSchedule;
   /** D13.3, M1: the member's unsettled debts (fines, bids, corrections, installments); due ones are held. */
-  debts: readonly { amount: Fcfa; dueAt: Date }[];
+  debts: readonly { amount: Fcfa; dueAt: Date; kind?: string; status?: string }[];
 }): { available: Fcfa; spendable: Fcfa; locked: Fcfa; unlocksAt: Date | null; heldForDebts: Fcfa } {
   assertNonNegativeFcfa(input.payableBalance, 'payableBalance');
   const now = assertDate(input.now, 'now');
-  let dueDebts = 0;
-  for (const debt of input.debts) {
-    assertNonNegativeFcfa(debt.amount, 'debt');
-    if (assertDate(debt.dueAt, 'dueAt') <= now) dueDebts += debt.amount;
-  }
+  const dueDebts = dueDebtsTotal(input.debts, input.now);
   let pending = 0;
   let unlocksAt: Date | null = null;
   for (const credit of input.credits) {

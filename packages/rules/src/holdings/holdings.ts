@@ -17,6 +17,11 @@ export interface HeldMoneyCounts {
   loans: number;
   /** Member ledger accounts whose balance is not zero (see `nonZeroBalanceCount`). */
   balances: number;
+  /**
+   * Bidding-round pots holding money (D10): contributions paid before the bids close sit in
+   * `pot:round:<id>` and belong to no member yet (see `nonZeroBalanceCount`).
+   */
+  pots: number;
 }
 
 function wholeCount(value: number, what: string): number {
@@ -26,12 +31,13 @@ function wholeCount(value: number, what: string): number {
   return value;
 }
 
-/** True when any member still holds money: a debt, a live loan or a non-zero balance. */
+/** True when money is still held: a debt, a live loan, a non-zero balance or a pot (D10, D28). */
 export function holdsMoney(counts: HeldMoneyCounts): boolean {
   return (
     wholeCount(counts.obligations, 'obligations') +
       wholeCount(counts.loans, 'loans') +
-      wholeCount(counts.balances, 'balances') >
+      wholeCount(counts.balances, 'balances') +
+      wholeCount(counts.pots, 'pots') >
     0
   );
 }

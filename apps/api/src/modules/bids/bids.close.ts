@@ -13,6 +13,7 @@ import type { Job } from 'bullmq';
 import { clock } from '../../lib/clock';
 import { getPrisma } from '../../lib/prisma';
 import { registerJob, registerRepeatable } from '../../jobs/registry';
+import { lockGroup } from '../../permissions';
 import { appendLedgerEntry, ledgerHead } from '../ledger';
 
 function eventText(event: { event: string; roundNumber: number }) {
@@ -27,7 +28,22 @@ function eventText(event: { event: string; roundNumber: number }) {
       };
 }
 
+/**
+ * Thrown inside the closing's transaction when the beneficiary could not be recorded: it rolls back
+ * every ledger and obligation row written before (returning from the callback would commit them).
+ */
+class BidNotAssigned extends Error {}
+
 export async function closeBidding(roundId: string, now = clock.now()): Promise<boolean> {
+  try {
+    return await closeBiddingOnce(roundId, now);
+  } catch (error) {
+    if (error instanceof BidNotAssigned) return false;
+    throw error;
+  }
+}
+
+async function closeBiddingOnce(roundId: string, now: Date): Promise<boolean> {
   const db = getPrisma();
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "Round" WHERE "id" = ${roundId}::uuid FOR UPDATE`;
@@ -50,10 +66,17 @@ export async function closeBidding(roundId: string, now = clock.now()): Promise<
     if (
       !round ||
       round.cycle.mode !== 'BIDDING' ||
+      // Only a round that is open for contributions is closed: a round still scheduled, or already
+      // paid out, has no bids to close (R8.3).
+      round.status !== 'OPEN' ||
       round.dueAt > now ||
       round.beneficiaryMembershipId
     )
       return false;
+    // Round first, then the group (the order fines.service uses). The ledger head and the pot below
+    // are read under the group lock: a payment that lands after them would leave money in the pot
+    // of a round whose pot was already assigned.
+    await lockGroup(tx, round.groupId, 'update');
     const served = round.cycle.rounds
       .filter((item) => item.number < round.number)
       .flatMap((item) => (item.beneficiaryMembershipId ? [item.beneficiaryMembershipId] : []));
@@ -144,7 +167,7 @@ export async function closeBidding(roundId: string, now = clock.now()): Promise<
       where: { id: round.id, beneficiaryMembershipId: null, status: 'OPEN' },
       data: { beneficiaryMembershipId },
     });
-    if (assigned.count !== 1) return false;
+    if (assigned.count !== 1) throw new BidNotAssigned();
     const entries = await tx.ledgerTransaction.findMany({
       where: { groupId: round.groupId },
       include: { postings: { select: { account: true, amount: true } } },
