@@ -773,7 +773,7 @@ export async function recordDisbursementRefund(input: {
       membershipId: row.membershipId,
       refType: 'Disbursement',
       refId: row.id,
-      descriptionFr: 'Versement remboursÃ© par l’opÃ©rateur',
+      descriptionFr: 'Versement remboursé par l’opérateur',
       descriptionEn: 'Disbursement refunded by the operator',
       metadata: refunded.metadata,
       postings: refunded.postings,
