@@ -1,9 +1,15 @@
 // Buttons (DESIGN_SYSTEM.md 5.1). Labels name exactly what happens ("Payer 11 000 FCFA").
 // Offline, money and vote buttons read "Connexion requise" (spec 1.7).
+//
+// Every button is a single-flight press (lib/singleFlight.ts): the first tap acts at once and the
+// button ignores further taps until it is done, so a double tap never sends a request twice. A
+// handler that returns a promise holds the button, with a spinner, until the promise settles; one
+// that returns at once (it starts a mutation or navigates) is held for a short cooldown.
 import { ActivityIndicator, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { WifiOff } from 'lucide-react-native';
 import { radius, size, space, useTheme } from '@/theme';
+import { useSingleFlight } from '@/lib/useSingleFlight';
 import { Touchable } from '../primitives/Touchable';
 import { Txt } from '../primitives/Txt';
 import type { IconComponent } from '../primitives/Icon';
@@ -12,7 +18,8 @@ export type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'text';
 
 export interface ButtonProps {
   label: string;
-  onPress?: () => void;
+  /** May return a promise: the button then stays busy until it settles. */
+  onPress?: () => unknown;
   variant?: ButtonVariant;
   icon?: IconComponent;
   loading?: boolean;
@@ -38,6 +45,8 @@ export function Button({
 }: ButtonProps) {
   const { colors } = useTheme();
   const { t } = useTranslation();
+  const flight = useSingleFlight();
+  const busy = !!loading || flight.working;
   const inactive = !!disabled || !!offline;
   const shownLabel = offline ? t('offline.connectionRequired') : label;
   const shownIcon = offline ? WifiOff : Glyph;
@@ -64,12 +73,12 @@ export function Button({
 
   return (
     <Touchable
-      onPress={onPress}
-      disabled={inactive || loading}
+      onPress={onPress ? () => void flight.run(onPress) : undefined}
+      disabled={inactive || busy}
       accessibilityRole="button"
       accessibilityLabel={shownLabel}
       accessibilityHint={offline ? t('offline.actionsHint') : accessibilityHint}
-      accessibilityState={{ disabled: inactive, busy: !!loading }}
+      accessibilityState={{ disabled: inactive, busy }}
       radius={radius.group}
       pressedLayer={filled ? null : colors.selectedTint}
       hoverLayer={filled ? null : colors.hoverLayer}
@@ -88,7 +97,7 @@ export function Button({
             },
           ]}
         >
-          {loading ? (
+          {busy ? (
             <ActivityIndicator size="small" color={labelColor} />
           ) : (
             <>

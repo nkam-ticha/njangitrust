@@ -26,8 +26,11 @@ import { doneVerb } from './doneVerb';
 
 export interface ConfirmationCardProps {
   action: PendingActionDto;
-  onConfirm: () => void;
-  onCancel: () => void;
+  /** May return a promise: the button then stays busy until it settles (single-flight press). */
+  onConfirm: () => unknown;
+  onCancel: () => unknown;
+  /** The confirmation is on its way: the card shows "sending" at once instead of its buttons. */
+  sending?: boolean;
   /** Failed: prepares a new card. */
   onRetry?: () => void;
   /** Expired: prepares the same action again. */
@@ -57,6 +60,7 @@ export function ConfirmationCard(props: ConfirmationCardProps) {
     action,
     onConfirm,
     onCancel,
+    sending,
     onRetry,
     onPrepareAgain,
     onViewLedger,
@@ -222,16 +226,27 @@ export function ConfirmationCard(props: ConfirmationCardProps) {
                 })}
               </Txt>
             ) : null}
-            <View style={styles.actions}>
-              <Button variant="text" label={t('confirmation.buttons.cancel')} onPress={onCancel} />
-              <Button
-                label={pick(preview.confirmLabel, lang)}
-                onPress={onConfirm}
-                offline={offline}
-                style={styles.flex}
-                fullWidth
-              />
-            </View>
+            {sending ? (
+              <View style={styles.status} accessibilityRole="progressbar">
+                <ActivityIndicator size="small" color={colors.statusPending} />
+                <Txt variant="bodyStrong">{t('common.status.sending')}</Txt>
+              </View>
+            ) : (
+              <View style={styles.actions}>
+                <Button
+                  variant="text"
+                  label={t('confirmation.buttons.cancel')}
+                  onPress={onCancel}
+                />
+                <Button
+                  label={pick(preview.confirmLabel, lang)}
+                  onPress={onConfirm}
+                  offline={offline}
+                  style={styles.flex}
+                  fullWidth
+                />
+              </View>
+            )}
           </>
         ) : null}
 

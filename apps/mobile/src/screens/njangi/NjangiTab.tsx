@@ -2,7 +2,7 @@
 // comes complete in the HTTP response and is streamed while it is written. Any action it prepares
 // comes back as a PendingAction card that only the member can confirm (spec 4.5). When the agent is
 // not configured on the server, the screen says so and the rest of the app keeps working.
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { TFunction } from 'i18next';
@@ -14,7 +14,6 @@ import {
   type AgentMessageDto,
   type AgentTurnDto,
 } from '@njangi/shared/contracts/agent';
-import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
 import { space, useTheme } from '@/theme';
 import { newRoute } from '../shared/routes';
 import {
@@ -60,7 +59,17 @@ const CHIPS = [
   'missed',
 ] as const;
 
+/**
+ * Each group has its own thread with the agent. The thread is keyed by the active group, so
+ * switching group remounts it: the draft, the member's line being sent, the streamed reply and any
+ * error belong to the group that produced them and never show in another.
+ */
 export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
+  const { group } = useActiveGroup();
+  return <NjangiThread key={group?.groupId ?? 'none'} compact={compact} />;
+}
+
+function NjangiThread({ compact }: { compact: boolean }) {
   const { t } = useTranslation();
   const lang = useLang();
   const router = useRouter();
@@ -73,17 +82,23 @@ export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
   const { group, loading } = useActiveGroup();
   const groupId = group?.groupId ?? null;
   const status = useAgentStatus();
-  const conversation = useAgentConversation();
+  const conversation = useAgentConversation(groupId);
   const send = useSendAgentMessage();
-  const { stream, reset } = useAgentStream(send.isPending);
+  const { stream, reset } = useAgentStream(
+    send.isPending,
+    groupId,
+    conversation.conversation?.id ?? null,
+  );
   const round = useCurrentRound(groupId);
   const dues = useMyDues(groupId);
   const [draft, setDraft] = useState('');
   const [sentText, setSentText] = useState<string | null>(null);
   const [reply, setReply] = useState<AgentMessageDto | null>(null);
-  const [cards, setCards] = useState<PendingActionDto[]>([]);
   const [failure, setFailure] = useState<unknown>(null);
   const scroll = useRef<ScrollViewInstance>(null);
+  // Taken synchronously on the first send: a second Enter or tap before the screen re-renders is
+  // ignored (the state `send.isPending` only changes on the next render).
+  const sendingRef = useRef(false);
 
   // The whole app shows what the agent is doing: the floating orb and the glow around the screen.
   const setMode = useAgentActivity((s) => s.setMode);
@@ -93,6 +108,41 @@ export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
     setMode(!answering ? 'idle' : writing ? 'speaking' : 'thinking');
   }, [answering, writing, setMode]);
   useEffect(() => () => setMode('idle'), [setMode]);
+
+  const messages = conversation.messages;
+  // The member's line and the reply stay on screen from the moment of sending until the server's
+  // own copy of the conversation has them (no flicker while it is read again). Derived while
+  // rendering: once the server's copy holds the reply, the local ones are simply not drawn, and the
+  // next send starts from a clean slate.
+  const echoed = reply ? messages.some((m) => m.id === reply.id) : false;
+  const newestReplyId = messages.findLast((m) => m.role === 'assistant')?.id ?? null;
+  const { mutate: sendMutate } = send;
+  const askAgain = useCallback(
+    (text: string, restoreDraft = false) => {
+      if (sendingRef.current) return;
+      sendingRef.current = true;
+      setFailure(null);
+      setReply(null);
+      setSentText(text);
+      sendMutate(
+        { text, groupId },
+        {
+          onSuccess: (turn: AgentTurnDto) => setReply(turn.reply),
+          onError: (error) => {
+            setFailure(error);
+            setSentText(null);
+            if (restoreDraft) setDraft(text);
+          },
+          onSettled: () => {
+            sendingRef.current = false;
+            reset();
+            scroll.current?.scrollToEnd({ animated: true });
+          },
+        },
+      );
+    },
+    [sendMutate, groupId, reset],
+  );
 
   if (loading) {
     return (
@@ -126,34 +176,15 @@ export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
   const notConfiguredText = status.data?.message
     ? pick(status.data.message, lang)
     : t('agent.errors.unavailable');
-  const messages = conversation.messages;
-  const shownReply = reply && !messages.some((m) => m.id === reply.id) ? reply : null;
+  const shownReply = reply && !echoed ? reply : null;
   const empty = !messages.length && !sentText && !shownReply;
 
   const submit = (text: string) => {
     const clean = text.trim();
-    if (!clean || send.isPending) return;
+    if (!clean || sendingRef.current) return;
+    // The composer clears and the member's line appears in this same event, before any network.
     setDraft('');
-    setFailure(null);
-    setSentText(clean);
-    send.mutate(
-      { text: clean, groupId },
-      {
-        onSuccess: (turn: AgentTurnDto) => {
-          setReply(turn.reply);
-          if (turn.actions.length) setCards((prev) => [...prev, ...turn.actions]);
-        },
-        onError: (error) => {
-          setFailure(error);
-          setDraft(clean);
-        },
-        onSettled: () => {
-          setSentText(null);
-          reset();
-          scroll.current?.scrollToEnd({ animated: true });
-        },
-      },
-    );
+    askAgain(clean, true);
   };
 
   const roundLine =
@@ -281,9 +312,15 @@ export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
           />
         ) : null}
         {messages.map((m) => (
-          <ConversationLine key={m.id} message={m} lang={lang} />
+          <ConversationLine
+            key={m.id}
+            message={m}
+            lang={lang}
+            latest={m.id === newestReplyId}
+            onAskAgain={askAgain}
+          />
         ))}
-        {sentText ? (
+        {sentText && !echoed ? (
           <MessageBubble author="own" time="" parts={[sentText]} delivery="queued" />
         ) : null}
         {send.isPending ? (
@@ -298,15 +335,9 @@ export function NjangiTab({ compact = false }: { compact?: boolean } = {}) {
             <AgentActivityLine tool={stream?.tool ?? null} />
           </View>
         ) : null}
-        {shownReply ? <AgentMessage text={shownReply.text} /> : null}
-        {cards.map((action) => (
-          <ActionCard
-            key={action.id}
-            action={action}
-            onClose={() => setCards((prev) => prev.filter((c) => c.id !== action.id))}
-            onCancelled={() => setCards((prev) => prev.filter((c) => c.id !== action.id))}
-          />
-        ))}
+        {shownReply ? (
+          <ConversationLine message={shownReply} lang={lang} latest onAskAgain={askAgain} />
+        ) : null}
         {failure ? (
           <Txt variant="secondary" color="textDanger" accessibilityLiveRegion="polite">
             {agentFailureText(failure, t, lang)}
@@ -325,8 +356,23 @@ const CompactShell: typeof TabScreen = ({ children, footer }) => (
   </View>
 );
 
-/** One line of the conversation: the member's own text, the agent's reply, or an event of an action. */
-function ConversationLine({ message, lang }: { message: AgentMessageDto; lang: 'fr' | 'en' }) {
+/**
+ * One line of the conversation: the member's own text, the agent's reply with the cards it prepared
+ * (drawn from the server's PendingAction, so they are here after a reload too), or an event of an
+ * action. Memoised: a streamed word changes the screen, not the lines above it.
+ */
+const ConversationLine = memo(function ConversationLine({
+  message,
+  lang,
+  latest = false,
+  onAskAgain,
+}: {
+  message: AgentMessageDto;
+  lang: 'fr' | 'en';
+  /** The newest reply: its cards keep their full form; older cancelled or expired ones collapse. */
+  latest?: boolean;
+  onAskAgain: (text: string) => void;
+}) {
   const { t } = useTranslation();
   if (message.role === 'user') {
     return (
@@ -349,8 +395,22 @@ function ConversationLine({ message, lang }: { message: AgentMessageDto; lang: '
       <SystemEvent icon={Info} text={message.text} time={formatClock(message.createdAt, lang)} />
     );
   }
-  return <AgentMessage text={message.text} />;
-}
+  return (
+    <View style={styles.reply}>
+      <AgentMessage text={message.text} />
+      {message.actions.map((action) => (
+        <ActionCard
+          key={action.id}
+          action={action}
+          compact={!latest}
+          onRetry={() =>
+            onAskAgain(t('agent.prepareAgain', { title: pick(action.preview.title, lang) }))
+          }
+        />
+      ))}
+    </View>
+  );
+});
 
 /** The send failure, in the member's words (spec 1.6): rate limit, unavailable, not sent, or the server's text. */
 function agentFailureText(error: unknown, t: TFunction, lang: 'fr' | 'en'): string {
@@ -379,6 +439,7 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   conversation: { gap: space.s3, paddingVertical: space.s3 },
   streaming: { gap: space.s2 },
+  reply: { gap: space.s3 },
   hero: { alignItems: 'center', gap: space.s6, paddingVertical: space.s8 },
   heroCompact: { alignItems: 'center', gap: space.s3, paddingVertical: space.s4 },
   compactRoot: { flex: 1, minHeight: 0 },
