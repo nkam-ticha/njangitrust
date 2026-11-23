@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { CircleAlert } from 'lucide-react-native';
+import { textSchema } from '@njangi/shared/contracts/common';
 import type { MyGroupDto } from '@njangi/shared/contracts/me';
 import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
 import type { SolidarityRequestItem } from '@njangi/shared/contracts/solidarity';
@@ -27,7 +28,7 @@ import {
   useLang,
 } from '@/ui';
 import { useConnectivity } from '@/state/connectivity';
-import { useMembers } from '@/features/groups/useGroups';
+import { useMembers, useRules } from '@/features/groups/useGroups';
 import { useSolidarity, useRefreshMoney } from '@/features/money/queries';
 import { useSolidarityRequest } from '@/features/money/mutations';
 import { errorMessage } from '@/features/errors/errorMessage';
@@ -52,7 +53,10 @@ export function SolidaritySection({ group }: { group: MyGroupDto }) {
   const groupId = group.groupId;
   const query = useSolidarity(groupId);
   const members = useMembers(groupId);
+  const rules = useRules(groupId);
   const [requesting, setRequesting] = useState(false);
+  // D19: votes (and so solidarity requests) open with the group's first cycle.
+  const forming = group.status === 'FORMING';
 
   if (query.isPending) return <SkeletonRows rows={3} />;
   if (query.isError) {
@@ -67,6 +71,8 @@ export function SolidaritySection({ group }: { group: MyGroupDto }) {
     );
   }
   const { fundBalance, requests } = query.data;
+  // R10.1: the fund is fed by the per-round contribution; at 0 and with nothing in it, nothing to ask for.
+  const off = rules.data?.params.solidarityContribution === 0 && (fundBalance ?? 0) <= 0;
 
   return (
     <View style={styles.column}>
@@ -97,9 +103,12 @@ export function SolidaritySection({ group }: { group: MyGroupDto }) {
         <Txt color="textSecondary">{t('caisse.solidarity.empty')}</Txt>
       )}
 
+      {forming ? <Banner kind="info" text={t('votes.beforeCycleTitle')} /> : null}
+      {off && !forming ? <Banner kind="info" text={t('caisse.solidarity.off')} /> : null}
       <Button
         fullWidth
         label={t('caisse.solidarity.request')}
+        disabled={forming || off}
         onPress={() => setRequesting(true)}
       />
 
@@ -164,6 +173,12 @@ function SolidarityRequestSheet({
   const [note, setNote] = useState('');
   const [action, setAction] = useState<PendingActionDto | null>(null);
 
+  // The note is shown to the group, so it can never carry a phone number (spec 2.11): say so here
+  // instead of letting the request fail with a generic error.
+  const noteError =
+    note.trim() && !textSchema(300).safeParse(note).success
+      ? t('errors.validation.textNoPhone')
+      : null;
   const MIN_SUPPORT_AMOUNT = 25;
   const isFundEmpty = fundBalance === null || fundBalance < MIN_SUPPORT_AMOUNT;
 
@@ -252,6 +267,7 @@ function SolidarityRequestSheet({
         value={note}
         onChangeText={setNote}
         maxLength={300}
+        error={noteError}
       />
       {request.error ? (
         <Txt variant="secondary" color="textDanger">
@@ -265,6 +281,7 @@ function SolidarityRequestSheet({
         offline={!online}
         disabled={
           isFundEmpty ||
+          noteError !== null ||
           amount === null ||
           amount < MIN_SUPPORT_AMOUNT ||
           (fundBalance !== null && amount > fundBalance) ||

@@ -19,6 +19,7 @@ import { componentLogger } from '../../lib/logger';
 import { getPrisma, type Db, type Prisma } from '../../lib/prisma';
 import { dispatchJob } from '../../jobs/dispatch';
 import { registerJob, registerRepeatable } from '../../jobs/registry';
+import { lockGroup } from '../../permissions';
 import { appendLedgerEntry } from '../ledger';
 import { configuredFeeSchedule } from '../loans/loans.service';
 import { getCurrentParams } from '../rulesets';
@@ -75,8 +76,10 @@ async function sendSolidarity(tx: Tx, requestId: string, now: Date): Promise<str
   await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${request.groupId}::uuid FOR UPDATE`;
   const group = await tx.group.findUniqueOrThrow({
     where: { id: request.groupId },
-    select: { providerAccount: true },
+    select: { providerAccount: true, status: true },
   });
+  // D28: nothing is sent in a group a developer closed, whatever was approved before.
+  if (group.status === 'CLOSED') return null;
   const user = request.recipient.user;
   const number = user.paymentNumbers[0];
   const hadAnotherNumber = number
@@ -166,8 +169,12 @@ export async function paySolidarity(
 /** Requests that passed and still wait (a hold that ended, a send that failed to start). */
 export async function payWaitingSolidarity(now: Date = clock.now()): Promise<number> {
   const waiting = await getPrisma().solidarityRequest.findMany({
-    where: { status: 'APPROVED' },
-    select: { id: true, disbursement: { select: { id: true, status: true, providerRef: true } } },
+    where: { status: 'APPROVED', group: { status: { not: 'CLOSED' } } },
+    select: {
+      id: true,
+      groupId: true,
+      disbursement: { select: { id: true, status: true, providerRef: true } },
+    },
     orderBy: { createdAt: 'asc' },
     take: 100,
   });
@@ -178,7 +185,11 @@ export async function payWaitingSolidarity(now: Date = clock.now()): Promise<num
       await submit(request.disbursement.id);
       continue;
     }
-    const id = await getPrisma().$transaction((tx) => sendSolidarity(tx, request.id, now));
+    const id = await getPrisma().$transaction(async (tx) => {
+      // Group first, then the request, as a developer's closing and every other writer take them.
+      await lockGroup(tx, request.groupId, 'update');
+      return sendSolidarity(tx, request.id, now);
+    });
     if (!id) continue;
     await submit(id);
     sent += 1;

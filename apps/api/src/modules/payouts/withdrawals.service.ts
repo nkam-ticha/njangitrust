@@ -12,6 +12,7 @@ import {
   loanRefundSettlement,
   checkLedger,
   loanSentPostings,
+  MIN_WITHDRAWAL,
   naturalBalance,
   payableAccount,
   resolveFee,
@@ -266,15 +267,37 @@ async function loadWithdrawal(
     debts: withdrawalDebts,
   });
   if (!withdrawal.ok) {
-    if (withdrawal.code === 'HOLD_ACTIVE') {
-      throw payoutError('HOLD_ACTIVE', {
-        details: {
-          holdEnds: formatDateTime(withdrawal.until, input.lang ?? 'fr'),
-          until: withdrawal.until.toISOString(),
-        },
-      });
+    const amountIn = (amount: number) => ({
+      fr: formatXAF(amount, 'fr'),
+      en: formatXAF(amount, 'en'),
+    });
+    switch (withdrawal.code) {
+      case 'HOLD_ACTIVE':
+        throw payoutError('HOLD_ACTIVE', {
+          params: {
+            date: {
+              fr: formatDateTime(withdrawal.until, 'fr'),
+              en: formatDateTime(withdrawal.until, 'en'),
+            },
+          },
+          details: {
+            holdEnds: formatDateTime(withdrawal.until, input.lang ?? 'fr'),
+            until: withdrawal.until.toISOString(),
+          },
+        });
+      case 'NOTHING_TO_WITHDRAW':
+        throw payoutError('NOTHING_TO_WITHDRAW', { params: { minimum: amountIn(MIN_WITHDRAWAL) } });
+      case 'BELOW_MINIMUM_WITHDRAWAL':
+        throw payoutError('BELOW_MINIMUM_WITHDRAWAL', {
+          params: { minimum: amountIn(withdrawal.minimum) },
+        });
+      case 'ABOVE_AVAILABLE':
+        throw payoutError('ABOVE_AVAILABLE', {
+          params: { available: amountIn(withdrawal.available) },
+        });
+      default:
+        throw payoutError(withdrawal.code);
     }
-    throw payoutError(withdrawal.code);
   }
   const number = member.user.paymentNumbers[0];
   if (!number) throw payoutError('NO_ACTIVE_PAYMENT_NUMBER');

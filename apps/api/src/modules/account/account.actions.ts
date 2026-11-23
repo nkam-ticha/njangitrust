@@ -14,7 +14,7 @@ import { ledgerEventsPort } from '../proposals';
 import { createNotifications } from '../notifications';
 import { defineActionHandler, type ActionContext } from '../pending-actions';
 import { accountError } from './account.errors';
-import { anonymiseAccount, deletionBlocker } from './account.service';
+import { anonymiseAccount, deletionBlocker, lockAccountOperations } from './account.service';
 
 const nbsp = ' ';
 
@@ -184,6 +184,8 @@ export const deleteAccountHandler = defineActionHandler({
   },
 
   async execute(ctx) {
+    // Group then membership locks, as a payment or a withdrawal takes them (see account.developer.ts).
+    await lockAccountOperations(ctx.db, ctx.userId);
     await checkDelete(ctx, ctx.db);
     await anonymiseAccount(ctx.db, ctx.userId, ctx.now, ctx.effects, ctx.pendingActionId);
     return {

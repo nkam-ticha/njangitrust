@@ -20,6 +20,10 @@ import {
   withdrawalSchema,
 } from './schemas';
 
+/** Money screens keep looking for changes made by other members (payments, votes, payouts). */
+const LIVE_MS = 5_000;
+const LIVE = { refetchInterval: LIVE_MS, refetchOnWindowFocus: 'always' as const };
+
 export const moneyKeys = {
   group: (groupId: string) => ['group', groupId, 'money'] as const,
   round: (groupId: string, n: number | 'current') => ['group', groupId, 'round', n] as const,
@@ -39,6 +43,7 @@ export function useCurrentRound(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.round(groupId ?? 'none', 'current'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: async () => {
       try {
         return (
@@ -99,6 +104,7 @@ export function useMyDues(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.dues(groupId ?? 'none'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: async () =>
       (await api.get(`/v1/groups/${groupId}/me/dues`, { schema: duesSchema })).dues,
   });
@@ -108,6 +114,7 @@ export function useMyMoney(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.myMoney(groupId ?? 'none'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: async () =>
       (await api.get(`/v1/groups/${groupId}/me/money`, { schema: myMoneySchema })).money,
   });
@@ -117,6 +124,7 @@ export function useFunds(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.funds(groupId ?? 'none'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: async () =>
       (await api.get(`/v1/groups/${groupId}/funds`, { schema: fundsSchema })).funds,
   });
@@ -126,6 +134,7 @@ export function useLedger(groupId: string | null, type: string | null) {
   return useInfiniteQuery({
     queryKey: moneyKeys.ledger(groupId ?? 'none', type),
     enabled: !!groupId,
+    ...LIVE,
     initialPageParam: null as number | null,
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams({ limit: '30' });
@@ -143,6 +152,7 @@ export function useReconciliation(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.reconciliation(groupId ?? 'none'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: async () =>
       (
         await api.get(`/v1/groups/${groupId}/reconciliation/latest`, {
@@ -156,6 +166,7 @@ export function useSolidarity(groupId: string | null) {
   return useQuery({
     queryKey: moneyKeys.solidarity(groupId ?? 'none'),
     enabled: !!groupId,
+    ...LIVE,
     queryFn: (): Promise<{ fundBalance: number | null; requests: SolidarityRequestItem[] }> =>
       api.get(`/v1/groups/${groupId}/solidarity`, { schema: solidarityRequestListSchema }),
   });

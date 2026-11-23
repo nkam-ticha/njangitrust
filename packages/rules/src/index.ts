@@ -49,6 +49,9 @@ export * from './votes';
 // Members joining, leaving and removal (R12)
 export * from './membership';
 
+// Money members still hold in a group: debts, live loans, balances (D28)
+export * from './holdings';
+
 // Payment numbers (R13)
 export * from './payment-number';
 

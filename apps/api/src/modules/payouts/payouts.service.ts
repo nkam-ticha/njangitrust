@@ -30,7 +30,13 @@ export async function openPayout(roundId: string, now = clock.now()): Promise<bo
 
 export async function openDuePayouts(now = clock.now()): Promise<number> {
   const due = await getPrisma().round.findMany({
-    where: { status: 'OPEN', payoutAt: { lte: now }, beneficiaryMembershipId: { not: null } },
+    where: {
+      status: 'OPEN',
+      payoutAt: { lte: now },
+      beneficiaryMembershipId: { not: null },
+      // D28: a closed group takes no new activity.
+      group: { status: { not: 'CLOSED' } },
+    },
     select: { id: true },
     orderBy: { payoutAt: 'asc' },
     take: 100,

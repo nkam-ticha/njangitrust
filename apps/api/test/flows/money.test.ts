@@ -132,7 +132,12 @@ describe('starting the cycle (R1.1, R2.3)', () => {
     expect(checkLedger(groupId, ledger)).toEqual([]);
     const shown = await api(members[0]).get(`/v1/groups/${groupId}/rounds/current`);
     expect(shown.status).toBe(200);
-    expect(shown.body.round).toMatchObject({ number: 1, status: 'OPEN', paidCount: 0 });
+    expect(shown.body.round).toMatchObject({
+      number: 1,
+      totalRounds: rounds.length,
+      status: 'OPEN',
+      paidCount: 0,
+    });
   });
 });
 
@@ -253,6 +258,22 @@ describe('payout and withdrawal (R5, D18.1)', () => {
     );
     const none = await api(other).post(`/v1/groups/${groupId}/withdrawals`, { amount: 'ALL' });
     expect(none.body.code).toBe('NOTHING_TO_WITHDRAW');
+    // The refusal says what is wrong, in both languages, not a generic "invalid details".
+    expect(none.body.messageEn).toMatch(/minimum 100/);
+    expect(none.body.messageFr).toMatch(/minimum 100/);
+
+    const tooSmall = await api(beneficiary).post(`/v1/groups/${groupId}/withdrawals`, {
+      amount: 50,
+    });
+    expect(tooSmall.body.code).toBe('BELOW_MINIMUM_WITHDRAWAL');
+    expect(tooSmall.body.messageEn).toMatch(/minimum withdrawal is 100/);
+    expect(tooSmall.body.messageFr).toMatch(/retrait minimum est de 100/);
+    const tooMuch = await api(beneficiary).post(`/v1/groups/${groupId}/withdrawals`, {
+      amount: 90_000_000,
+    });
+    expect(tooMuch.body.code).toBe('ABOVE_AVAILABLE');
+    expect(tooMuch.body.messageEn).toMatch(/at most/);
+    expect(tooMuch.body.messageFr).toMatch(/au plus/);
 
     const card = await api(beneficiary).post(`/v1/groups/${groupId}/withdrawals`, {
       amount: 'ALL',

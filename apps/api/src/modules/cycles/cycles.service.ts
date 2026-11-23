@@ -224,7 +224,8 @@ export async function openRound(roundId: string, now = clock.now()): Promise<boo
 
 export async function openDueRounds(now = clock.now()): Promise<number> {
   const due = await getPrisma().round.findMany({
-    where: { status: 'SCHEDULED' },
+    // D28: a closed group takes no new activity.
+    where: { status: 'SCHEDULED', group: { status: { not: 'CLOSED' } } },
     select: { id: true },
     orderBy: { dueAt: 'asc' },
     take: 100,

@@ -38,6 +38,12 @@ export async function disburseApprovedLoan(loanId: string): Promise<void> {
     // Exit refunds and other disbursements both spend the loan-available general fund.
     // Serialize that balance check with the group lock used by exit settlement.
     await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${owner.groupId}::uuid FOR UPDATE`;
+    // D28: nothing is sent in a group a developer closed, whatever was approved before.
+    const ownerGroup = await tx.group.findUnique({
+      where: { id: owner.groupId },
+      select: { status: true },
+    });
+    if (!ownerGroup || ownerGroup.status === 'CLOSED') return null;
     await tx.$queryRaw`SELECT "id" FROM "Membership" WHERE "id" = ${owner.membershipId}::uuid FOR UPDATE`;
     await tx.$queryRaw`SELECT "id" FROM "Loan" WHERE "id" = ${loanId}::uuid FOR UPDATE`;
     const loan = await tx.loan.findUnique({
@@ -141,7 +147,7 @@ export function registerLoanDisbursementJob(): void {
     keepNoHistory: true,
     process: async () => {
       const loans = await getPrisma().loan.findMany({
-        where: { status: 'APPROVED' },
+        where: { status: 'APPROVED', group: { status: { not: 'CLOSED' } } },
         select: { id: true },
         orderBy: { decidedAt: 'asc' },
         take: 100,

@@ -9,6 +9,8 @@ export const roundSchema = z.object({
   id: uuidSchema,
   number: z.number().int(),
   cycle: z.number().int(),
+  /** Rounds in the cycle ("round 2 of 10"); absent from an API that predates it. */
+  totalRounds: z.number().int().optional(),
   mode: z.enum(['FIXED', 'BIDDING']),
   status: z.string(),
   dueAt: instantSchema,
@@ -19,6 +21,8 @@ export const roundSchema = z.object({
   paidCount: z.number().int(),
   contributionCount: z.number().int(),
   collected: int,
+  /** What the round expects in all, for the ring; absent from an API that predates it. */
+  target: int.optional(),
   unpaidMembershipIds: z.array(uuidSchema),
 });
 export type RoundDto = z.infer<typeof roundSchema>;

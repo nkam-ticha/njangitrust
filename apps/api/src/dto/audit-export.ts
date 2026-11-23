@@ -81,14 +81,16 @@ export function toExportProposal(
   p: ExportProposalSource,
   openBallots: readonly { membershipId: string; choice: 'YES' | 'NO' }[],
 ): ExportProposal {
+  const hidden = p.secret && p.status === 'OPEN';
   return {
     id: p.id,
     type: p.type,
     secret: p.secret,
     thresholdKind: p.thresholdKind,
     eligibleCount: p.eligibleMembershipIds.length,
-    yesCount: p.yesCount,
-    noCount: p.noCount,
+    // A secret vote shows no running count before it closes (R11.5, D20).
+    yesCount: hidden ? 0 : p.yesCount,
+    noCount: hidden ? 0 : p.noCount,
     status: p.status,
     opensAt: iso(p.opensAt),
     closesAt: iso(p.closesAt),

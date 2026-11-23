@@ -14,6 +14,8 @@ export const loanStatusSchema = z.enum([
   'REPAID',
   'OVERDUE',
   'EXPIRED',
+  /** D22.1: the operator reversed the disbursement and the money went back to the fund. */
+  'REFUNDED',
 ]);
 export type LoanStatus = z.infer<typeof loanStatusSchema>;
 

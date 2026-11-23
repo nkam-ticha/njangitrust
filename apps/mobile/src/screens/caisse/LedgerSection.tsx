@@ -23,8 +23,8 @@ import {
   Txt,
   useLang,
 } from '@/ui';
-import type { LedgerType } from '@/ui';
 import { useMembers } from '@/features/groups/useGroups';
+import { ledgerTypeOf } from '@/features/money/ledgerTypes';
 import { useLedger, useReconciliation } from '@/features/money/queries';
 import type { LedgerEntryDto } from '@/features/money/schemas';
 import { errorMessage } from '@/features/errors/errorMessage';
@@ -39,25 +39,6 @@ const FILTERS: { key: string; type: string | null }[] = [
   { key: 'solidarity', type: 'SOLIDARITY_DISBURSED' },
   { key: 'decisions', type: 'EVENT' },
 ];
-
-const LEDGER_TYPES: readonly LedgerType[] = [
-  'PAYMENT_RECEIVED',
-  'FINE_ASSESSED',
-  'BID_ASSESSED',
-  'AUTO_SETTLEMENT',
-  'WITHDRAWAL_COMPLETED',
-  'LOAN_DISBURSED',
-  'SOLIDARITY_DISBURSED',
-  'LEAVER_REFUND',
-  'FUND_DISTRIBUTION',
-  'REVERSAL',
-  'EVENT',
-];
-
-/** The designer's type labels cover the LedgerType union; any other type reads as a decision. */
-export function ledgerTypeOf(type: string): LedgerType {
-  return (LEDGER_TYPES as readonly string[]).includes(type) ? (type as LedgerType) : 'EVENT';
-}
 
 export function LedgerSection({ group }: { group: MyGroupDto }) {
   const { t } = useTranslation();

@@ -52,11 +52,13 @@ export async function generateMonthlyStatement(
     select: {
       id: true,
       groupId: true,
-      group: { select: { name: true } },
+      group: { select: { name: true, hiddenByDeveloperAt: true } },
       user: { select: { id: true, name: true, language: true, deletedAt: true } },
     },
   });
   if (!membership || membership.user.deletedAt) return false;
+  // D28: a job queued before a developer closed and hid the group writes and sends nothing.
+  if (membership.group.hiddenByDeveloperAt) return false;
   const label = monthLabel(payload.year, payload.month);
   const { created } = await issueStatement({
     membershipId: membership.id,

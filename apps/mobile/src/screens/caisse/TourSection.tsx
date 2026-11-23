@@ -6,7 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CircleAlert, Wallet } from 'lucide-react-native';
-import { formatDateTime } from '@njangi/shared';
+import { formatDateShort, formatDateTime } from '@njangi/shared';
 import type { MyGroupDto } from '@njangi/shared/contracts/me';
 import { space } from '@/theme';
 import {
@@ -16,14 +16,22 @@ import {
   EmptyState,
   GroupedList,
   ListRow,
+  NjangiRing,
   SectionHeader,
   SkeletonRows,
   Txt,
   useLang,
 } from '@/ui';
+import type { RingMember } from '@/ui';
 import { useSession } from '@/state/session';
 import { useMembers } from '@/features/groups/useGroups';
-import { useCurrentRound, useMyDues, useMyMoney, useRefreshMoney } from '@/features/money/queries';
+import {
+  useCurrentRound,
+  useMyDues,
+  useMyMoney,
+  useRefreshMoney,
+  useRotation,
+} from '@/features/money/queries';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { BiddingPanel } from '../bids/BiddingPanel';
 import { BreakdownSheet } from './BreakdownSheet';
@@ -42,6 +50,7 @@ export function TourSection({ group }: { group: MyGroupDto }) {
   const members = useMembers(groupId);
   const money = useMyMoney(groupId);
   const dues = useMyDues(groupId);
+  const rotation = useRotation(groupId, round.data?.totalRounds ?? 0);
   const user = useSession((s) => s.user);
   const refresh = useRefreshMoney(groupId);
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -87,11 +96,34 @@ export function TourSection({ group }: { group: MyGroupDto }) {
   const obligationIds = (dues.data ?? []).map((d) => d.id);
   const close = () => setSheet(null);
 
+  // The ring shows the cycle's order (the server's rounds, one per member); before the order is read
+  // or in bidding mode (beneficiaries not all known) it shows the active members.
+  const names = new Map(list.map((m) => [m.membershipId, m.name]));
+  const known = rotation.rounds.filter((r) => r.beneficiaryMembershipId);
+  const orderKnown = known.length > 0 && known.length === (current.totalRounds ?? -1);
+  const ringIds = orderKnown
+    ? known.map((r) => r.beneficiaryMembershipId as string)
+    : list.filter((m) => m.status === 'ACTIVE').map((m) => m.membershipId);
+  const served = new Set(
+    known.filter((r) => r.number < current.number).map((r) => r.beneficiaryMembershipId),
+  );
+  const ringMembers: RingMember[] = ringIds.map((id) => ({
+    membershipId: id,
+    name: names.get(id) ?? '',
+    state: unpaid.has(id) ? (late ? 'late' : 'unpaid') : 'paid',
+    isBeneficiary: id === current.beneficiaryMembershipId,
+    served: served.has(id),
+  }));
+  const upcoming = known.filter((r) => r.number > current.number && r.beneficiaryName);
+
   return (
     <View style={styles.column}>
       <View style={styles.head}>
         <Txt variant="sectionTitle">
-          {t('common.roundOf', { round: current.number, total: current.contributionCount })}
+          {t('common.roundOf', {
+            round: current.number,
+            total: current.totalRounds ?? current.contributionCount,
+          })}
         </Txt>
         <Txt color="textSecondary">
           {beneficiaryIsMe
@@ -104,6 +136,20 @@ export function TourSection({ group }: { group: MyGroupDto }) {
             : t('caisse.tour.deadline', { date: formatDateTime(current.dueAt, lang) })}
         </Txt>
       </View>
+
+      {current.target !== undefined && ringMembers.length > 0 ? (
+        <View style={styles.ring}>
+          <NjangiRing
+            size="large"
+            members={ringMembers}
+            collected={current.collected}
+            target={current.target}
+            round={current.number}
+            roundsTotal={current.totalRounds ?? ringMembers.length}
+            meId={group.membershipId}
+          />
+        </View>
+      ) : null}
 
       {current.mode === 'BIDDING' ? (
         <BiddingPanel groupId={groupId} roundId={current.id} roundNumber={current.number} />
@@ -164,6 +210,29 @@ export function TourSection({ group }: { group: MyGroupDto }) {
         <Txt color="textSecondary">{t('caisse.tour.allPaid')}</Txt>
       ) : null}
 
+      {upcoming.length ? (
+        <>
+          <SectionHeader inset={false} title={t('caisse.tour.upcomingRounds')} />
+          <View style={styles.flush}>
+            <GroupedList>
+              {upcoming.map((r) => (
+                <ListRow
+                  key={r.id}
+                  title={t('caisse.tour.upcomingRow', {
+                    round: r.number,
+                    name:
+                      r.beneficiaryMembershipId === group.membershipId
+                        ? t('common.youSuffix', { name: r.beneficiaryName ?? '' })
+                        : (r.beneficiaryName ?? ''),
+                  })}
+                  subtitle={formatDateShort(r.payoutAt, lang)}
+                />
+              ))}
+            </GroupedList>
+          </View>
+        </>
+      ) : null}
+
       <Button
         variant="secondary"
         fullWidth
@@ -207,7 +276,11 @@ export function TourSection({ group }: { group: MyGroupDto }) {
         title={t('caisse.breakdown.title', { round: current.number })}
       >
         {sheet === 'breakdown' ? (
-          <BreakdownSheet groupId={groupId} roundNumber={current.number} />
+          <BreakdownSheet
+            groupId={groupId}
+            roundNumber={current.number}
+            forBeneficiary={beneficiaryIsMe}
+          />
         ) : null}
       </BottomSheet>
     </View>
@@ -217,5 +290,6 @@ export function TourSection({ group }: { group: MyGroupDto }) {
 const styles = StyleSheet.create({
   column: { gap: space.s4 },
   head: { gap: space.s1 },
+  ring: { alignItems: 'center' },
   flush: { marginHorizontal: -space.s4 },
 });

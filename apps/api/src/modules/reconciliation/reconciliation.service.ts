@@ -201,7 +201,13 @@ export async function runAllDailyReconciliations() {
 export async function latestGroupReconciliation(userId: string, groupId: string) {
   const db = getPrisma();
   const membership = await db.membership.findFirst({
-    where: { groupId, userId, status: { in: ['ACTIVE', 'LEAVING', 'INVITED'] } },
+    // D28: nothing about a group a developer closed and hid.
+    where: {
+      groupId,
+      userId,
+      status: { in: ['ACTIVE', 'LEAVING', 'INVITED'] },
+      group: { hiddenByDeveloperAt: null },
+    },
     select: { id: true },
   });
   if (!membership) return null;

@@ -56,8 +56,9 @@ export type GovernanceEvent =
       proposalId: string;
       proposalType: string;
       status: string;
-      yes: number;
-      no: number;
+      /** Left out when a secret vote ends without a result (a developer closed the group). */
+      yes?: number;
+      no?: number;
       eligible: number;
     }
   | { event: 'ROTATION_CHANGED'; cycleNumber: number; order: string[]; proposalId: string }

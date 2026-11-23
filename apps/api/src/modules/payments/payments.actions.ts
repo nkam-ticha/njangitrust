@@ -1,7 +1,7 @@
 import { formatXAF, maskNumber } from '@njangi/shared';
 import { z } from 'zod';
 import { getEnv } from '../../config/env';
-import { authorizeGroup } from '../../permissions';
+import { authorizeGroup, lockGroup } from '../../permissions';
 import type { ActionContext } from '../pending-actions';
 import { defineActionHandler } from '../pending-actions';
 import { paymentError } from './payments.errors';
@@ -56,6 +56,9 @@ export const payHandler = defineActionHandler({
     };
   },
   async execute(ctx, a) {
+    // D28: the group lock first (shared: confirmations do not wait for each other, a developer's
+    // closing does), then the access check below sees a group closed and hidden meanwhile.
+    await lockGroup(ctx.db, a.groupId, 'share');
     // Serialize simultaneous confirmations by member; the second sees the first intent's reserved
     // obligation IDs after the first transaction commits.
     const snapshot = await preview(ctx, a);

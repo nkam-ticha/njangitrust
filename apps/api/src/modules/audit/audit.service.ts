@@ -22,10 +22,13 @@ export interface AuditEntry {
 
 export async function audit(entry: AuditEntry, db: Db = getPrisma()): Promise<void> {
   const context = entry.system ? undefined : currentContext();
+  // D28: a developer's action never carries a member: not the request's, not a passed one.
+  const byDeveloper = typeof entry.details?.developer === 'string';
   await db.auditLog.create({
     data: {
       action: entry.action,
-      actorUserId: entry.system ? null : (entry.actorUserId ?? context?.userId ?? null),
+      actorUserId:
+        entry.system || byDeveloper ? null : (entry.actorUserId ?? context?.userId ?? null),
       groupId: entry.groupId ?? null,
       target: entry.target ?? null,
       details: redact(entry.details ?? {}) as Prisma.InputJsonValue,

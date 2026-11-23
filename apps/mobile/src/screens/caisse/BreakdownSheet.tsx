@@ -11,9 +11,14 @@ import { errorMessage } from '@/features/errors/errorMessage';
 interface BreakdownSheetProps {
   groupId: string | null;
   roundNumber: number;
+  /**
+   * The breakdown is the beneficiary's. Only they are told what they can withdraw and what they owe
+   * ("Tu peux retirer", "Mes dettes"); everyone else sees the round's figures.
+   */
+  forBeneficiary: boolean;
 }
 
-export function BreakdownSheet({ groupId, roundNumber }: BreakdownSheetProps) {
+export function BreakdownSheet({ groupId, roundNumber, forBeneficiary }: BreakdownSheetProps) {
   const { t } = useTranslation();
   const lang = useLang();
   const query = usePayoutBreakdown(groupId, roundNumber);
@@ -67,12 +72,12 @@ export function BreakdownSheet({ groupId, roundNumber }: BreakdownSheetProps) {
           />
         </GroupedList>
       </View>
-      {breakdown.nextWithdrawal ? (
+      {forBeneficiary && breakdown.nextWithdrawal ? (
         <Txt color="textSecondary">
           {t('withdraw.max', { amount: formatXAF(breakdown.nextWithdrawal.maxAmount, lang) })}
         </Txt>
       ) : null}
-      {debtsDue > 0 ? (
+      {forBeneficiary && debtsDue > 0 ? (
         <Txt color="textSecondary">
           {t('common.labelOnly', { label: t('moi.debts') })}{' '}
           <AmountText amount={debtsDue} size="small" />

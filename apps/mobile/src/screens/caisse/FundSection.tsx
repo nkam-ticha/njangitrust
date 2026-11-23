@@ -18,6 +18,7 @@ import {
   Txt,
   useLang,
 } from '@/ui';
+import { useRules } from '@/features/groups/useGroups';
 import { useFunds } from '@/features/money/queries';
 import { useLoans } from '@/features/loans/useLoans';
 import { errorMessage } from '@/features/errors/errorMessage';
@@ -28,6 +29,7 @@ export function FundSection({ group }: { group: MyGroupDto }) {
   const router = useRouter();
   const funds = useFunds(group.groupId);
   const loans = useLoans(group.groupId);
+  const rules = useRules(group.groupId);
 
   if (funds.isPending) return <SkeletonRows rows={3} />;
   if (funds.isError) {
@@ -64,9 +66,13 @@ export function FundSection({ group }: { group: MyGroupDto }) {
         <Txt variant="secondary" color="textSecondary">
           {t('caisse.fund.sources')}
         </Txt>
-        <Txt variant="secondary" color="textSecondary">
-          {t('caisse.fund.distribution')}
-        </Txt>
+        {rules.data ? (
+          <Txt variant="secondary" color="textSecondary">
+            {rules.data.params.distributeFundAtCycleEnd
+              ? t('caisse.fund.distribution')
+              : t('caisse.fund.noDistribution')}
+          </Txt>
+        ) : null}
       </View>
 
       {toDecide > 0 ? (

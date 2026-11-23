@@ -241,7 +241,12 @@ export async function assessRoundFines(roundId: string, now: Date = clock.now())
 /** Scan the bounded set of due rounds; the round lock and existing fine row make this idempotent. */
 export async function assessDueRoundFines(now: Date = clock.now()): Promise<number> {
   const rounds = await getPrisma().round.findMany({
-    where: { dueAt: { lte: now }, status: { in: ['OPEN', 'PAYOUT', 'CLOSED'] } },
+    where: {
+      dueAt: { lte: now },
+      status: { in: ['OPEN', 'PAYOUT', 'CLOSED'] },
+      // D28: a closed group takes no new activity.
+      group: { status: { not: 'CLOSED' } },
+    },
     select: { id: true },
     take: 500,
     orderBy: { dueAt: 'asc' },

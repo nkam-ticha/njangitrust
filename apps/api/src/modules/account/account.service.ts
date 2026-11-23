@@ -5,10 +5,12 @@ import { detectOperator, normalizeCameroonPhone, type Lang } from '@njangi/share
 import { hashPhone } from '../../lib/crypto';
 import type { EffectSink } from '../../lib/after-commit';
 import type { Db, Prisma } from '../../lib/prisma';
+import { lockGroup } from '../../permissions';
 import { disconnectUser } from '../../realtime/emitter';
 import { audit } from '../audit';
 import { createPendingAction, type ActionOrigin } from '../pending-actions';
 import { accountError } from './account.errors';
+import { holdsMoney, moneyHeldBy } from './account.money';
 
 type Tx = Prisma.TransactionClient;
 type BlockerCode = Parameters<typeof accountError>[0];
@@ -30,7 +32,42 @@ export function normaliseNumber(
 export const ERASED_NUMBER = '+237600000000';
 
 const OPEN = ['CREATED', 'PENDING', 'EXPIRED'] as const;
-const LIVE_LOAN = ['REQUESTED', 'APPROVED', 'DISBURSED', 'OVERDUE'] as const;
+/** Cards that start a payment or a send: CONFIRMED while the operator is asked (and until the row exists). */
+const MONEY_CARDS = ['PAY', 'WITHDRAW'];
+
+/**
+ * Locks what a confirmation locks, in its order (its card, then Group, then Membership), so a
+ * deletion either waits for an operation being confirmed or finds it when it counts (D28). Call it
+ * first, in the transaction that goes on to `deletionBlocker`. The cards come first and are
+ * waited for: a confirmation that already claimed its card finishes (it waits for nothing this
+ * transaction holds yet), and one that has not claimed it finds it cancelled. Waiting last, on
+ * the card, is what deadlocked: the confirmation holds its card and waits for the group.
+ */
+export async function lockAccountOperations(db: Db, userId: string): Promise<void> {
+  await db.$queryRaw`SELECT "id" FROM "PendingAction" WHERE "userId" = ${userId}::uuid AND "status" IN ('PENDING', 'CONFIRMED') ORDER BY "id" FOR UPDATE`;
+  // The groups, read again after each round of locks: a membership that appeared meanwhile has
+  // its group locked too (ascending within a round), before the membership rows are.
+  const locked = new Set<string>();
+  const lockNewGroups = async (): Promise<number> => {
+    const rows = await db.membership.findMany({
+      where: { userId },
+      select: { groupId: true },
+      orderBy: { groupId: 'asc' },
+    });
+    const fresh = [...new Set(rows.map((row) => row.groupId))].filter((id) => !locked.has(id));
+    for (const groupId of fresh) {
+      await lockGroup(db, groupId, 'share');
+      locked.add(groupId);
+    }
+    return fresh.length;
+  };
+  while ((await lockNewGroups()) > 0) {
+    // Until a read finds nothing new.
+  }
+  await db.$queryRaw`SELECT "id" FROM "Membership" WHERE "userId" = ${userId}::uuid ORDER BY "id" FOR UPDATE`;
+  // One last look, for a membership that appeared while the member rows were being locked.
+  await lockNewGroups();
+}
 
 /**
  * Why this member cannot delete their account yet, or null. Deleting is for a member with no
@@ -55,30 +92,18 @@ export async function deletionBlocker(db: Db, userId: string): Promise<BlockerCo
   if (live.some((m) => m.group.status === 'ACTIVE' && m.status !== 'INVITED')) {
     return 'DELETE_IN_RUNNING_CYCLE';
   }
-  const [intents, sends, requests] = await Promise.all([
+  const [intents, sends, requests, cards] = await Promise.all([
     db.paymentIntent.count({ where: { membershipId: { in: ids }, status: { in: [...OPEN] } } }),
     db.disbursement.count({ where: { membershipId: { in: ids }, status: { in: [...OPEN] } } }),
     db.solidarityRequest.count({
       where: { recipientMembershipId: { in: ids }, status: { in: ['VOTING', 'APPROVED'] } },
     }),
-  ]);
-  if (intents + sends + requests > 0) return 'DELETE_OPERATION_IN_PROGRESS';
-  const [debts, loans, balances] = await Promise.all([
-    db.obligation.count({ where: { membershipId: { in: ids }, status: 'DUE' } }),
-    db.loan.count({ where: { membershipId: { in: ids }, status: { in: [...LIVE_LOAN] } } }),
-    db.ledgerPosting.groupBy({
-      by: ['account'],
-      where: {
-        account: {
-          in: ids.flatMap((id) => [`payable:member:${id}`, `receivable:member:${id}`]),
-        },
-      },
-      _sum: { amount: true },
+    db.pendingAction.count({
+      where: { userId, status: 'CONFIRMED', type: { in: MONEY_CARDS } },
     }),
   ]);
-  if (debts + loans > 0 || balances.some((row) => (row._sum.amount ?? 0) !== 0)) {
-    return 'DELETE_HAS_OBLIGATIONS';
-  }
+  if (intents + sends + requests + cards > 0) return 'DELETE_OPERATION_IN_PROGRESS';
+  if (holdsMoney(await moneyHeldBy(db, ids))) return 'DELETE_HAS_OBLIGATIONS';
   return null;
 }
 

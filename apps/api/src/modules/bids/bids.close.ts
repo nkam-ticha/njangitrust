@@ -181,6 +181,8 @@ export async function closeDueBidding(now = clock.now()): Promise<number> {
       beneficiaryMembershipId: null,
       dueAt: { lte: now },
       cycle: { mode: 'BIDDING' },
+      // D28: a closed group takes no new activity.
+      group: { status: { not: 'CLOSED' } },
     },
     select: { id: true },
     orderBy: { dueAt: 'asc' },

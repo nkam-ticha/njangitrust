@@ -185,7 +185,10 @@ export async function createStatement(
 export async function listStatements(userId: string, groupId?: string): Promise<StatementDto[]> {
   if (groupId) await authorizeGroup(userId, groupId, 'group.statements.own');
   const rows = await getPrisma().statement.findMany({
-    where: { membership: { userId, ...(groupId ? { groupId } : {}) } },
+    // D28: statements of a group a developer closed and hid are not listed.
+    where: {
+      membership: { userId, ...(groupId ? { groupId } : {}), group: { hiddenByDeveloperAt: null } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 100,
     include: withGroup,

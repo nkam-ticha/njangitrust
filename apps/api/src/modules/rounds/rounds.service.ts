@@ -51,6 +51,8 @@ export async function readRound(userId: string, groupId: string, number: number)
     },
   });
   if (!row) throw roundError('ROUND_NOT_FOUND');
+  // "Round k of N": N is the cycle's number of rounds (it shrinks when an unserved member leaves).
+  const totalRounds = await getPrisma().round.count({ where: { cycleId: cycle.id } });
   const paid = row.obligations.filter(
     (item) => item.kind === 'CONTRIBUTION' && item.status !== 'DUE' && item.status !== 'CANCELLED',
   );
@@ -59,6 +61,7 @@ export async function readRound(userId: string, groupId: string, number: number)
       id: row.id,
       number: row.number,
       cycle: cycle.number,
+      totalRounds,
       mode: cycle.mode,
       status: row.status,
       dueAt: row.dueAt.toISOString(),
@@ -70,6 +73,10 @@ export async function readRound(userId: string, groupId: string, number: number)
       paidCount: paid.length,
       contributionCount: row.obligations.filter((item) => item.kind === 'CONTRIBUTION').length,
       collected: paid.reduce((sum, item) => sum + item.amount, 0),
+      // What the round expects in all (the ring's target): every contribution not cancelled.
+      target: row.obligations
+        .filter((item) => item.kind === 'CONTRIBUTION' && item.status !== 'CANCELLED')
+        .reduce((sum, item) => sum + item.amount, 0),
       unpaidMembershipIds: row.obligations
         .filter((item) => item.kind === 'CONTRIBUTION' && item.status === 'DUE')
         .map((item) => item.membershipId),
@@ -78,7 +85,7 @@ export async function readRound(userId: string, groupId: string, number: number)
 }
 
 export async function readPayoutBreakdown(userId: string, groupId: string, number: number) {
-  await authorizeGroup(userId, groupId, 'group.rounds.read');
+  const access = await authorizeGroup(userId, groupId, 'group.rounds.read');
   const cycle = await getPrisma().cycle.findFirst({
     where: { groupId, closedAt: null },
     orderBy: { number: 'desc' },
@@ -161,7 +168,10 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
       { upTo: null, fixed: configured.disbursement, ratePermille: configured.disbursementPermille },
     ],
   };
-  const breakdown = payoutBreakdown({ contributions, deductions, withdrawals, feeSchedule });
+  // Spec 2.11, 4.4: what the beneficiary still owes and may withdraw is theirs alone to see.
+  const isBeneficiary = access.membership.id === round.beneficiaryMembershipId;
+  const full = payoutBreakdown({ contributions, deductions, withdrawals, feeSchedule });
+  const breakdown = isBeneficiary ? full : { ...full, nextWithdrawal: null };
   const holds = round.obligations.filter(
     (item) => item.membershipId === round.beneficiaryMembershipId && item.status === 'DUE',
   );
@@ -170,7 +180,7 @@ export async function readPayoutBreakdown(userId: string, groupId: string, numbe
     round: round.number,
     payoutAt: round.payoutAt.toISOString(),
     breakdown,
-    debtsDue: holds.reduce(
+    debtsDue: (isBeneficiary ? holds : []).reduce(
       (sum, item) =>
         sum +
         (item.kind === 'FINE' || item.kind === 'BID' || item.kind === 'LOAN_INSTALLMENT'
