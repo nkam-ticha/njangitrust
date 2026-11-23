@@ -20,6 +20,7 @@ import { operatorRefundRoutes } from './modules/payouts/operator-refunds.routes'
 import { getStorage, LocalStorage, LOCAL_STORAGE_ROUTE } from './storage';
 import { localStorageRoutes } from './storage/local.routes';
 import { attachSupabaseRealtimePublisher } from './realtime/emitter';
+import { jobsHealth } from './jobs/health';
 import { scheduleAt } from './jobs/queues';
 import { useJobScheduler } from './jobs/dispatch';
 
@@ -57,6 +58,8 @@ export function createApp(): Express {
   registerHealthCheck('storage', () => storage.check());
   // "up" or "not_configured": the app works without the agent, so it never degrades /health.
   registerHealthCheck('agent', agentHealth);
+  // "down" in production when a job has waited over 10 minutes: the minute scheduler stopped.
+  registerHealthCheck('jobs', () => jobsHealth(env.NODE_ENV === 'production'));
   app.use('/health', healthRoutes());
   app.use(rateLimit(floodLimits.global));
 

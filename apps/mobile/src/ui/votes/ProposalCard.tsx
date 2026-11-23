@@ -42,6 +42,8 @@ export interface ProposalCardProps {
   voted: number;
   /** Formatted duration ("2 jours"), open proposals only. */
   timeLeft?: string;
+  /** The deadline has passed and the server is closing the vote: shown instead of a duration. */
+  closing?: boolean;
   myVote: MyVote;
   notEligible?: NotEligibleReason | null;
   /** Closed proposals: "Appliqué au tour 5", built from copy votes.card.effect.* */
@@ -121,6 +123,7 @@ export function ProposalCard(p: ProposalCardProps) {
           p.proposedByMe
             ? t('votes.card.proposerYou')
             : t('votes.card.proposer', { name: p.proposerName }),
+          open && p.closing ? t('votes.card.closing') : null,
           open && p.timeLeft ? t('votes.card.timeLeft', { duration: p.timeLeft }) : null,
         ]
           .filter(Boolean)

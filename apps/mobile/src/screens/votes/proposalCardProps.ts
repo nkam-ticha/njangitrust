@@ -44,7 +44,10 @@ export function proposalCardProps(
     yes: p.tally?.yes ?? null,
     no: p.tally?.no ?? null,
     voted: p.participation,
-    timeLeft: open ? timeLeft(p.closesAt, ctx.now, ctx.t) : undefined,
+    // Past its deadline a vote is being closed: never "1 hour left" (the hour count has a floor).
+    ...(open && new Date(p.closesAt).getTime() <= ctx.now
+      ? { closing: true }
+      : { timeLeft: open ? timeLeft(p.closesAt, ctx.now, ctx.t) : undefined }),
     myVote:
       p.myVote === 'YES'
         ? 'yes'

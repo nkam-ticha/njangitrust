@@ -18,6 +18,8 @@ describe('HTTP foundations', () => {
         provider: 'not_configured',
         // The agent is optional: without a key it is "not_configured", never "down".
         agent: 'not_configured',
+        // Only production expects the minute scheduler (jobs/health.ts).
+        jobs: 'not_configured',
       },
     });
   });
