@@ -135,9 +135,9 @@ beforeAll(async () => {
 
 afterAll(() => uninstallFakeMoney());
 
-describe('what is sent to the AI provider, for the 33 scenarios of spec 5.4', () => {
+describe('what is sent to the AI provider, for every scenario of the evaluation set', () => {
   it('reached the model in every scenario', () => {
-    expect(scenarios).toHaveLength(33);
+    expect(scenarios).toHaveLength(39);
     for (const scenario of scenarios) {
       expect(bodiesByScenario.get(scenario.id)!.length, scenario.id).toBeGreaterThan(0);
     }

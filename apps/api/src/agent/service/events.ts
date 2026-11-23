@@ -20,6 +20,7 @@ import { redactForStorage } from '../guards/redaction';
 import { eventText, isEventStatus } from '../runtime/events';
 import { dbConversationStore } from '../store/db-store';
 import { EVENT_TOOL } from '../store/types';
+import { afterResponse } from './after-response';
 import { buildCtx } from './context';
 import { privateTurn } from './turns';
 
@@ -50,11 +51,9 @@ async function recordEvent(userId: string, pendingActionId: string, status: stri
   ]);
   const self = await getSelfSource(userId);
   const lang = self.user.language;
-  const conversation = await dbConversationStore.open({
-    userId,
-    channel: 'PRIVATE',
-    groupId: null,
-  });
+  // The thread that prepared the card (one per group): its group is where the result belongs.
+  const conversation = await dbConversationStore.get(userId, preparing.conversationId);
+  if (!conversation) return null;
   emitAgent(userId, 'agent.done', {
     id: row!.id,
     conversationId: preparing.conversationId,
@@ -91,23 +90,33 @@ export interface ActionResultJob {
 }
 
 /**
- * Called for every `pendingAction.updated`. Only queues a job (ids and the status): the agent's
- * sentence needs a model call, which must not run after a serverless response has been sent. The
- * job id makes a repeated update of the same action and status one job.
+ * Called for every `pendingAction.updated`. The member's tap must not wait for the agent: the
+ * request only queues the durable job (one insert, ids and the status), then the agent's sentence
+ * is started after the response has gone (afterResponse); the job is the safety net when that run
+ * is cut off. Both are safe together: the event is recorded once (recordEvent checks hasEvent under
+ * the member's turn lease). The job id makes a repeated update of the same action and status one job.
  */
 export async function onPendingActionUpdated(
   userId: string,
   payload: PendingActionUpdatedPayload,
+  info?: { origin: 'AGENT' | 'UI' },
 ): Promise<void> {
   if (!isEventStatus(payload.status) || !agentConfig().configured) return;
   // Only actions the agent prepared have a result to tell in its conversation.
-  if (!(await dbConversationStore.findPreparing(userId, payload.id))) return;
+  if (info?.origin === 'UI') return;
+  if (!info && !(await dbConversationStore.findPreparing(userId, payload.id))) return;
   const data: ActionResultJob = { userId, pendingActionId: payload.id, status: payload.status };
-  if (currentJobScheduler() === scheduleAt) {
-    await runAsSystem(() => handleActionResult(data));
-    return;
-  }
   await dispatchJob(ACTION_RESULT_JOB, { ...data }, { jobId: `${payload.id}:${payload.status}` });
+  if (currentJobScheduler() === scheduleAt) {
+    afterResponse(
+      () => runAsSystem(() => handleActionResult(data)),
+      (error) =>
+        log.error(
+          { errorName: error instanceof Error ? error.name : 'unknown' },
+          'agent event failed',
+        ),
+    );
+  }
 }
 
 /** The job: records the event once, then lets the agent say one sentence about it. */

@@ -8,8 +8,10 @@
 // and a turn that runs out of time ends with the same sentence as one that runs out of steps.
 import type { AgentCard, AgentTraceDto } from '@njangi/shared/contracts/agent';
 import { agentTexts } from '@njangi/shared/i18n/server/agent';
+import { refusesWithoutTrying, verifyReply } from '../guards/claims';
 import { MAX_TOOL_STEPS } from '../guards/rate-limit';
 import { detectLanguage } from '../guards/language';
+import { maskPhonesDeep } from '../guards/phone-guard';
 import { redactForStorage, redactToolArgs } from '../guards/redaction';
 import { StreamGuard } from '../guards/stream-guard';
 import { wrapToolResult } from '../guards/wrap';
@@ -29,7 +31,9 @@ import { runTool, type ToolRun } from '../tools/execute';
 import { toLlmTool, type ToolRegistry } from '../tools/registry';
 import type { AgentCtx } from '../types';
 import { HISTORY_LIMIT, historyMessages, memberMessage, systemMessage } from './messages';
+import { stepNote, tryFirstNote, unsupportedClaimNote } from './notes';
 import { guidePrefetch } from './prefetch';
+import { notPreparedText, reconcileReply } from './reconcile';
 import { routeCategories } from './routing';
 
 /** Tool calls the runtime runs in one step, at most. */
@@ -162,6 +166,24 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
   let privateReply = false;
   /** Which provider and model answered each call of this turn (the audit records it). */
   const answeredBy = new Set<string>();
+  // The claim guard (runtime/reconcile.ts) watches private turns that answer a member's message: a
+  // result-event follow-up legitimately says "done", and the group chat never prepares cards.
+  const guarded = ctx.channel === 'PRIVATE' && input.text !== null;
+  const guided = guide !== null;
+  let corrected = false;
+  /** The correction to send instead of accepting `text`, once per turn, while steps remain. */
+  const correction = (text: string, step: number): string | null => {
+    if (!guarded || corrected || step >= MAX_TOOL_STEPS - 1 || remaining() < MIN_STEP_MS * 2) {
+      return null;
+    }
+    const isGuided = guided || runs.some((r) => r.name === 'get_app_guide' && r.status === 'OK');
+    if (verifyReply(text, runs, { guided: isGuided }) === 'unsupported') {
+      return unsupportedClaimNote(runs, responseLang);
+    }
+    return runs.length === 0 && !isGuided && refusesWithoutTrying(text)
+      ? tryFirstNote(responseLang)
+      : null;
+  };
   for (let step = 0; step < MAX_TOOL_STEPS && reply === null && !privateReply; step += 1) {
     if (remaining() < MIN_STEP_MS) break;
     let res: LlmResponse;
@@ -180,8 +202,19 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     }
     answeredBy.add(res.provider ? `${res.provider}:${res.model ?? deps.model}` : deps.model);
     if (res.toolCalls.length === 0) {
-      reply = guard.finish();
-      break;
+      const text = guard.finish();
+      const note = correction(text, step);
+      if (note === null) {
+        reply = text;
+        break;
+      }
+      // The reply claims what no tool did, or refuses without trying: take the text back and give
+      // the model one more step with a correction (once per turn).
+      corrected = true;
+      if (guard.emitted) deps.emit.delta({ turnId: ctx.turnId, text: '', reset: true });
+      guard.reset();
+      messages.push({ role: 'assistant', content: text }, { role: 'system', content: note });
+      continue;
     }
     if (guard.emitted) deps.emit.delta({ turnId: ctx.turnId, text: '', reset: true });
     guard.reset();
@@ -206,18 +239,32 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     if (!privateReply) {
       messages.push({
         role: 'system',
-        content:
-          responseLang === 'fr'
-            ? 'Write the next reply entirely in French, use tu, and copy all dates and amounts exactly from the session or tool results.'
-            : 'Write the next reply entirely in English, and copy all dates and amounts exactly from the session or tool results.',
+        content: stepNote(
+          calls.map((_, i) => runs[runs.length - calls.length + i]!),
+          responseLang,
+        ),
       });
     }
   }
   if (reply === null && !privateReply) {
-    // Spec 4.2: after 8 steps (or the time budget) without an answer.
+    // Spec 4.2: after 8 steps (or the time budget) without an answer. When a tool failed, the
+    // member hears its real reason rather than a generic sentence.
     if (guard.emitted) deps.emit.delta({ turnId: ctx.turnId, text: '', reset: true });
-    reply = agentTexts.turnFailed[ctx.lang];
+    reply =
+      guarded && runs.some((r) => r.outcome.status !== 'OK')
+        ? notPreparedText(runs, responseLang)
+        : agentTexts.turnFailed[ctx.lang];
     deps.emit.delta({ turnId: ctx.turnId, text: reply });
+  } else if (reply !== null && guarded) {
+    // The last check: the words must agree with the tools. The server writes the sentence when not.
+    const checked = reconcileReply(reply, runs, responseLang, {
+      guided: guided || runs.some((r) => r.name === 'get_app_guide' && r.status === 'OK'),
+    });
+    if (checked.change === 'replace' && guard.emitted) {
+      deps.emit.delta({ turnId: ctx.turnId, text: '', reset: true });
+    }
+    if (checked.change !== null) deps.emit.delta({ turnId: ctx.turnId, text: checked.streamed });
+    reply = checked.text;
   }
   deps.emit.flush?.(ctx.turnId);
   const finalReply = reply ?? '';
@@ -248,7 +295,7 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
         name: r.name,
         status: r.status,
         args: confidential ? {} : redactToolArgs(r.args),
-        result: confidential ? null : r.modelData,
+        result: confidential ? null : maskPhonesDeep(r.modelData),
       })),
       reply: finalReply,
     },

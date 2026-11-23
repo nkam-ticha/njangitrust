@@ -37,6 +37,32 @@ const ERROR_TEXT: Record<Lang, string> = {
   en: 'The service did not answer. Try again a little later.',
 };
 
+/**
+ * What the model should do next after some refusals, in a plain sentence it can follow (it is data,
+ * like the reason itself). Only codes where another tool of the catalogue does the job.
+ */
+const NEXT_STEP: Record<string, string> = {
+  PROPOSALS_BEFORE_FIRST_CYCLE:
+    'Before the first cycle there are no votes. To bring in a founding member the admin uses create_invite (a card; only the admin can). Offer that, or tell a member to ask the admin.',
+};
+
+const NUMBER_HINT =
+  'A phone number can only be read in the message where the member typed it. Ask the member to type the number again in their next message, then call the tool in that same turn.';
+
+const PHONE_MARKER = /\[phone-\d{1,2}\]/;
+
+/** Paths of arguments that still hold a [phone-N] marker after the real numbers were put back. */
+function unresolvedMarkers(value: unknown, path: string[] = []): string[] {
+  if (typeof value === 'string')
+    return PHONE_MARKER.test(value) ? [path.join('.') || '(arguments)'] : [];
+  if (Array.isArray(value))
+    return value.flatMap((v, i) => unresolvedMarkers(v, [...path, String(i)]));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([k, v]) => unresolvedMarkers(v, [...path, k]));
+  }
+  return [];
+}
+
 function zodIssues(error: z.ZodError): { path: string; code: string }[] {
   return error.issues.slice(0, 10).map((issue) => ({
     path: issue.path.map(String).join('.') || '(arguments)',
@@ -62,7 +88,13 @@ export function modelDataOf(outcome: ToolOutcome, lang: Lang): unknown {
     case 'UNAVAILABLE':
       return { status: 'UNAVAILABLE', message: outcome.message };
     case 'INVALID':
-      return { status: 'INVALID', issues: outcome.issues };
+      return {
+        status: 'INVALID',
+        issues: outcome.issues,
+        ...(outcome.issues.some((i) => i.code === 'NUMBER_NOT_IN_THIS_MESSAGE')
+          ? { hint: NUMBER_HINT }
+          : {}),
+      };
     case 'ERROR':
       return { status: 'ERROR', message: ERROR_TEXT[lang] };
   }
@@ -75,11 +107,16 @@ function fromError(error: unknown, ctx: AgentCtx, tool: string): ToolOutcome {
     const issues = (error.details as { issues?: { path: string; code: string }[] } | undefined)
       ?.issues;
     if (error.code === 'VALIDATION_FAILED' && issues) return { status: 'INVALID', issues };
+    const nextStep = NEXT_STEP[error.code];
+    const details = {
+      ...(error.details && !issues ? (error.details as Record<string, unknown>) : {}),
+      ...(nextStep ? { nextStep } : {}),
+    };
     return {
       status: 'REFUSED',
       code: error.code,
       message: error.text[ctx.lang],
-      ...(error.details && !issues ? { details: error.details } : {}),
+      ...(Object.keys(details).length > 0 ? { details } : {}),
     };
   }
   if (error instanceof z.ZodError) return { status: 'INVALID', issues: zodIssues(error) };
@@ -112,7 +149,17 @@ export async function runTool(
     return done({ status: 'INVALID', issues: [{ path: '(arguments)', code: 'BAD_JSON' }] });
   }
   // A number the member typed reaches the tool by its marker only: put the real number back here.
-  const parsed = tool.args.safeParse(ctx.numberSlots ? ctx.numberSlots.resolve(raw) : raw);
+  const resolved = ctx.numberSlots ? ctx.numberSlots.resolve(raw) : raw;
+  // A marker that survives is a number typed in an earlier turn: it cannot be read now. Say so,
+  // rather than let the tool fail on a malformed number the model cannot explain.
+  const stale = unresolvedMarkers(resolved);
+  if (stale.length > 0) {
+    return done({
+      status: 'INVALID',
+      issues: stale.map((path) => ({ path, code: 'NUMBER_NOT_IN_THIS_MESSAGE' })),
+    });
+  }
+  const parsed = tool.args.safeParse(resolved);
   if (!parsed.success) return done({ status: 'INVALID', issues: zodIssues(parsed.error) });
   try {
     return done(await tool.run(ctx, parsed.data), parsed.data);

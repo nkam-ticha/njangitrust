@@ -247,6 +247,28 @@ function meetingAndChatSpecs() {
       }),
       example: { date: '2026-11-21', time: '16:00', place: 'Chez Nkam' },
     }),
+    cancel_meeting: defineSpec({
+      ...l1('meetings', 'admin'),
+      name: 'cancel_meeting',
+      needs: 'meetings',
+      description:
+        'Admin: prepares cancelling a scheduled meeting (the next one when meetingId is omitted); members are told.',
+      args: s({ meetingId: meetingArg }),
+      example: {},
+    }),
+    close_meeting: defineSpec({
+      ...l1('meetings', 'admin'),
+      name: 'close_meeting',
+      needs: 'meetings',
+      description:
+        'Admin: prepares closing a meeting that took place (the latest one that is over when meetingId is omitted): absences without excuse are recorded.',
+      args: s({
+        meetingId: idArg('meeting')
+          .optional()
+          .describe('Omit for the latest meeting that is over.'),
+      }),
+      example: {},
+    }),
     mark_attendance: defineSpec({
       ...l1('meetings', 'admin'),
       name: 'mark_attendance',

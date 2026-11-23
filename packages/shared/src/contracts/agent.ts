@@ -62,6 +62,12 @@ export const agentMessageSchema = z.strictObject({
       status: z.enum(['DONE', 'FAILED', 'CANCELLED', 'EXPIRED']),
     })
     .nullable(),
+  /**
+   * The cards the agent prepared in this reply's turn, from the server's PendingAction with their
+   * current state (spec 4.5): the app draws them under the reply, so they survive a reload. Own
+   * actions only; empty on every other line.
+   */
+  actions: z.array(pendingActionSchema).default([]),
   createdAt: instantSchema,
 });
 export type AgentMessageDto = z.infer<typeof agentMessageSchema>;
@@ -96,6 +102,8 @@ export type AgentConversationDto = z.infer<typeof agentConversationSchema>;
 export const agentListQuerySchema = z.strictObject({
   before: instantSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+  /** Each group has its own conversation: which one to read. Omitted = the one used last. */
+  groupId: uuidSchema.optional(),
 });
 
 /** "Historique de l'assistant" (4.10): what the agent looked at, prepared or did for the member. */

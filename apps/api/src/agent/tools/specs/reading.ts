@@ -93,7 +93,7 @@ export const readingSpecs = {
     name: 'get_app_guide',
     channels: PRIVATE,
     description:
-      'Use for any HOW, WHERE or WHAT-IS question about the app ("comment je paie ?", "where are my loans?"): never prepare a card for those. Explains how the app works and where things are, in the member’s language: the five tabs, signing up, creating a group, paying, withdrawing, loans, bids, votes, the funds and records, fines, meetings, the chat, statements, the account and privacy. Use it when the member asks how to do something in the app or what something is. Without a topic it lists the topics. It states no amounts: use the other reading tools for facts.',
+      'Use for any HOW, WHERE or WHAT-IS question about the app ("comment je paie ?", "where are my loans?") and before you tell the member where anything is: never prepare a card for those. It gives the exact tab, screen and button names. Explains how the app works and where things are, in the member’s language: the five tabs, signing up, creating a group, paying, withdrawing, loans, bids, votes, the funds and records, fines, meetings, the chat, statements, the account and privacy. Use it when the member asks how to do something in the app or what something is. Without a topic it lists the topics. It states no amounts: use the other reading tools for facts.',
     args: s({ topic: z.string().min(1).max(120).optional() }),
     example: { topic: 'payer' },
   }),
@@ -185,6 +185,28 @@ export const readingSpecs = {
     description:
       'A meeting (the next one by default): date, place, agenda, attendance, minutes status.',
     args: s({ id: idArg('meeting').optional() }),
+    example: {},
+  }),
+  list_meetings: defineSpec({
+    ...L0,
+    name: 'list_meetings',
+    category: 'meetings',
+    channels: PRIVATE,
+    needs: 'meetings',
+    description:
+      'The group’s meetings, upcoming (default) or past: id, date, place and status of each. Use it to find a meeting’s id; for the next one with its agenda, use get_meeting.',
+    args: s({ when: z.enum(['upcoming', 'past']).optional() }),
+    example: { when: 'upcoming' },
+  }),
+  list_invites: defineSpec({
+    level: 'L0',
+    who: 'admin',
+    category: 'governance',
+    channels: PRIVATE,
+    name: 'list_invites',
+    description:
+      'Admin: the group’s invitations with the invited person’s name, status (pending, joined, expired) and expiry date. Never a phone number or a link.',
+    args: s({}),
     example: {},
   }),
   summarize_unread: defineSpec({

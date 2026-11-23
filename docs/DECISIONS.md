@@ -185,3 +185,58 @@ The owner chose three free model providers and asked that when one is rate-limit
 ## D25. Unserved-member refund preserves beneficiary credits (2026-11-17)
 
 When an unserved member leaves mid-cycle, contributions already paid and credited to beneficiaries remain credited to those beneficiaries. The leaver is refunded under R12.3: the general fund pays up to the amount available for loans, and the remaining members cover any shortfall through `SHORTFALL_SHARE` obligations. Do not claw back an existing beneficiary payable or create a beneficiary debt for this refund.
+
+## D26. Secret votes close once everyone has voted (2026-11-18)
+
+Refines D20.1. A secret proposal still never closes early on a certain result (live participation plus an early close would reveal choices in small groups), but once every eligible member has voted it closes at once and the result shows immediately. Otherwise it runs to `closesAt`. Non-secret proposals still close as soon as the result is certain (GOV-02).
+
+## D27. Sessions last 30 idle minutes (2026-11-18)
+
+Replaces the 30-day refresh token of spec 2.10. A refresh token lives 30 minutes from its last use; every rotation renews the window, and a token idle past it is refused. On web the refresh token stays only in the httpOnly cookie (D1) and the client keeps no copy. A dropped connection or a server error does not end the session: the app retries at launch and on the next request. Only a refusal by the server (expired, revoked, reused) signs the member out.
+
+## D28. Developer console (2026-11-22)
+
+The owner asked for an overseer role over the whole app, outside any group.
+
+1. **Separate developer login.** Developers are not members. They sign in at a dedicated endpoint with their own credentials and a developer-only session (its own token audience, short life, no refresh through the member routes). Credentials come from environment configuration, never from code. Member tokens never open developer routes, and developer tokens never open member routes.
+2. **Exception to rule 6, developer only.** The developer sees full phone numbers and complete account details of every user. This is the only audience that does. Members, the agent, its tools, prompts, logs and notifications are unchanged: numbers still never reach them. Developer responses use their own allowlist DTO.
+3. **Actions: list users (with login history and groups), delete an account, close a group.** "Delete a group" means CLOSE + HIDE: the group disappears for members, takes no new activity and any open payments or votes are ended through the normal services; ledger rows are never deleted or edited (rule 3), so verify-ledger still passes. Deleting an account goes through the existing account-deletion service, not around it.
+4. **Every developer action is written to the audit log** (who, what, target, time) and is confirmed by a second step in the UI. Money in flight blocks a deletion with a clear error instead of forcing it.
+
+## D29. How the vote result and the chat send are made immediate (2026-11-23)
+
+Implements D26 (a secret vote closes once every eligible member has voted; D20.1 otherwise stands) and the owner's two requests for speed.
+
+1. **Rule.** `tallyProposal` takes `secret`: an open secret vote stays open while anyone is left who could vote, whatever the counts, until `closesAt`; it closes as soon as nobody is left (the result is then PASSED or REJECTED, since no vote can change it). `closeInstant` says when it counts as closed: a secret vote seen after its deadline closes as of `closesAt` (D20.1), every other close is that moment. The rule is pure and tested in `packages/rules`.
+2. **No wait for a queue.** After a vote commits, the proposal is settled at once, as the system and outside the voter's transaction (`settleAfterVote`), for a public vote whose result is certain and for a secret vote that everyone has voted. The result, the system line in the chat, the notices and the `proposal.updated` event are therefore done before the voter's confirmation returns. Before this, a public vote waited for a queued job, which on Vercel runs at the next cron tick. If settling fails, a `votes.close` job retries. What a secret close reveals: that the last eligible member has voted (the time of the close), never any choice, and the ledger result names no member (R11.5).
+3. **Chat send.** The send returns once the message is stored and announced. `@njangi` no longer runs the model inside that request: `onGroupMention` only queues a job (the safety net), and the author's app asks for the answer in a second request, `POST /v1/groups/:groupId/messages/:messageId/agent-reply`, which runs the turn in its own function invocation. It answers each message once (an existing agent reply or the member's turn lease stops a second run). Notifications are written after the commit, after the realtime event.
+4. **Apps.** The phone puts a message on screen before the request leaves (an outbox that survives refetches), marks a failed one "Non envoyé" with a retry, polls the newest page every 2.5 s (1 s while the agent answers) even in the background or with the realtime link down, and polls open votes every 4 s. A screen listens to realtime as soon as the link exists, not only if it was up when the screen opened.
+
+## D30. One agent conversation per group (2026-11-23)
+
+The owner asked that the agent remember the exact work it does in each group, and that switching group switches its context. This extends spec 2.4 (AgentConversation) and 4.3.
+
+1. **A private conversation belongs to one group for good.** There is one PRIVATE conversation per member and group (and one GROUP-channel conversation per member and group, as before). Each has its own lines, rolling summary, cards and result events. What is said in one group never reaches the model, the screen or the summary of another.
+2. **Which thread.** `POST /v1/agent/messages` with a `groupId` talks in that group's thread (the member's access to the group is checked before a thread is created for it). Without a `groupId`, the thread used last receives the message. `GET /v1/agent/conversation?groupId=` reads one group's thread; without it, the one used last. `GET /v1/agent/history` takes the same optional filter.
+3. **Result events and cards** go back to the thread that prepared the card; open cards no stored line names are shown only in their own group's thread.
+4. **`switch_group`** no longer moves a conversation: it only reports the other group in the reply (`activeGroupId`), and the app moves to that group's own thread.
+5. **Existing data.** The single conversation each member had stays attached to the group they used last; its older lines are not split. Nothing is rewritten.
+
+## D31. Agent tools and checks added beyond spec 4.6 (2026-11-23)
+
+The owner asked that the agent can do everything a member can do in the app, never claim an action that was not prepared, and never invent a screen.
+
+1. **Six tools added** (same services as the routes, same PendingAction pattern for the changing ones): `cancel_meeting` and `close_meeting` (admin, L1), `list_meetings`, `list_invites` (admin; no phone number, no link), `mark_notifications_read`, and `set_notification_prefs` without arguments now reads the settings. Flows that need a screen stay on the screen (secret votes, PIN entry and reset, creating a group, joining by link, files and voice notes); the agent says exactly where.
+2. **Claim guard.** After the model's final text, a private-channel turn is checked against what its tools really did: a text that claims a card or a finished action that no tool produced gets one correction step, then a sentence written by the server with the real reason of the refusal. A card that exists is always mentioned. The member is never told an action is done before its result event. This replaces the free-text trust of spec 4.2 step "final text"; when the steps run out after a failure the member hears the real reason instead of the generic sentence.
+3. **App guide.** `get_app_guide` is an accurate map of the app, and a test checks every label and route it names against the real i18n strings and route files, so it cannot drift. The prompt says to direct the member only to screens the guide or a tool result names.
+
+## D28, implementation note. How the developer console closes groups and deletes accounts (2026-11-23)
+
+Added with the code, to be confirmed or changed by the owner. Nothing here changes what members, the agent or the logs see.
+
+1. **A group is closed only when nobody holds money in it (conservative default, owner not yet asked).** The closing is refused with `GROUP_MEMBERS_HOLD_MONEY` while any member of the group has an obligation still due, a live loan (requested, approved, disbursed, overdue) or a non-zero payable or receivable balance. It is the same test the account deletion uses (`moneyHeldBy`, `modules/account/account.money.ts`). It runs after the group's open votes have expired, so a loan waiting on a vote is released first, and a refusal rolls everything back. To allow closing whatever members hold, set `REFUSE_WHEN_MEMBERS_HOLD_MONEY` to `false` in `modules/groups/groups.close.ts`. The owner decides what should happen to member money in a closed group (paying it out, keeping it for statements); until then no group is closed with money in it.
+2. **Money in flight still blocks (rule 8):** payments and sends that are CREATED, PENDING or EXPIRED, and CONFIRMED PAY and WITHDRAW cards. Approved SOLIDARITY payouts that were never sent do not block: nothing was sent, and a closed group never sends them (the scans skip it). An approved LOAN does block, through point 1 (it counts as a live loan: the scan would normally send it, and it holds money-to-be).
+3. **Account deletion keeps its checks for older closed groups.** A group closed by a developer after this note had no money held, but the blocker is not narrowed for closed groups: a group closed before the check existed could still hold some. Closing the group lifts only the admin and running-cycle refusals.
+4. **Lock order.** A confirmation locks its card, then the group, then the member. A developer's closing and deletion follow it (the deletion waits for the user's cards first, the closing skips cards being confirmed and those confirmations are refused once the group is closed). A payment takes the group lock shared, a withdrawal exclusive (its ledger entry takes it exclusively anyway).
+5. **A secret vote that ends because the group was closed records no totals in the hash chain.** `VOTE_CLOSED` then has no `yes` and `no` (zero would claim there were no ballots, the real totals would leak the vote). A normal close (`proposals.tally.ts`) does record the totals: the result and the totals are published to the members together at `closesAt` (D20.1). A developer's expiry publishes no result, so no totals are recorded.
+6. **Open item.** A loan or withdrawal disbursement stuck at CREATED with no operator reference has no resubmission path; it blocks closing the group until it is settled. Not changed here (money logic).

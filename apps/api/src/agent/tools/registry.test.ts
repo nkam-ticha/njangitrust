@@ -92,6 +92,16 @@ const GROUP_46 = [
   'get_solidarity',
   'get_meeting',
 ];
+/** Tools beyond spec 4.6: the group hand-off, the app guide (D24) and the capability audit's additions. */
+const BEYOND_46 = [
+  'reply_privately',
+  'get_app_guide',
+  'list_meetings',
+  'list_invites',
+  'mark_notifications_read',
+  'cancel_meeting',
+  'close_meeting',
+];
 const ADMIN_46 = [
   'decide_loan',
   'schedule_meeting',
@@ -102,6 +112,9 @@ const ADMIN_46 = [
   'create_invite',
   'start_cycle',
   'hide_message',
+  'cancel_meeting',
+  'close_meeting',
+  'list_invites',
 ];
 /** Argument names that would let the model choose who acts. */
 const ACTOR_FIELDS = [
@@ -124,13 +137,13 @@ const ACTOR_FIELDS = [
 ];
 
 describe('tool catalogue (spec 4.6)', () => {
-  it('has exactly the tools of spec 4.6, at their level, plus the group hand-off and the app guide', () => {
+  it('has exactly the tools of spec 4.6, at their level, plus the documented additions', () => {
     const levels = Object.fromEntries(ALL_SPECS.map((s) => [s.name, s.level]));
     for (const [level, names] of Object.entries(SPEC_46)) {
       for (const name of names) expect(levels[name], name).toBe(level);
     }
-    // Beyond spec 4.6: the group hand-off, and the guide to the app (docs/DECISIONS.md).
-    const all = [...SPEC_46.L0, ...SPEC_46.L1, ...SPEC_46.L2, 'reply_privately', 'get_app_guide'];
+    // Beyond spec 4.6 (docs/DECISIONS.md D24 and the capability audit): see BEYOND_46.
+    const all = [...SPEC_46.L0, ...SPEC_46.L1, ...SPEC_46.L2, ...BEYOND_46];
     expect(ALL_SPECS.map((s) => s.name).sort()).toEqual([...all].sort());
   });
 

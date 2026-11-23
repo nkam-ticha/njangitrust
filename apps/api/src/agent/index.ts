@@ -4,7 +4,12 @@
 export { agentRoutes } from './agent.routes';
 export { agentHealth, agentStatus } from './status';
 export { handleUserMessage } from './service/turns';
-export { onGroupMention, type GroupMention } from './service/group';
+export {
+  answerGroupMentionNow,
+  onGroupMention,
+  type GroupMention,
+  type MentionOutcome,
+} from './service/group';
 export { onPendingActionUpdated } from './service/events';
 export { registerAgentJobs } from './agent.jobs';
 export { registerAgentAdapters } from './adapters';

@@ -22,10 +22,11 @@ import { getActionHandler } from './registry';
 
 const log = componentLogger('pending-actions');
 
+// `row` is the action as the transaction left it: no second read is needed to answer or announce.
 type Outcome =
   | { kind: 'lost' }
-  | { kind: 'refused'; error: AppError }
-  | { kind: 'executed'; result: ExecuteResult };
+  | { kind: 'refused'; error: AppError; row: PendingAction }
+  | { kind: 'executed'; result: ExecuteResult; row: PendingAction };
 
 function samePreview(a: unknown, b: unknown): boolean {
   return (
@@ -116,13 +117,15 @@ export async function confirmPendingAction(
           const preview = await handler.prepare(ctx, parsedArgs.data);
           if (!samePreview(preview, action.preview)) {
             const changed = actionError('ACTION_CHANGED');
-            await failWith(tx, action, changed, now);
-            return { kind: 'refused', error: changed };
+            return {
+              kind: 'refused',
+              error: changed,
+              row: await failWith(tx, action, changed, now),
+            };
           }
         } catch (error) {
           if (!(error instanceof AppError)) throw error;
-          await failWith(tx, action, error, now);
-          return { kind: 'refused', error };
+          return { kind: 'refused', error, row: await failWith(tx, action, error, now) };
         }
 
         const result = await handler.execute(
@@ -130,7 +133,7 @@ export async function confirmPendingAction(
           parsedArgs.data,
         );
         const completedAt = clock.now();
-        await tx.pendingAction.update({
+        const row = await tx.pendingAction.update({
           where: { id },
           data: {
             status: result.outcome === 'done' ? 'DONE' : 'CONFIRMED',
@@ -150,7 +153,7 @@ export async function confirmPendingAction(
               : {}),
           },
         });
-        return { kind: 'executed', result };
+        return { kind: 'executed', result, row };
       },
       { timeout: 20_000, maxWait: 10_000 },
     );
@@ -166,12 +169,13 @@ export async function confirmPendingAction(
     throw appError;
   }
 
-  const fresh = openAction(await getPrisma().pendingAction.findUniqueOrThrow({ where: { id } }));
   if (outcome.kind === 'lost') {
     // Another confirmation won, or the action expired at this very moment.
-    if (fresh.status === 'PENDING') throw actionError('ACTION_EXPIRED');
-    throw notPendingError(fresh.status);
+    const current = await getPrisma().pendingAction.findUniqueOrThrow({ where: { id } });
+    if (current.status === 'PENDING') throw actionError('ACTION_EXPIRED');
+    throw notPendingError(current.status);
   }
+  const fresh = openAction(outcome.row);
   announce(fresh);
   if (outcome.kind === 'refused') throw outcome.error;
   await effects.run();

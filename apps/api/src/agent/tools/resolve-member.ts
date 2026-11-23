@@ -18,7 +18,12 @@ export async function resolveMember(
   const names = members.map((m) => m.user.name);
   const match = matchName(query, names);
   if (match === 'none') {
-    return { outcome: refused('MEMBER_NOT_FOUND', agentErrorTexts.MEMBER_NOT_FOUND[ctx.lang]) };
+    // The names of the group (all visible to its members) let the model correct a misspelling.
+    return {
+      outcome: refused('MEMBER_NOT_FOUND', agentErrorTexts.MEMBER_NOT_FOUND[ctx.lang], {
+        members: names.slice(0, 30),
+      }),
+    };
   }
   if (match === 'ambiguous') {
     const first = normalizeName(query).split(' ')[0] ?? '';

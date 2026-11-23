@@ -733,6 +733,146 @@
           }
         ]
       ]
+    },
+    {
+      "id": "S34",
+      "title": "Ajoute Hervé par vote: the card exists and the reply says it is ready, not done",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": ["cycles"],
+      "turns": [
+        { "user": "Je veux ajouter Hervé Kamga au groupe par un vote, son numéro est 655 44 33 22" }
+      ],
+      "expect": {
+        "toolsCalled": ["propose_member_add"],
+        "noDigits": true,
+        "mustMatch": ["(?i)carte"],
+        "mustNotClaimDone": true
+      },
+      "script": [
+        [
+          {
+            "tools": [
+              {
+                "name": "propose_member_add",
+                "args": { "name": "Hervé Kamga", "phone": "655 44 33 22" }
+              }
+            ]
+          },
+          {
+            "reply": "Voici la carte : confirme-la dans l'app pour ouvrir le vote sur l'arrivée d'Hervé Kamga."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "S35",
+      "title": "Propose Carine comme admin (secret vote): a card, never 'done'",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": ["cycles"],
+      "turns": [{ "user": "Propose un vote pour que Carine devienne admin" }],
+      "expect": {
+        "toolsCalled": ["propose_admin_change"],
+        "mustMatch": ["(?i)carte"],
+        "mustNotClaimDone": true
+      },
+      "script": [
+        [
+          { "tools": [{ "name": "propose_admin_change", "args": { "member": "Carine" } }] },
+          {
+            "reply": "Voici la carte de la proposition. Confirme-la dans l'app : le vote sera secret."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "S36",
+      "title": "A refused proposal (already admin) is reported honestly: no card, no false 'done'",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": ["cycles"],
+      "turns": [{ "user": "Propose Nkam comme admin" }],
+      "expect": {
+        "toolsCalled": ["propose_admin_change"],
+        "noCard": true,
+        "mustNotClaimDone": true,
+        "mustMatch": ["(?i)(pas pu|déjà|admin)"],
+        "mustNotMatch": ["(?i)(voici la carte|la carte est prête|c'est fait)"]
+      },
+      "script": [
+        [
+          { "tools": [{ "name": "propose_admin_change", "args": { "member": "Nkam" } }] },
+          { "reply": "Je n'ai pas pu le préparer : Nkam est déjà l'admin du groupe." }
+        ]
+      ]
+    },
+    {
+      "id": "S37",
+      "title": "Coupe les messages du groupe: try the tool, never 'je ne peux pas'",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": [],
+      "turns": [{ "user": "Coupe les notifications du chat du groupe" }],
+      "expect": {
+        "toolsCalled": ["set_notification_prefs"],
+        "mustNotMatch": ["(?i)(je ne peux pas|je n'ai pas la possibilit|pas d'écran)"],
+        "mustNotClaimDone": false
+      },
+      "script": [
+        [
+          { "tools": [{ "name": "set_notification_prefs", "args": { "muteChat": true } }] },
+          {
+            "reply": "C'est fait : les messages du groupe sont coupés. Tu recevras toujours les mentions et les annonces."
+          }
+        ]
+      ]
+    },
+    {
+      "id": "S38",
+      "title": "Où je trouve les réunions ? Exact tab and row names, no card, no invented menu",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "fr",
+      "needs": [],
+      "turns": [{ "user": "Où je trouve les réunions ?" }],
+      "expect": {
+        "noCard": true,
+        "mustMatch": ["Moi", "Réunions"],
+        "mustNotMatch": ["(?i)(menu hamburger|paramètres|tableau de bord)"]
+      },
+      "script": [
+        [
+          {
+            "reply": "Ouvre l'onglet «Moi», puis «Réunions» dans la liste «Réglages». Tu veux que je regarde la prochaine réunion pour toi ?"
+          }
+        ]
+      ]
+    },
+    {
+      "id": "S39",
+      "title": "Where do I find my loans? English labels (Me, Settings), not the French ones",
+      "channel": "PRIVATE",
+      "member": "paul",
+      "language": "en",
+      "needs": [],
+      "turns": [{ "user": "Where do I find my loans?" }],
+      "expect": {
+        "noCard": true,
+        "mustMatch": ["Me", "Loans"],
+        "mustNotMatch": ["Moi", "Caisse", "Réglages"]
+      },
+      "script": [
+        [
+          {
+            "reply": "Open the “Me” tab, then “Loans” in the “Settings” list. Do you want me to check your limit?"
+          }
+        ]
+      ]
     }
   ]
 }

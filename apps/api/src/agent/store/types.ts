@@ -31,12 +31,19 @@ export interface StoredMessage extends Required<NewMessage> {
 }
 
 export interface ConversationStore {
+  /**
+   * The member's conversation for this channel AND this group (null = no group): one thread per
+   * group, each with its own history and rolling summary, created on first use.
+   */
   open(input: {
     userId: string;
     channel: AgentChannel;
     groupId: string | null;
   }): Promise<Conversation>;
-  setGroup(conversationId: string, groupId: string | null): Promise<void>;
+  /** One conversation by id (the member's own, or null). */
+  get(userId: string, conversationId: string): Promise<Conversation | null>;
+  /** The member's private thread used most recently: where a message with no group goes. */
+  latestPrivate(userId: string): Promise<Conversation | null>;
   setSummary(conversationId: string, summary: string): Promise<void>;
   append(conversationId: string, messages: NewMessage[]): Promise<StoredMessage[]>;
   /** User, assistant and event lines, oldest first: the last `limit`, and how many came before. */

@@ -5,9 +5,9 @@ import { createHash } from 'node:crypto';
 import { SYSTEM_PROMPT_TEXT } from './system-text';
 
 /** Recorded on every turn (audit `agent.turn` and the turn trace). */
-export const PROMPT_VERSION = '2026-11-19.1';
+export const PROMPT_VERSION = '2026-11-22.1';
 /** SHA-256 of system.md (LF line endings) for PROMPT_VERSION. */
-export const PROMPT_SHA256 = '70096554709eec083a2d074a756922a44494bc69134e470000b2d82f127a50b7';
+export const PROMPT_SHA256 = '0c8571f3047aeb08280415f1e34dddf6ed38effb9d3bcdfd657c435787afdcb1';
 
 /** The prompt text (LF line endings). No file is read at run time: see system-text.ts. */
 export function systemPrompt(): string {

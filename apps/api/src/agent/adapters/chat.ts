@@ -181,6 +181,14 @@ export const chatAdapter: AgentChatPort = {
     return `${message.text}${quoted}`;
   },
 
+  async hasAgentReply({ groupId, messageId }) {
+    const found = await getPrisma().message.findFirst({
+      where: { groupId, kind: 'AGENT', replyToId: messageId },
+      select: { id: true },
+    });
+    return found !== null;
+  },
+
   async postAgentReply({ groupId, text, replyToMessageId }) {
     await postAgentMessage(groupId, text, undefined, replyToMessageId);
   },

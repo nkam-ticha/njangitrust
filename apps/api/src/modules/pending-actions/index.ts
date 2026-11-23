@@ -17,6 +17,8 @@ export {
   createPendingAction,
   expireDuePendingActions,
   getOwnPendingAction,
+  listOwnOpenAgentActions,
+  listOwnPendingActions,
   onPendingActionAnnounced,
   type CreateActionInput,
 } from './pending-actions.service';

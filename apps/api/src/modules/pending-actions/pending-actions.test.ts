@@ -15,6 +15,7 @@ import {
   createPendingAction,
   defineActionHandler,
   expireDuePendingActions,
+  listOwnPendingActions,
   registerActionHandler,
 } from './index';
 
@@ -108,6 +109,35 @@ describe('pending actions (spec 4.5)', () => {
       status: 'DONE',
       result: { ref: 'ref-1', summary: { fr: 'Payé', en: 'Paid' } },
     });
+  });
+
+  it('answers a second tap with a stable "already confirmed" and the same final card', async () => {
+    const action = await newAction(owner);
+    const first = await confirm(owner, action.id);
+    expect(first.status).toBe(200);
+    expect(first.body.action).toMatchObject({
+      id: action.id,
+      status: 'DONE',
+      result: { ref: 'ref-1', summary: { fr: 'Payé', en: 'Paid' } },
+    });
+    for (let tap = 0; tap < 3; tap += 1) {
+      const again = await confirm(owner, action.id);
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('ACTION_ALREADY_CONFIRMED');
+    }
+    // The card the app reads after the refusal is the first tap's result, and nothing ran twice.
+    expect((await api(owner).get(`/v1/pending-actions/${action.id}`)).body.action).toEqual(
+      first.body.action,
+    );
+    expect(state.executions).toBe(1);
+  });
+
+  it('reads the owner’s cards in one call and leaves out anyone else’s', async () => {
+    const mine = await newAction(owner);
+    const theirs = await newAction(stranger);
+    const rows = await listOwnPendingActions(owner.id, [mine.id, theirs.id]);
+    expect(rows.map((r) => r.id)).toEqual([mine.id]);
+    expect(await listOwnPendingActions(owner.id, [])).toEqual([]);
   });
 
   it('re-checks on confirm: a changed amount fails and nothing executes', async () => {

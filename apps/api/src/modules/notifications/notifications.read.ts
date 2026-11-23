@@ -4,6 +4,11 @@ import { clock } from '../../lib/clock';
 import { getPrisma } from '../../lib/prisma';
 import type { NotificationSource } from '../../dto';
 
+/** D28: notifications of a group a developer closed and hid are not shown; those with no group are. */
+const visibleGroups = {
+  OR: [{ groupId: null }, { group: { hiddenByDeveloperAt: null } }],
+};
+
 export async function listNotifications(
   userId: string,
   query: {
@@ -18,6 +23,7 @@ export async function listNotifications(
     prisma.notification.findMany({
       where: {
         userId,
+        ...visibleGroups,
         ...(query.before ? { createdAt: { lt: new Date(query.before) } } : {}),
         ...(query.unread === 'true' ? { readAt: null } : {}),
       },
@@ -35,7 +41,7 @@ export async function listNotifications(
 }
 
 export function unreadNotificationCount(userId: string): Promise<number> {
-  return getPrisma().notification.count({ where: { userId, readAt: null } });
+  return getPrisma().notification.count({ where: { userId, readAt: null, ...visibleGroups } });
 }
 
 /** Marks the member's own notifications read; ids of someone else's are ignored. */

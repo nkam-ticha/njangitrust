@@ -10,8 +10,7 @@ import type { AuthActor } from '../../permissions';
 import { agentConfig } from '../config';
 import { tryConsumeAgentMessage } from '../guards/rate-limit';
 import { withTurnLease } from '../guards/turn-lease';
-import { currentJobScheduler, dispatchJob } from '../../jobs/dispatch';
-import { scheduleAt } from '../../jobs/queues';
+import { dispatchJob } from '../../jobs/dispatch';
 import { runAsSystem } from '../../lib/request-context';
 import { agentPorts } from '../ports';
 import { looksPersonal } from '../runtime/personal';
@@ -60,35 +59,45 @@ async function groupAnswer(
 
 export const GROUP_MENTION_JOB = 'agent.groupMention';
 
+/** What happened to a mention: answered now, answered before, or not answerable. */
+export type MentionOutcome = 'ANSWERED' | 'ALREADY_ANSWERED' | 'UNAVAILABLE';
+
 /**
- * Called by the chat module when a message mentions @njangi. Only queues a job (ids, no text): the
- * answer needs model calls, which must not run after a serverless response has been sent.
+ * Called by the chat module when a message mentions @njangi, inside the author's send request. It
+ * only queues a job (ids, no text) and returns at once: the send never waits for the model. The
+ * answer itself comes from the author's app, which asks for it in a request of its own
+ * (`answerGroupMentionNow`: a serverless function cannot keep working after its response). The job
+ * is the safety net for an app that never asked; it skips a mention that was already answered.
  */
 export async function onGroupMention(mention: GroupMention): Promise<void> {
   if (!agentPorts().chat || !agentConfig().configured) return;
-  if (currentJobScheduler() === scheduleAt) {
-    // Run this exact mention immediately in the current serverless/HTTP invocation so it never
-    // sits behind older jobs in DeploymentJob or misses due to container/database clock skew.
-    await runAsSystem(() => answerGroupMention(mention));
-    return;
-  }
   await dispatchJob(GROUP_MENTION_JOB, { ...mention }, { jobId: mention.messageId });
 }
 
-/** The job: answers the mention. A failure is logged and not retried (no double answer). */
-export async function answerGroupMention(mention: GroupMention): Promise<void> {
+/** The author's own request for the answer: runs now, as the system, and returns the outcome. */
+export function answerGroupMentionNow(mention: GroupMention): Promise<MentionOutcome> {
+  return runAsSystem(() => answerGroupMention(mention));
+}
+
+/** The job: answers the mention once. A failure is logged and not retried (no double answer). */
+export async function answerGroupMention(mention: GroupMention): Promise<MentionOutcome> {
   const chat = agentPorts().chat;
-  if (!chat || !agentConfig().configured) return;
+  if (!chat || !agentConfig().configured) return 'UNAVAILABLE';
+  const answered = () =>
+    chat.hasAgentReply?.({ groupId: mention.groupId, messageId: mention.messageId });
+  if (await answered()) return 'ALREADY_ANSWERED';
   const text = await chat.mentionText({
     groupId: mention.groupId,
     messageId: mention.messageId,
     userId: mention.authorUserId,
   });
-  if (!text || !(await tryConsumeAgentMessage(mention.authorUserId))) return;
+  if (!text || !(await tryConsumeAgentMessage(mention.authorUserId))) return 'UNAVAILABLE';
   const actor = await authorActor(mention.authorUserId);
-  await withTurnLease(
+  return withTurnLease(
     actor.userId,
-    async () => {
+    async (): Promise<MentionOutcome> => {
+      // The other path (app or job) may have answered while this one waited for the lease.
+      if (await answered()) return 'ALREADY_ANSWERED';
       const ctx = await buildCtx(actor, { groupId: mention.groupId, channel: 'GROUP', text });
       const answer = await groupAnswer(ctx, text);
       await chat.postAgentReply({
@@ -96,7 +105,7 @@ export async function answerGroupMention(mention: GroupMention): Promise<void> {
         text: answer.text,
         replyToMessageId: mention.messageId,
       });
-      if (!answer.privately) return;
+      if (!answer.privately) return 'ANSWERED';
       const privateCtx = await buildCtx(actor, {
         groupId: mention.groupId,
         channel: 'PRIVATE',
@@ -107,17 +116,15 @@ export async function answerGroupMention(mention: GroupMention): Promise<void> {
         channel: 'PRIVATE',
         groupId: mention.groupId,
       });
-      if (conversation.groupId !== mention.groupId) {
-        await dbConversationStore.setGroup(conversation.id, mention.groupId);
-        conversation.groupId = mention.groupId;
-      }
       await privateTurn(privateCtx, conversation, text, { fromGroup: true });
+      return 'ANSWERED';
     },
     { waitMs: LEASE_WAIT_MS },
-  ).catch((error: unknown) => {
+  ).catch((error: unknown): MentionOutcome => {
     log.error(
       { errorName: error instanceof Error ? error.name : 'unknown' },
       'group mention failed',
     );
+    return 'UNAVAILABLE';
   });
 }

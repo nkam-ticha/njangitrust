@@ -32,12 +32,18 @@ export function announce(action: PendingAction): void {
   const update = toPendingActionUpdate(action);
   emitToUser(action.userId, 'pendingAction.updated', update);
   // Tracked like a broadcast: the request waits for it before a serverless function is frozen.
-  if (announceListener) trackPendingWork(Promise.resolve(announceListener(action.userId, update)));
+  if (announceListener) {
+    trackPendingWork(
+      Promise.resolve(announceListener(action.userId, update, { origin: action.origin })),
+    );
+  }
 }
 
 type AnnounceListener = (
   userId: string,
   update: PendingActionUpdatedPayload,
+  /** Who prepared the action: a listener that only cares about the agent's cards can skip UI ones. */
+  info?: { origin: ActionOrigin },
 ) => Promise<void> | void;
 let announceListener: AnnounceListener | null = null;
 
@@ -103,6 +109,32 @@ async function expireIfDue(row: PendingAction): Promise<PendingAction> {
   const fresh = await reload(row.id);
   if (moved) announce(fresh);
   return fresh;
+}
+
+/**
+ * The owner's own actions among `ids`, in one read (the agent conversation draws their cards).
+ * Overdue PENDING ones are moved to EXPIRED first, like a single read does. Someone else's id, or a
+ * missing one, is simply left out.
+ */
+export async function listOwnPendingActions(
+  userId: string,
+  ids: readonly string[],
+): Promise<PendingAction[]> {
+  if (ids.length === 0) return [];
+  const rows = await getPrisma().pendingAction.findMany({
+    where: { id: { in: [...ids] }, userId },
+  });
+  return Promise.all(rows.map((row) => expireIfDue(row)));
+}
+
+/** The owner's agent-prepared actions still waiting for a tap (not overdue), oldest first. */
+export async function listOwnOpenAgentActions(userId: string): Promise<PendingAction[]> {
+  const rows = await getPrisma().pendingAction.findMany({
+    where: { userId, origin: 'AGENT', status: 'PENDING', expiresAt: { gt: clock.now() } },
+    orderBy: { createdAt: 'asc' },
+    take: 20,
+  });
+  return rows.map(openAction);
 }
 
 /** The owner's action. Anyone else gets "not found". */

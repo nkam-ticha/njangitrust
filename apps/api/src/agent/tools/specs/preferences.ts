@@ -21,7 +21,7 @@ export const preferenceSpecs = {
     ...PREF,
     name: 'set_notification_prefs',
     description:
-      'Mutes or unmutes the active group’s chat, changes quiet hours, or mutes notification categories (security alerts can never be muted).',
+      'Mutes or unmutes the active group’s chat, changes quiet hours, or mutes notification categories (security alerts can never be muted). With no argument it shows the current settings.',
     args: s({
       muteChat: z.boolean().optional(),
       quietHours: s({ from: hhmm, to: hhmm }).optional(),
@@ -32,6 +32,13 @@ export const preferenceSpecs = {
         .describe('The categories to mute; the others are turned back on.'),
     }),
     example: { muteChat: true },
+  }),
+  mark_notifications_read: defineSpec({
+    ...PREF,
+    name: 'mark_notifications_read',
+    description: 'Marks all the member’s notifications as read.',
+    args: s({}),
+    example: {},
   }),
   switch_group: defineSpec({
     ...PREF,

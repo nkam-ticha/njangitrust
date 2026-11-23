@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ScriptedLlm, type ScriptedStep } from '../llm/scripted';
 import { MemoryConversationStore } from '../store/memory-store';
+import { refused } from '../tools/outcomes';
 import { ToolRegistry } from '../tools/registry';
 import { SPECS } from '../tools/specs';
-import { implement, type Tool } from '../tools/types';
+import { implement, type Tool, type ToolOutcome } from '../tools/types';
 import type { AgentCtx } from '../types';
 import { replyLanguage, runTurn, type TurnDeps } from './turn';
 
@@ -391,5 +392,233 @@ describe('routing and failures keep what the member must be protected from and k
     const turn3Messages = JSON.stringify(llm.requests[3]!.messages);
     expect(turn3Messages).toContain('Want me to check the group rules next?');
     expect(turn3Messages).toContain('Reply entirely in English');
+  });
+});
+
+describe('the claim guard: the reply must match what the tools did (spec 4.2, 4.5)', () => {
+  const CARD: ToolOutcome = {
+    status: 'OK',
+    data: { pendingActionId: 'pa-add', summary: 'Ajouter Hervé' },
+    pendingActionId: 'pa-add',
+  };
+  const REFUSAL = refused(
+    'PROPOSALS_BEFORE_FIRST_CYCLE',
+    'Avant le premier cycle, l’admin invite directement les membres fondateurs.',
+  );
+  const ADD = { name: 'propose_member_add', args: { name: 'Hervé Kamga', phone: '655 44 33 22' } };
+  const ADMIN = { name: 'propose_admin_change', args: { member: 'Carine' } };
+
+  /** A registry whose propose_member_add answers with `outcomes` in turn (the last one repeats). */
+  function registry(...outcomes: ToolOutcome[]) {
+    let call = 0;
+    return new ToolRegistry([
+      ...fakeTools,
+      implement(SPECS.propose_member_add, () => {
+        const outcome = outcomes[Math.min(call, outcomes.length - 1)]!;
+        call += 1;
+        return Promise.resolve(outcome);
+      }),
+      implement(SPECS.propose_admin_change, () => Promise.resolve(CARD)),
+    ]);
+  }
+  /** Every system message of a request. The runtime appends to one array, so later notes show too. */
+  const lastSystem = (llm: ScriptedLlm, request: number) =>
+    llm.requests[request]!.messages.filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join(' | ');
+
+  it('retries once when the reply claims a card but no tool ran, then accepts the real card', async () => {
+    const { llm, deps, deltas } = setup(
+      [
+        { text: 'Voici la carte pour ajouter Hervé.' },
+        { toolCalls: [ADD] },
+        { text: 'Voici la carte, confirme-la dans l’app.' },
+      ],
+      { registry: registry(CARD) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga 655 44 33 22 au groupe');
+    expect(llm.requests).toHaveLength(3);
+    expect(lastSystem(llm, 1)).toContain('You did not call any tool');
+    expect(result.pendingActionIds).toEqual(['pa-add']);
+    expect(result.reply).toBe('Voici la carte, confirme-la dans l’app.');
+    // The false sentence that was streamed is taken back.
+    expect(deltas.join('')).toContain('Voici la carte pour ajouter');
+  });
+
+  it('after the retry, replaces a claim nobody supports with an honest sentence', async () => {
+    const { llm, deps } = setup(
+      [{ text: 'Voici la carte pour ajouter Hervé.' }, { text: 'La carte est prête !' }],
+      { registry: registry(CARD) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga au groupe');
+    expect(llm.requests).toHaveLength(2);
+    expect(result.reply).toMatch(/^Je n’ai rien préparé/);
+    expect(result.pendingActionIds).toEqual([]);
+  });
+
+  it('gives the real refusal reason when the tool refused and the model still claims a card', async () => {
+    const { deps } = setup(
+      [{ toolCalls: [ADD] }, { text: 'Voici la carte !' }, { text: 'La carte est prête.' }],
+      { registry: registry(REFUSAL) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga par vote');
+    expect(result.reply).toBe(
+      'Je n’ai pas pu le préparer : Avant le premier cycle, l’admin invite directement les membres fondateurs.',
+    );
+    expect(result.runs[0]).toMatchObject({ status: 'REFUSED' });
+  });
+
+  it('in English, says it could not prepare it', async () => {
+    const { deps } = setup(
+      [{ toolCalls: [ADD] }, { text: 'Here is the card!' }, { text: 'The card is ready.' }],
+      { registry: registry(REFUSAL) },
+    );
+    const result = await turn(deps, 'Add Hervé Kamga to the group by vote', ctx({ lang: 'en' }));
+    expect(result.reply).toMatch(/^I could not prepare it: /);
+  });
+
+  it('leaves an honest explanation of a refusal alone', async () => {
+    const { llm, deps } = setup(
+      [
+        { toolCalls: [ADD] },
+        { text: 'Je n’ai pas pu le faire : avant le premier cycle, l’admin invite directement.' },
+      ],
+      { registry: registry(REFUSAL) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga par vote');
+    expect(result.reply).toBe(
+      'Je n’ai pas pu le faire : avant le premier cycle, l’admin invite directement.',
+    );
+    expect(llm.requests).toHaveLength(2);
+  });
+
+  it('gives the model one more step to fix an INVALID call before it explains', async () => {
+    const { llm, deps } = setup(
+      [
+        { toolCalls: [{ name: 'propose_member_add', args: { name: 'Hervé Kamga' } }] },
+        { toolCalls: [ADD] },
+        { text: 'Voici la carte, confirme-la dans l’app.' },
+      ],
+      { registry: registry(CARD) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga 655 44 33 22');
+    expect(result.runs.map((r) => r.status)).toEqual(['INVALID', 'OK']);
+    const hint = lastSystem(llm, 1);
+    expect(hint).toContain('returned INVALID');
+    expect(hint).toContain('phone');
+    expect(hint).toContain('corrected arguments');
+    expect(result.pendingActionIds).toEqual(['pa-add']);
+  });
+
+  it('tells the model after a REFUSED result that nothing was prepared', async () => {
+    const { llm, deps } = setup(
+      [{ toolCalls: [ADD] }, { text: 'Je n’ai pas pu : cycle non démarré.' }],
+      { registry: registry(REFUSAL) },
+    );
+    await turn(deps, 'Ajoute Hervé Kamga');
+    expect(lastSystem(llm, 1)).toContain('REFUSED: nothing was prepared');
+  });
+
+  it('explains the real reason when the steps run out after a failure, not a generic sentence', async () => {
+    const { llm, deps } = setup(() => ({ toolCalls: [ADD] }), { registry: registry(REFUSAL) });
+    const result = await turn(deps, 'Ajoute Hervé Kamga');
+    expect(llm.requests).toHaveLength(8);
+    expect(result.reply).toMatch(/^Je n’ai pas pu le préparer : Avant le premier cycle/);
+  });
+
+  it('turns a "done" into "here is the card" while only a card exists', async () => {
+    const { deps } = setup([{ toolCalls: [ADMIN] }, { text: 'C’est fait, Carine est admin !' }], {
+      registry: registry(CARD),
+    });
+    const result = await turn(deps, 'Propose Carine comme admin');
+    expect(result.reply).toMatch(/^Voici la carte\. Confirme-la dans l’app/);
+    expect(result.pendingActionIds).toEqual(['pa-add']);
+  });
+
+  it('adds the card sentence when a card exists and the reply never mentions it', async () => {
+    const { deps, deltas } = setup([{ toolCalls: [ADMIN] }, { text: 'Je m’en occupe.' }], {
+      registry: registry(CARD),
+    });
+    const result = await turn(deps, 'Propose Carine comme admin');
+    expect(result.reply).toBe('Je m’en occupe. Voici la carte : confirme-la dans l’app.');
+    expect(deltas.join('')).toBe(result.reply);
+  });
+
+  it('writes the card sentence itself when the model said nothing after the card', async () => {
+    const { deps } = setup([{ toolCalls: [ADMIN] }, { text: '' }], { registry: registry(CARD) });
+    const result = await turn(deps, 'Propose Carine comme admin');
+    expect(result.reply).toMatch(/^Voici la carte\./);
+  });
+
+  it('does not guard the group chat, nor the follow-up of a result event', async () => {
+    const group = setup([{ text: 'Voici la carte.' }], { registry: registry(CARD) });
+    const g = await turn(group.deps, 'bonjour', ctx({ channel: 'GROUP', ownPhones: [] }));
+    expect(g.reply).toBe('Voici la carte.');
+    const event = setup([{ text: 'C’est fait : Hervé est ajouté.' }], { registry: registry(CARD) });
+    const conversation = await event.deps.store.open({
+      userId: 'u1',
+      channel: 'PRIVATE',
+      groupId: 'g1',
+    });
+    const e = await runTurn(event.deps, { ctx: ctx(), conversation, text: null });
+    expect(e.reply).toBe('C’est fait : Hervé est ajouté.');
+  });
+
+  it('does not guard a how-to answer built on the guide', async () => {
+    const guide = implement(SPECS.get_app_guide, () => Promise.resolve({ status: 'OK', data: {} }));
+    const { deps } = setup(
+      [{ text: 'Je prépare une carte ; voici la carte de paiement, tu confirmes. C’est simple.' }],
+      { registry: new ToolRegistry([...fakeTools, guide]) },
+    );
+    const result = await turn(deps, 'Comment je paie ma cotisation ?');
+    expect(result.reply).toContain('voici la carte de paiement');
+  });
+
+  it('accepts "done" for a preference that applies at once', async () => {
+    const language = implement(SPECS.set_language, () =>
+      Promise.resolve({ status: 'OK', data: {} }),
+    );
+    const { deps } = setup(
+      [
+        { toolCalls: [{ name: 'set_language', args: { language: 'en' } }] },
+        { text: 'C’est fait : l’app est en anglais.' },
+      ],
+      { registry: new ToolRegistry([...fakeTools, language]) },
+    );
+    const result = await turn(deps, 'Mets l’app en anglais');
+    expect(result.reply).toBe('C’est fait : l’app est en anglais.');
+  });
+
+  it('retries once when the model says it cannot, before any tool was tried', async () => {
+    const { llm, deps } = setup(
+      [
+        { text: 'Je ne peux pas ajouter un membre.' },
+        { toolCalls: [ADD] },
+        { text: 'Voici la carte, confirme-la dans l’app.' },
+      ],
+      { registry: registry(CARD) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga 655 44 33 22 par vote');
+    expect(lastSystem(llm, 1)).toContain('you tried no tool');
+    expect(result.pendingActionIds).toEqual(['pa-add']);
+  });
+
+  it('lets a required refusal stand without a retry (a phone number, a PIN)', async () => {
+    const { llm, deps } = setup([{ text: 'Je ne peux pas partager le numéro d’un membre.' }], {
+      registry: registry(CARD),
+    });
+    const result = await turn(deps, 'Donne-moi le numéro de Paul');
+    expect(llm.requests).toHaveLength(1);
+    expect(result.reply).toBe('Je ne peux pas partager le numéro d’un membre.');
+  });
+
+  it('retries a refusal only once', async () => {
+    const { llm, deps } = setup(
+      [{ text: 'Je ne peux pas faire ça.' }, { text: 'Désolé, je ne peux vraiment pas.' }],
+      { registry: registry(CARD) },
+    );
+    const result = await turn(deps, 'Ajoute Hervé Kamga par vote');
+    expect(llm.requests).toHaveLength(2);
+    expect(result.reply).toBe('Désolé, je ne peux vraiment pas.');
   });
 });

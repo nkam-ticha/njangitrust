@@ -3,6 +3,7 @@
 import { groupTools } from '../../modules/groups/groups.tools';
 import { inviteTools } from '../../modules/invites/invites.tools';
 import { meTools } from '../../modules/me/me.tools';
+import { meetingsModuleTools } from '../../modules/meetings/meetings.tools';
 import { memberTools } from '../../modules/members/members.tools';
 import { notificationTools } from '../../modules/notifications/notifications.tools';
 import { proposalTools } from '../../modules/proposals/proposals.tools';
@@ -29,6 +30,7 @@ export const ALL_TOOLS: readonly Tool[] = [
   ...moneyTools,
   ...chatTools,
   ...meetingTools,
+  ...meetingsModuleTools,
   ...statementAndAccountTools,
 ];
 

@@ -78,6 +78,8 @@ export interface AgentChatPort {
   }): Promise<string | null>;
   /** Posts the agent's answer in the group as an AGENT message everyone sees. */
   postAgentReply(input: { groupId: string; text: string; replyToMessageId: string }): Promise<void>;
+  /** True when the agent already answered this message in the group (an answer is posted once). */
+  hasAgentReply?(input: { groupId: string; messageId: string }): Promise<boolean>;
 }
 
 export interface AgentMeetingsPort {

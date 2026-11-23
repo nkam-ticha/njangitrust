@@ -1,5 +1,5 @@
-// The PostgreSQL conversation store. One private conversation per member (its group is the active
-// one and follows switch_group); one group-channel conversation per member and group.
+// The PostgreSQL conversation store. One private conversation per member AND group, and one
+// group-channel conversation per member and group: what the agent remembers never crosses groups.
 import { clock } from '../../lib/clock';
 import type { Prisma } from '../../lib/prisma';
 import { getPrisma } from '../../lib/prisma';
@@ -33,30 +33,51 @@ function toStored(row: Row): StoredMessage {
   };
 }
 
+function toConversation(row: Prisma.AgentConversationGetPayload<object>): Conversation {
+  return {
+    id: row.id,
+    userId: row.userId,
+    groupId: row.groupId,
+    channel: row.channel,
+    rollingSummary: row.rollingSummary,
+  };
+}
+
 export const dbConversationStore: ConversationStore = {
   async open({ userId, channel, groupId }) {
     const db = getPrisma();
-    const where =
-      channel === 'PRIVATE'
-        ? { userId, channel }
-        : { userId, channel, groupId: groupId ?? undefined };
-    const existing = await db.agentConversation.findFirst({ where, orderBy: { createdAt: 'asc' } });
+    // Exact match on the group, `null` included: a thread never serves another group.
+    const existing = await db.agentConversation.findFirst({
+      where: { userId, channel, groupId },
+      orderBy: { createdAt: 'asc' },
+    });
     const row =
       existing ?? (await db.agentConversation.create({ data: { userId, channel, groupId } }));
-    return {
-      id: row.id,
-      userId: row.userId,
-      groupId: row.groupId,
-      channel: row.channel,
-      rollingSummary: row.rollingSummary,
-    } satisfies Conversation;
+    return toConversation(row);
   },
 
-  async setGroup(conversationId, groupId) {
-    await getPrisma().agentConversation.update({
-      where: { id: conversationId },
-      data: { groupId },
+  async get(userId, conversationId) {
+    const row = await getPrisma().agentConversation.findFirst({
+      where: { id: conversationId, userId },
     });
+    return row ? toConversation(row) : null;
+  },
+
+  async latestPrivate(userId) {
+    const db = getPrisma();
+    // The thread of the newest line; a thread with no line yet falls back to the newest thread.
+    const lastLine = await db.agentMessage.findFirst({
+      where: { conversation: { userId, channel: 'PRIVATE' } },
+      orderBy: { createdAt: 'desc' },
+      select: { conversation: true },
+    });
+    const row =
+      lastLine?.conversation ??
+      (await db.agentConversation.findFirst({
+        where: { userId, channel: 'PRIVATE' },
+        orderBy: { createdAt: 'desc' },
+      }));
+    return row ? toConversation(row) : null;
   },
 
   async setSummary(conversationId, summary) {

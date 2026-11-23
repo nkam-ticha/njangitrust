@@ -45,7 +45,7 @@ export async function toTurnDto(
   return {
     id: ctx.turnId,
     conversationId: conversation.id,
-    reply: toAgentMessage(result.replyMessage, ctx.lang)!,
+    reply: toAgentMessage(result.replyMessage, ctx.lang, actions)!,
     actions,
     cards: result.cards,
     toolCalls: result.runs.map((r) => ({ name: r.name, status: r.status })),
@@ -62,19 +62,18 @@ export async function privateTurn(
   options: { fromGroup?: boolean } = {},
 ): Promise<AgentTurnDto> {
   const deps = productionDeps(ctx);
+  // A conversation belongs to its group for good: switch_group only reports another group in the
+  // reply (`activeGroupId`); the app moves to that group's own thread.
   const result = await guardedTurn(deps, { ctx, conversation, text, ...options });
-  if (result.activeGroupId !== undefined && result.activeGroupId !== conversation.groupId) {
-    await dbConversationStore.setGroup(conversation.id, result.activeGroupId);
-    conversation.groupId = result.activeGroupId;
-  }
   const dto = await toTurnDto(ctx, conversation, result);
   emitAgent(ctx.userId, 'agent.done', dto);
   return dto;
 }
 
 /**
- * POST /v1/agent/messages. `groupId`: undefined keeps the conversation's active group, null means
- * none, a group id switches to it (only if the member can read it).
+ * POST /v1/agent/messages. `groupId`: a group id talks in that group's own conversation (only if
+ * the member can read it), null in the thread with no group, undefined in the thread the member
+ * used last. Each group has its own history, summary and context.
  */
 export async function handleUserMessage(
   actor: AuthActor,
@@ -83,19 +82,18 @@ export async function handleUserMessage(
   if (!agentConfig().configured) throw agentError('AGENT_NOT_CONFIGURED');
   await consumeAgentMessage(actor.userId);
   return withTurnLease(actor.userId, async () => {
-    // The row is created with no group: the requested one is only set once `buildCtx` has checked
-    // that the member may read it, so a refused group id is never stored.
+    const groupId =
+      input.groupId === undefined
+        ? ((await dbConversationStore.latestPrivate(actor.userId))?.groupId ?? null)
+        : input.groupId;
+    // `buildCtx` checks that the member may read the group before a thread is created for it, so a
+    // refused group id never gets a conversation.
+    const ctx = await buildCtx(actor, { groupId, channel: 'PRIVATE', text: input.text });
     const conversation = await dbConversationStore.open({
       userId: actor.userId,
       channel: 'PRIVATE',
-      groupId: null,
+      groupId,
     });
-    const groupId = input.groupId === undefined ? conversation.groupId : input.groupId;
-    const ctx = await buildCtx(actor, { groupId, channel: 'PRIVATE', text: input.text });
-    if (conversation.groupId !== groupId) {
-      await dbConversationStore.setGroup(conversation.id, groupId);
-      conversation.groupId = groupId;
-    }
     return privateTurn(ctx, conversation, input.text);
   });
 }

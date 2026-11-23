@@ -7,7 +7,7 @@ import { needGroup } from '../../agent/tools/resolve-group';
 import { SPECS } from '../../agent/tools/specs';
 import { implement } from '../../agent/tools/types';
 import { toNotification, toNotificationPrefs } from '../../dto';
-import { listNotifications } from './notifications.read';
+import { listNotifications, markNotificationsRead } from './notifications.read';
 import { getNotificationPrefs, updateNotificationPrefs } from './prefs.service';
 
 export const notificationTools = [
@@ -25,6 +25,11 @@ export const notificationTools = [
         at: formatDateTime(n.createdAt, ctx.lang),
       })),
     });
+  }),
+  // Same call as POST /notifications/read with { all: true }.
+  implement(SPECS.mark_notifications_read, async (ctx) => {
+    const marked = await markNotificationsRead(ctx.userId, { all: true });
+    return ok({ marked });
   }),
   implement(SPECS.set_notification_prefs, async (ctx, a) => {
     let mutedChatGroupIds: string[] | undefined;

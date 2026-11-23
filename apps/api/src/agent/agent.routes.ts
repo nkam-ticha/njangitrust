@@ -3,7 +3,7 @@
 // POST /v1/pending-actions/:id/confirm does (spec 4.5).
 //   GET  /v1/agent/status                  configured or not (bilingual), capabilities
 //   POST /v1/agent/messages                a member's message; the reply (also streamed)
-//   GET  /v1/agent/conversation            the member's own private conversation
+//   GET  /v1/agent/conversation            the member's own private conversation of a group (?groupId=)
 //   GET  /v1/agent/conversations/:id       the same, by id (someone else's: not found)
 //   GET  /v1/agent/history                 "Historique de l'assistant", the member's own only
 import { Router } from 'express';
@@ -53,10 +53,10 @@ export function agentRoutes(): Router {
       { params: z.strictObject({ id: uuidSchema }), query: agentListQuerySchema },
       async ({ params, query }, req, res) => {
         const actor = actorOf(req);
-        const own = await getOwnConversation(actor.userId, actor.lang, query);
-        if (!own.conversation || own.conversation.id !== params.id) {
-          throw agentError('AGENT_TURN_NOT_FOUND');
-        }
+        const own = await getOwnConversation(actor.userId, actor.lang, query, {
+          conversationId: params.id,
+        });
+        if (!own.conversation) throw agentError('AGENT_TURN_NOT_FOUND');
         res.json(own);
       },
     ),

@@ -82,6 +82,32 @@ export const agentTexts = {
     fr: '{{title}} : expiré. Rien n’a été fait.',
     en: '{{title}}: expired. Nothing was done.',
   },
+  /**
+   * Written by the server, never by the model, when the reply and the tools disagree (the claim
+   * guard, runtime/turn.ts): a card exists but the text says the action is done, or says nothing.
+   */
+  cardReady: {
+    fr: 'Voici la carte. Confirme-la dans l’app pour que ce soit fait : tant que tu n’as pas confirmé, rien ne se passe.',
+    en: 'Here is the card. Confirm it in the app to make it happen: nothing is done until you confirm.',
+  },
+  cardReadyHint: {
+    fr: 'Voici la carte : confirme-la dans l’app.',
+    en: 'Here is the card: confirm it in the app.',
+  },
+  /** The reply claimed a card that no tool prepared, and a retry did not fix it. */
+  couldNotPrepare: {
+    fr: 'Je n’ai pas pu le préparer : {{reason}}',
+    en: 'I could not prepare it: {{reason}}',
+  },
+  nothingPrepared: {
+    fr: 'Je n’ai rien préparé : je n’ai pas pu lancer cette action. Redis-moi ce que tu veux faire, avec qui, quoi et combien, et je réessaie.',
+    en: 'I prepared nothing: I could not start this action. Tell me again what you want to do, with whom, what and how much, and I will try again.',
+  },
+  /** The reason when a tool refused the arguments themselves. */
+  invalidReason: {
+    fr: 'une information manque ou n’est pas valable ({{fields}}). Dis-la-moi à nouveau.',
+    en: 'some information is missing or not valid ({{fields}}). Please tell me again.',
+  },
   /** Stored instead of a turn about a secret vote (R11.5): the choice is never kept. */
   secretVoteMessage: {
     fr: 'Message au sujet d’un vote secret, non conservé.',

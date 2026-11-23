@@ -7,24 +7,34 @@ export class MemoryConversationStore implements ConversationStore {
   readonly conversations: Conversation[] = [];
   readonly messages: StoredMessage[] = [];
   private tick = 0;
+  private readonly lastUsed = new Map<string, string>();
 
   open(input: { userId: string; channel: Conversation['channel']; groupId: string | null }) {
     const found = this.conversations.find(
       (c) =>
-        c.userId === input.userId &&
-        c.channel === input.channel &&
-        (input.channel === 'PRIVATE' || c.groupId === input.groupId),
+        c.userId === input.userId && c.channel === input.channel && c.groupId === input.groupId,
     );
-    if (found) return Promise.resolve(found);
+    if (found) {
+      this.lastUsed.set(input.userId, found.id);
+      return Promise.resolve(found);
+    }
     const created: Conversation = { id: randomUUID(), rollingSummary: null, ...input };
     this.conversations.push(created);
+    this.lastUsed.set(input.userId, created.id);
     return Promise.resolve(created);
   }
 
-  setGroup(conversationId: string, groupId: string | null) {
-    const c = this.conversations.find((x) => x.id === conversationId);
-    if (c) c.groupId = groupId;
-    return Promise.resolve();
+  get(userId: string, conversationId: string) {
+    return Promise.resolve(
+      this.conversations.find((c) => c.id === conversationId && c.userId === userId) ?? null,
+    );
+  }
+
+  latestPrivate(userId: string) {
+    const id = this.lastUsed.get(userId);
+    return Promise.resolve(
+      this.conversations.find((c) => c.id === id && c.channel === 'PRIVATE') ?? null,
+    );
   }
 
   setSummary(conversationId: string, summary: string) {

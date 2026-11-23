@@ -81,6 +81,7 @@ async function findUsableInvite(token: string) {
           id: true,
           name: true,
           status: true,
+          hiddenByDeveloperAt: true,
           firstPayoutAt: true,
           createdAt: true,
           currentCycle: { select: { number: true } },
@@ -89,7 +90,10 @@ async function findUsableInvite(token: string) {
       createdBy: { select: { user: { select: { name: true } } } },
     },
   });
-  if (!invite || invite.revokedAt) throw inviteError('INVITE_NOT_FOUND');
+  // D28: for a group a developer closed and hid, the link answers as if it never existed.
+  if (!invite || invite.revokedAt || invite.group.hiddenByDeveloperAt) {
+    throw inviteError('INVITE_NOT_FOUND');
+  }
   if (invite.usedAt) throw inviteError('INVITE_USED');
   if (invite.expiresAt <= clock.now()) throw inviteError('INVITE_EXPIRED');
   if (invite.group.status === 'CLOSED') throw inviteError('GROUP_CLOSED');
