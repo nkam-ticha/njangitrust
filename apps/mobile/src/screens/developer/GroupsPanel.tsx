@@ -11,7 +11,6 @@ import {
   ChipRow,
   EmptyState,
   GroupedList,
-  LabelBadge,
   ListRow,
   SkeletonRows,
   TextField,
@@ -107,25 +106,27 @@ export function GroupsPanel() {
       {data && data.items.length > 0 ? (
         <View style={{ marginHorizontal: -space.s4 }}>
           <GroupedList>
-            {data.items.map((group) => (
-              <ListRow
-                key={group.id}
-                title={group.name}
-                subtitle={[
-                  t('developer.groups.members', { count: group.memberCount }),
-                  cycleLine(group),
-                ].join(' · ')}
-                trailingNote={
-                  group.hidden ? (
-                    <LabelBadge label={t('developer.groups.hidden')} />
-                  ) : (
-                    <LabelBadge label={t(`developer.group.statuses.${group.status}`)} />
-                  )
-                }
-                chevron
-                onPress={() => router.push(`/developer/group/${group.id}`)}
-              />
-            ))}
+            {data.items.map((group) => {
+              const status = group.hidden
+                ? t('developer.groups.hidden')
+                : t(`developer.group.statuses.${group.status}`);
+              // Status and size on the first line, the cycle on the second: the name keeps the width.
+              const first = [
+                status,
+                t('developer.groups.members', { count: group.memberCount }),
+              ].join(' · ');
+              const second = cycleLine(group);
+              return (
+                <ListRow
+                  key={group.id}
+                  title={group.name}
+                  subtitle={`${first}\n${second}`}
+                  accessibilityLabel={`${group.name}, ${first}, ${second}`}
+                  chevron
+                  onPress={() => router.push(`/developer/group/${group.id}`)}
+                />
+              );
+            })}
           </GroupedList>
         </View>
       ) : null}

@@ -148,6 +148,8 @@ export interface DeveloperHeldMoney {
   obligations: number;
   loans: number;
   balances: number;
+  /** Bidding pots still holding money (D10). */
+  pots: number;
 }
 
 export interface DeveloperGroupDetail extends DeveloperGroupRow {

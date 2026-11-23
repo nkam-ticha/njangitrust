@@ -167,7 +167,7 @@ export function toDeveloperGroupRow(s: GroupRowSource): DeveloperGroupRow {
 
 export interface GroupDetailSource extends GroupRowSource {
   firstPayoutAt: Instant;
-  heldMoney: { obligations: number; loans: number; balances: number };
+  heldMoney: { obligations: number; loans: number; balances: number; pots: number };
   createdByName: string;
   inFlight: DeveloperInFlight;
   members: {
@@ -197,6 +197,7 @@ export function toDeveloperGroupDetail(s: GroupDetailSource): DeveloperGroupDeta
       obligations: s.heldMoney.obligations,
       loans: s.heldMoney.loans,
       balances: s.heldMoney.balances,
+      pots: s.heldMoney.pots,
     },
     firstPayoutAt: iso(s.firstPayoutAt),
     createdByName: s.createdByName,

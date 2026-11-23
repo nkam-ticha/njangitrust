@@ -4,7 +4,6 @@ import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CircleAlert, Users } from 'lucide-react-native';
-import { formatDateTime } from '@njangi/shared';
 import { space } from '@/theme';
 import {
   Avatar,
@@ -12,13 +11,13 @@ import {
   ChipRow,
   EmptyState,
   GroupedList,
-  LabelBadge,
   ListRow,
   SkeletonRows,
   TextField,
   Txt,
   useLang,
 } from '@/ui';
+import { formatDeveloperInstant, formatDeveloperPhone } from '@/features/developer/developerFormat';
 import { PAGE_SIZE, useDeveloperUsers, type UserFilter } from '@/features/developer/useDeveloper';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { Pager } from './Pager';
@@ -89,32 +88,32 @@ export function UsersPanel() {
       {data && data.items.length > 0 ? (
         <View style={{ marginHorizontal: -space.s4 }}>
           <GroupedList>
-            {data.items.map((user) => (
-              <ListRow
-                key={user.id}
-                leading={<Avatar name={user.name} />}
-                title={user.name}
-                subtitle={[
-                  user.phone ?? t('developer.user.noPhone'),
-                  t('developer.users.groups', { count: user.groupCount }),
-                ].join(' · ')}
-                trailingNote={
-                  user.status === 'DELETED' ? (
-                    <LabelBadge label={t('developer.users.deleted')} />
-                  ) : (
-                    <Txt variant="caption" color="textSecondary">
-                      {user.lastLoginAt
-                        ? t('developer.users.lastLogin', {
-                            date: formatDateTime(user.lastLoginAt, lang),
-                          })
-                        : t('developer.users.neverLoggedIn')}
-                    </Txt>
-                  )
-                }
-                chevron
-                onPress={() => router.push(`/developer/user/${user.id}`)}
-              />
-            ))}
+            {data.items.map((user) => {
+              // Two short lines under the name, never a trailing column: the name keeps the width.
+              const first = [
+                user.phone ? formatDeveloperPhone(user.phone) : t('developer.user.noPhone'),
+                t('developer.users.groups', { count: user.groupCount }),
+              ].join(' · ');
+              const second =
+                user.status === 'DELETED'
+                  ? t('developer.users.deleted')
+                  : user.lastLoginAt
+                    ? t('developer.users.lastLogin', {
+                        date: formatDeveloperInstant(user.lastLoginAt, lang),
+                      })
+                    : t('developer.users.neverLoggedIn');
+              return (
+                <ListRow
+                  key={user.id}
+                  leading={<Avatar name={user.name} />}
+                  title={user.name}
+                  subtitle={`${first}\n${second}`}
+                  accessibilityLabel={`${user.name}, ${first}, ${second}`}
+                  chevron
+                  onPress={() => router.push(`/developer/user/${user.id}`)}
+                />
+              );
+            })}
           </GroupedList>
         </View>
       ) : null}

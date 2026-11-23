@@ -1,4 +1,5 @@
-// Previous / next page of a developer list (the API pages with `page` and `pageSize`).
+// Previous / next page of a developer list (the API pages with `page` and `pageSize`). The page
+// label sits above two equal buttons, so the pair fits on a 320 dp screen without wrapping.
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { space } from '@/theme';
@@ -16,32 +17,36 @@ export function Pager({ page, pageSize, total, onChange }: PagerProps) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (pages <= 1) return null;
   return (
-    <View style={styles.row}>
-      <Button
-        variant="secondary"
-        label={t('developer.list.previous')}
-        disabled={page <= 1}
-        onPress={() => onChange(page - 1)}
-      />
-      <Txt variant="secondary" color="textSecondary">
+    <View style={styles.wrap}>
+      <Txt variant="secondaryStrong" color="textSecondary" align="center">
         {t('developer.list.page', { page, pages })}
       </Txt>
-      <Button
-        variant="secondary"
-        label={t('developer.list.next')}
-        disabled={page >= pages}
-        onPress={() => onChange(page + 1)}
-      />
+      <View style={styles.row}>
+        <View style={styles.cell}>
+          <Button
+            fullWidth
+            variant="secondary"
+            label={t('developer.list.previous')}
+            disabled={page <= 1}
+            onPress={() => onChange(page - 1)}
+          />
+        </View>
+        <View style={styles.cell}>
+          <Button
+            fullWidth
+            variant="secondary"
+            label={t('developer.list.next')}
+            disabled={page >= pages}
+            onPress={() => onChange(page + 1)}
+          />
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.s2,
-    flexWrap: 'wrap',
-  },
+  wrap: { gap: space.s2, paddingTop: space.s2 },
+  row: { flexDirection: 'row', gap: space.s3 },
+  cell: { flex: 1, minWidth: 0 },
 });

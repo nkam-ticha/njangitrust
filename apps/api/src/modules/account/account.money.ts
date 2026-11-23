@@ -6,6 +6,8 @@ import {
   holdsMoney as rulesHoldsMoney,
   LIVE_LOAN_STATUSES,
   nonZeroBalanceCount,
+  payableAccount,
+  receivableAccount,
   type HeldMoneyCounts,
 } from '@njangi/rules';
 import type { Db } from '../../lib/prisma';
@@ -14,8 +16,34 @@ export type HeldMoney = HeldMoneyCounts;
 
 export const holdsMoney = (held: HeldMoney): boolean => rulesHoldsMoney(held);
 
-export async function moneyHeldBy(db: Db, membershipIds: readonly string[]): Promise<HeldMoney> {
-  if (membershipIds.length === 0) return { obligations: 0, loans: 0, balances: 0 };
+/**
+ * D10, D28: the bidding pots of a group that hold money. A pot (`pot:round:<id>`) takes the
+ * contributions paid before the bids close and belongs to no member yet, so it is counted for the
+ * group, never for a member. Closing a group would leave it unassigned for good (`bids.close` skips
+ * a closed group).
+ */
+export async function potsHeldIn(db: Db, groupId: string): Promise<number> {
+  const sums = await db.ledgerPosting.groupBy({
+    by: ['account'],
+    where: { account: { startsWith: 'pot:round:' }, transaction: { groupId } },
+    _sum: { amount: true },
+  });
+  return nonZeroBalanceCount(
+    sums.map((row) => ({ account: row.account, amount: row._sum.amount })),
+  );
+}
+
+/**
+ * What the members hold: debts, live loans, balances. With `groupId`, the group's pots too (a
+ * group's closing); without it `pots` is 0, since a pot is the group's money, not a member's.
+ */
+export async function moneyHeldBy(
+  db: Db,
+  membershipIds: readonly string[],
+  groupId?: string,
+): Promise<HeldMoney> {
+  const pots = groupId ? await potsHeldIn(db, groupId) : 0;
+  if (membershipIds.length === 0) return { obligations: 0, loans: 0, balances: 0, pots };
   const ids = [...membershipIds];
   const [obligations, loans, sums] = await Promise.all([
     db.obligation.count({ where: { membershipId: { in: ids }, status: 'DUE' } }),
@@ -26,7 +54,7 @@ export async function moneyHeldBy(db: Db, membershipIds: readonly string[]): Pro
       by: ['account'],
       where: {
         account: {
-          in: ids.flatMap((id) => [`payable:member:${id}`, `receivable:member:${id}`]),
+          in: ids.flatMap((id) => [payableAccount(id), receivableAccount(id)]),
         },
       },
       _sum: { amount: true },
@@ -38,5 +66,6 @@ export async function moneyHeldBy(db: Db, membershipIds: readonly string[]): Pro
     balances: nonZeroBalanceCount(
       sums.map((row) => ({ account: row.account, amount: row._sum.amount })),
     ),
+    pots,
   };
 }

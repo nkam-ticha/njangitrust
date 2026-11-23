@@ -1639,6 +1639,7 @@ export const uiEn: UiCopyShape = {
       proposer: 'Proposed by {{name}}',
       proposerYou: 'Proposed by you',
       timeLeft: 'Closes in {{duration}}',
+      closing: 'Closing now',
       progress: '{{yes}} yes of {{needed}} needed',
       noCount: '{{count}} no',
       secretBadge: 'Secret vote',
@@ -2270,7 +2271,7 @@ export const uiEn: UiCopyShape = {
     console: {
       title: 'Developer console',
       tabs: { users: 'Users', groups: 'Groups' },
-      leave: 'Leave the console',
+      leave: 'Leave',
       sessionEnded: 'Your developer session has expired. Log in again.',
       notice:
         'You see full phone numbers and the details of every account here. Every action is recorded.',
@@ -2279,8 +2280,8 @@ export const uiEn: UiCopyShape = {
       searchUsers: 'Search a name or a number',
       searchGroups: 'Search a group',
       page: 'Page {{page}} of {{pages}}',
-      previous: 'Previous page',
-      next: 'Next page',
+      previous: 'Previous',
+      next: 'Next',
       emptyUsers: {
         title: 'No users',
         body: 'No account matches this search.',
@@ -2359,7 +2360,7 @@ export const uiEn: UiCopyShape = {
       count_other: '{{count}} groups',
       members_one: '{{count}} member',
       members_other: '{{count}} members',
-      cycle: 'Cycle {{cycle}} · round {{round}} of {{total}}',
+      cycle: 'Cycle {{cycle}} · round {{round}}/{{total}}',
       cycleNoRound: 'Cycle {{cycle}} · {{total}} rounds planned',
       noCycle: 'Cycle not started yet',
       hidden: 'Closed and hidden',
@@ -2367,6 +2368,7 @@ export const uiEn: UiCopyShape = {
     group: {
       title: 'Group',
       statuses: { FORMING: 'Forming', ACTIVE: 'Running', CLOSED: 'Closed' },
+      status: 'Status',
       createdBy: 'Created by {{name}}',
       createdAt: 'Created on {{date}}',
       firstPayout: 'First round on {{date}}',

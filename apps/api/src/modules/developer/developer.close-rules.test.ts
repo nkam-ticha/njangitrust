@@ -2,7 +2,7 @@
 // in the group, operations really in flight (and not approved payouts that were never sent), and
 // the lock order shared with a confirmation (its card, then the group, then the member).
 import { randomUUID } from 'node:crypto';
-import { paymentReceivedPostings } from '@njangi/rules';
+import { paymentReceivedPostings, potAssignedPostings } from '@njangi/rules';
 import { describe, expect, it } from 'vitest';
 import { getPrisma } from '../../lib/prisma';
 import { lockGroup } from '../../permissions';
@@ -39,12 +39,12 @@ describe('closing a group while members still hold money in it', () => {
     });
 
     const detail = await developerCall(token, 'get', groupPath(groupId));
-    expect(detail.body.group.heldMoney).toEqual({ obligations: 1, loans: 0, balances: 0 });
+    expect(detail.body.group.heldMoney).toEqual({ obligations: 1, loans: 0, balances: 0, pots: 0 });
 
     const refused = await developerCall(token, 'post', closePath(groupId));
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe('GROUP_MEMBERS_HOLD_MONEY');
-    expect(refused.body.details).toEqual({ obligations: 1, loans: 0, balances: 0 });
+    expect(refused.body.details).toEqual({ obligations: 1, loans: 0, balances: 0, pots: 0 });
     expect(refused.body.messageFr).toMatch(/Attends/);
     expect(refused.body.messageEn).toMatch(/settled/);
     expect(await prisma().group.findUniqueOrThrow({ where: { id: groupId } })).toMatchObject({
@@ -85,6 +85,60 @@ describe('closing a group while members still hold money in it', () => {
     expect(refused.body.details.balances).toBeGreaterThanOrEqual(1);
   });
 
+  /** A contribution paid into a bidding round's pot (D10): 9 900 FCFA net of the 100 fee. */
+  const potPayment = (payer: string, roundId: string) =>
+    entryOf(
+      'PAYMENT_RECEIVED',
+      paymentReceivedPostings({
+        payerMembershipId: payer,
+        fee: 100,
+        feeSource: 'SCHEDULE',
+        parts: [{ kind: 'CONTRIBUTION', amount: 10_000, potRoundId: roundId, tieOrder: 1 }],
+      }),
+      { membershipId: payer },
+    );
+
+  it('refuses while a bidding pot still holds contributions (D10), and says so in the counts', async () => {
+    const token = await developerToken();
+    const { groupId, members } = await startedGroup(3);
+    // Contributions paid before the bids close sit in the round's pot, which no member owns yet.
+    // Closing the group would leave it unassigned for good (the bidding close skips closed groups).
+    await appendLedger(groupId, [potPayment(members[1]!.membershipId, randomUUID())]);
+    const detail = await developerCall(token, 'get', groupPath(groupId));
+    expect(detail.body.group.heldMoney).toEqual({ obligations: 0, loans: 0, balances: 0, pots: 1 });
+
+    const refused = await developerCall(token, 'post', closePath(groupId));
+    expect(refused.status).toBe(409);
+    expect(refused.body.code).toBe('GROUP_MEMBERS_HOLD_MONEY');
+    expect(refused.body.details).toEqual({ obligations: 0, loans: 0, balances: 0, pots: 1 });
+    const still = await prisma().group.findUniqueOrThrow({ where: { id: groupId } });
+    expect(still.status).not.toBe('CLOSED');
+    expect(still.hiddenByDeveloperAt).toBeNull();
+  });
+
+  it('does not count a pot that was assigned, nor another group’s pot', async () => {
+    const token = await developerToken();
+    const { groupId, members } = await startedGroup(3);
+    const other = await startedGroup(3);
+    const roundId = randomUUID();
+    await appendLedger(other.groupId, [potPayment(other.members[1]!.membershipId, randomUUID())]);
+    await appendLedger(groupId, [
+      potPayment(members[1]!.membershipId, roundId),
+      entryOf(
+        'POT_ASSIGNED',
+        potAssignedPostings({
+          roundId,
+          beneficiaryMembershipId: members[0]!.membershipId,
+          amount: 9_900,
+        }),
+        { membershipId: members[0]!.membershipId },
+      ),
+    ]);
+    const detail = await developerCall(token, 'get', groupPath(groupId));
+    // The assigned pot is the winner's balance now, not a pot.
+    expect(detail.body.group.heldMoney).toMatchObject({ pots: 0, balances: 1 });
+  });
+
   it('refuses while a loan is approved and not sent yet (money-to-be), and when it is over closes', async () => {
     const token = await developerToken();
     const { groupId, members } = await startedGroup(3);
@@ -104,7 +158,7 @@ describe('closing a group while members still hold money in it', () => {
     const refused = await developerCall(token, 'post', closePath(groupId));
     expect(refused.status).toBe(409);
     expect(refused.body.code).toBe('GROUP_MEMBERS_HOLD_MONEY');
-    expect(refused.body.details).toEqual({ obligations: 0, loans: 1, balances: 0 });
+    expect(refused.body.details).toEqual({ obligations: 0, loans: 1, balances: 0, pots: 0 });
 
     // A loan that ended (repaid, refused) holds nothing.
     await prisma().loan.update({ where: { id: loan.id }, data: { status: 'REPAID' } });

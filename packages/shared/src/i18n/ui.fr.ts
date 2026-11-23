@@ -1676,6 +1676,7 @@ export const uiFr = {
       proposer: 'Proposé par {{name}}',
       proposerYou: 'Proposé par toi',
       timeLeft: 'Clôture dans {{duration}}',
+      closing: 'Clôture en cours',
       progress: '{{yes}} oui sur {{needed}} requis',
       noCount: '{{count}} non',
       secretBadge: 'Vote secret',
@@ -2310,7 +2311,7 @@ export const uiFr = {
     console: {
       title: 'Console développeur',
       tabs: { users: 'Utilisateurs', groups: 'Groupes' },
-      leave: 'Quitter la console',
+      leave: 'Quitter',
       sessionEnded: 'Ta session développeur a expiré. Reconnecte-toi.',
       notice:
         'Tu vois ici les numéros complets et les détails de tous les comptes. Chaque action est enregistrée.',
@@ -2319,8 +2320,8 @@ export const uiFr = {
       searchUsers: 'Chercher un nom ou un numéro',
       searchGroups: 'Chercher un groupe',
       page: 'Page {{page}} sur {{pages}}',
-      previous: 'Page précédente',
-      next: 'Page suivante',
+      previous: 'Précédente',
+      next: 'Suivante',
       emptyUsers: {
         title: 'Aucun utilisateur',
         body: 'Aucun compte ne correspond à cette recherche.',
@@ -2399,7 +2400,7 @@ export const uiFr = {
       count_other: '{{count}} groupes',
       members_one: '{{count}} membre',
       members_other: '{{count}} membres',
-      cycle: 'Cycle {{cycle}} · tour {{round}} sur {{total}}',
+      cycle: 'Cycle {{cycle}} · tour {{round}}/{{total}}',
       cycleNoRound: 'Cycle {{cycle}} · {{total}} tours prévus',
       noCycle: 'Cycle pas encore démarré',
       hidden: 'Fermé et masqué',
@@ -2407,6 +2408,7 @@ export const uiFr = {
     group: {
       title: 'Groupe',
       statuses: { FORMING: 'En formation', ACTIVE: 'En cours', CLOSED: 'Fermé' },
+      status: 'Statut',
       createdBy: 'Créé par {{name}}',
       createdAt: 'Créé le {{date}}',
       firstPayout: 'Premier tour le {{date}}',

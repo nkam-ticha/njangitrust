@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LogOut } from 'lucide-react-native';
-import { space } from '@/theme';
+import { contentWidth, space } from '@/theme';
 import { Banner, Button, SegmentedControl, Txt } from '@/ui';
 import { endDeveloperSession } from '@/features/developer/developerApi';
 import { Screen } from '../shared/Screen';
@@ -20,16 +20,20 @@ export function DeveloperConsoleScreen() {
   return (
     <Screen
       header={
-        <View style={styles.head}>
-          <Txt variant="screenTitle" accessibilityRole="header" style={styles.title}>
-            {t('developer.console.title')}
-          </Txt>
-          <Button
-            variant="text"
-            icon={LogOut}
-            label={t('developer.console.leave')}
-            onPress={() => endDeveloperSession()}
-          />
+        // The header lines up with the content column on wide screens (the title and the leave
+        // button share the same width as the lists below).
+        <View style={styles.headWrap}>
+          <View style={styles.head}>
+            <Txt variant="screenTitle" accessibilityRole="header" style={styles.title}>
+              {t('developer.console.title')}
+            </Txt>
+            <Button
+              variant="text"
+              icon={LogOut}
+              label={t('developer.console.leave')}
+              onPress={() => endDeveloperSession()}
+            />
+          </View>
         </View>
       }
     >
@@ -48,6 +52,7 @@ export function DeveloperConsoleScreen() {
 }
 
 const styles = StyleSheet.create({
+  headWrap: { width: '100%', maxWidth: contentWidth.reading, alignSelf: 'center' },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -55,5 +60,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.s4,
     minHeight: 56,
   },
-  title: { flex: 1 },
+  title: { flex: 1, minWidth: 0 },
 });

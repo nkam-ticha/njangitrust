@@ -2,11 +2,10 @@
 // "Close group" asks for the name to be typed first. A closed group disappears for its members; the
 // ledger is kept. The API refuses with a clear reason while a payment or send is in flight.
 import { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CircleAlert } from 'lucide-react-native';
-import { formatDateTime } from '@njangi/shared';
 import { space } from '@/theme';
 import {
   AppHeader,
@@ -21,6 +20,7 @@ import {
   SkeletonRows,
   useLang,
 } from '@/ui';
+import { formatDeveloperInstant, formatDeveloperPhone } from '@/features/developer/developerFormat';
 import { useCloseDeveloperGroup, useDeveloperGroup } from '@/features/developer/useDeveloper';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { Screen } from '../shared/Screen';
@@ -43,7 +43,7 @@ export function GroupDetailScreen({ id }: { id: string }) {
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
   const group = query.data;
-  const when = (instant: string) => formatDateTime(instant, lang, { withYear: true });
+  const when = (instant: string) => formatDeveloperInstant(instant, lang);
   // D28: a group whose members still hold money cannot be closed; the API refuses with the reason.
   const holdsMoney =
     !!group &&
@@ -65,7 +65,7 @@ export function GroupDetailScreen({ id }: { id: string }) {
       {holdsMoney ? (
         <Banner
           kind="info"
-          text={`${t('developer.group.holdsMoney')} ${t('developer.group.holdsMoneyCounts', { ...group.heldMoney })}`}
+          text={`${t('developer.group.holdsMoney')}\n${t('developer.group.holdsMoneyCounts', { ...group.heldMoney })}`}
         />
       ) : null}
       {query.isPending ? <SkeletonRows rows={6} /> : null}
@@ -85,8 +85,8 @@ export function GroupDetailScreen({ id }: { id: string }) {
               title={t(`developer.group.statuses.${group.status}`)}
               subtitle={
                 group.hiddenAt
-                  ? t('developer.group.hiddenAt', { date: when(group.hiddenAt) })
-                  : undefined
+                  ? `${t('developer.group.status')} · ${t('developer.group.hiddenAt', { date: when(group.hiddenAt) })}`
+                  : t('developer.group.status')
               }
               trailingNote={
                 group.hidden ? <LabelBadge label={t('developer.groups.hidden')} /> : undefined
@@ -142,10 +142,16 @@ export function GroupDetailScreen({ id }: { id: string }) {
                 leading={<Avatar name={member.name} />}
                 title={member.name}
                 subtitle={[
-                  member.phone ?? t('developer.user.noPhone'),
-                  t(`common.roles.${member.role}`),
-                  t(`common.membershipStatus.${member.status}`),
-                ].join(' · ')}
+                  member.phone ? formatDeveloperPhone(member.phone) : t('developer.user.noPhone'),
+                  [
+                    t(`common.roles.${member.role}`),
+                    member.status === 'ACTIVE'
+                      ? null
+                      : t(`common.membershipStatus.${member.status}`),
+                  ]
+                    .filter(Boolean)
+                    .join(' · '),
+                ].join('\n')}
                 chevron
                 onPress={() => router.push(`/developer/user/${member.userId}`)}
               />
@@ -153,11 +159,13 @@ export function GroupDetailScreen({ id }: { id: string }) {
           </GroupedList>
 
           {!group.hidden ? (
-            <View style={{ paddingHorizontal: space.s4, paddingTop: space.s6 }}>
+            <View style={styles.danger}>
               <Button
                 fullWidth
                 variant="destructive"
                 label={t('developer.close.button')}
+                disabled={holdsMoney}
+                accessibilityHint={holdsMoney ? t('developer.group.holdsMoney') : undefined}
                 onPress={() => {
                   close.reset();
                   setConfirming(true);
@@ -190,3 +198,7 @@ export function GroupDetailScreen({ id }: { id: string }) {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  danger: { paddingHorizontal: space.s4, paddingTop: space.s8 },
+});

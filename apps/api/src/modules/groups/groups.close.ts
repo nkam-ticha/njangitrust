@@ -23,18 +23,19 @@ export const groupCloseError = defineErrors({
 
 /**
  * D28 (implementation note): a group is closed only when no member still holds money in it (a debt
- * to pay, a live loan, a non-zero balance), the same test an account deletion uses. The owner has
+ * to pay, a live loan, a non-zero balance, a bidding pot with money in it), the same test an account deletion uses. The owner has
  * not decided what should happen to such money; this is the conservative default. Set it to false
  * to let a developer close a group whatever its members hold.
  */
 export const REFUSE_WHEN_MEMBERS_HOLD_MONEY = true;
 
-/** What the members of a group (every status) still hold in it. */
+/** What the members of a group (every status) still hold in it, and its pots (D10). */
 export async function groupHeldMoney(db: Db, groupId: string): Promise<HeldMoney> {
   const members = await db.membership.findMany({ where: { groupId }, select: { id: true } });
   return moneyHeldBy(
     db,
     members.map((member) => member.id),
+    groupId,
   );
 }
 

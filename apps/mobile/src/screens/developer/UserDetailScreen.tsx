@@ -2,11 +2,10 @@
 // numbers, devices, logins, and every group with the person's role. "Delete account" asks for the
 // name to be typed first; the API refuses with a clear reason when money or a duty is in the way.
 import { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { CircleAlert } from 'lucide-react-native';
-import { formatDateTime } from '@njangi/shared';
 import { space } from '@/theme';
 import {
   AppHeader,
@@ -20,6 +19,7 @@ import {
   SkeletonRows,
   useLang,
 } from '@/ui';
+import { formatDeveloperInstant, formatDeveloperPhone } from '@/features/developer/developerFormat';
 import { useDeleteDeveloperUser, useDeveloperUser } from '@/features/developer/useDeveloper';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { Screen } from '../shared/Screen';
@@ -34,7 +34,7 @@ export function UserDetailScreen({ id }: { id: string }) {
   const [confirming, setConfirming] = useState(false);
   const [done, setDone] = useState(false);
   const user = query.data;
-  const when = (instant: string) => formatDateTime(instant, lang, { withYear: true });
+  const when = (instant: string) => formatDeveloperInstant(instant, lang);
   // The account deletion refuses an admin and a member of a running cycle: closing the group first lifts both.
   const blockedByGroup =
     user?.status === 'ACTIVE' &&
@@ -56,7 +56,6 @@ export function UserDetailScreen({ id }: { id: string }) {
       }
     >
       {done ? <Banner kind="info" text={t('developer.delete.done')} /> : null}
-      {blockedByGroup ? <Banner kind="info" text={t('developer.delete.blockedHint')} /> : null}
       {query.isPending ? <SkeletonRows rows={6} /> : null}
       {query.isError ? (
         <EmptyState
@@ -72,7 +71,7 @@ export function UserDetailScreen({ id }: { id: string }) {
           <SectionHeader title={t('developer.user.identity')} />
           <GroupedList>
             <ListRow
-              title={user.phone ?? t('developer.user.noPhone')}
+              title={user.phone ? formatDeveloperPhone(user.phone) : t('developer.user.noPhone')}
               subtitle={t('developer.user.phone')}
             />
             <ListRow
@@ -96,8 +95,8 @@ export function UserDetailScreen({ id }: { id: string }) {
               <ListRow title={when(user.deletedAt)} subtitle={t('developer.user.deletedAt')} />
             ) : null}
             <ListRow
-              title={`${user.consentVersion} · ${when(user.consentAt)}`}
-              subtitle={t('developer.user.consent')}
+              title={when(user.consentAt)}
+              subtitle={`${t('developer.user.consent')} · ${user.consentVersion}`}
             />
             {user.pinChangedAt ? (
               <ListRow
@@ -115,12 +114,13 @@ export function UserDetailScreen({ id }: { id: string }) {
               {user.paymentNumbers.map((n) => (
                 <ListRow
                   key={`${n.number}-${n.activeFrom}`}
-                  title={n.number}
-                  subtitle={`${t(`common.operators.${n.operator}` as 'common.operators.MTN')} · ${
+                  title={formatDeveloperPhone(n.number)}
+                  subtitle={[
+                    t(`common.operators.${n.operator}` as 'common.operators.MTN'),
                     n.activeTo
                       ? t('developer.user.replacedOn', { date: when(n.activeTo) })
-                      : t('developer.user.since', { date: when(n.activeFrom) })
-                  }`}
+                      : t('developer.user.since', { date: when(n.activeFrom) }),
+                  ].join(' · ')}
                   trailingNote={
                     n.activeTo ? undefined : <LabelBadge label={t('developer.user.current')} />
                   }
@@ -188,15 +188,23 @@ export function UserDetailScreen({ id }: { id: string }) {
                 <ListRow
                   key={m.groupId}
                   title={m.groupName}
+                  // The role and the group's state on the first line; the membership state (only
+                  // when it is not the normal one) and the join date on the second.
                   subtitle={[
-                    t(`common.roles.${m.role}`),
-                    t(`common.membershipStatus.${m.status}`),
-                    t(`developer.group.statuses.${m.groupStatus}`),
-                    m.groupHidden ? t('developer.user.hiddenGroup') : null,
-                    t('developer.user.joinedOn', { date: when(m.joinedAt) }),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
+                    [
+                      t(`common.roles.${m.role}`),
+                      t(`developer.group.statuses.${m.groupStatus}`),
+                      m.groupHidden ? t('developer.user.hiddenGroup') : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · '),
+                    [
+                      m.status === 'ACTIVE' ? null : t(`common.membershipStatus.${m.status}`),
+                      t('developer.user.joinedOn', { date: when(m.joinedAt) }),
+                    ]
+                      .filter(Boolean)
+                      .join(' · '),
+                  ].join('\n')}
                   chevron
                   onPress={() => router.push(`/developer/group/${m.groupId}`)}
                 />
@@ -205,7 +213,10 @@ export function UserDetailScreen({ id }: { id: string }) {
           )}
 
           {user.status === 'ACTIVE' ? (
-            <View style={{ paddingHorizontal: space.s4, paddingTop: space.s6 }}>
+            <View style={styles.danger}>
+              {blockedByGroup ? (
+                <Banner kind="info" text={t('developer.delete.blockedHint')} />
+              ) : null}
               <Button
                 fullWidth
                 variant="destructive"
@@ -242,3 +253,7 @@ export function UserDetailScreen({ id }: { id: string }) {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  danger: { paddingHorizontal: space.s4, paddingTop: space.s8, gap: space.s3 },
+});
