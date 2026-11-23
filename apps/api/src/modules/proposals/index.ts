@@ -10,6 +10,7 @@ export {
   requestVote,
 } from './proposals.service';
 export { closeDueProposals, settleProposal } from './proposals.tally';
+export { expireOpenProposalsOfGroup } from './proposals.expire';
 export { registerProposalJobs, remindDueVoters, remindVoters } from './proposals.jobs';
 export {
   ledgerEventsPort,

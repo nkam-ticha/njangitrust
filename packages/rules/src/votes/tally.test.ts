@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { tallyProposal, thresholdCount, validateVote, visibleTally } from './tally';
+import { closeInstant, tallyProposal, thresholdCount, validateVote, visibleTally } from './tally';
 
 const closesAt = new Date('2026-11-05T08:00:00.000Z');
 const before = new Date('2026-11-03T08:00:00.000Z');
@@ -75,6 +75,87 @@ describe('tally and early close (R11.2, R11.3)', () => {
 
   it('refuses tallies with more votes than voters', () => {
     expect(() => tallyProposal({ ...base, yes: 8, no: 3 })).toThrow(RangeError);
+  });
+});
+
+describe('secret votes close early only when everyone has voted (D26)', () => {
+  const secret = {
+    thresholdKind: 'MAJORITY' as const,
+    eligibleCount: 3,
+    secret: true,
+    closesAt,
+    now: before,
+  };
+
+  it('stays open while someone can still vote, even when the threshold is reached', () => {
+    expect(tallyProposal({ ...secret, yes: 2, no: 0 })).toEqual({
+      status: 'OPEN',
+      required: 2,
+      remaining: 1,
+    });
+  });
+
+  it('stays open while someone can still vote, even when the threshold is out of reach', () => {
+    expect(tallyProposal({ ...secret, eligibleCount: 5, yes: 0, no: 3 })).toMatchObject({
+      status: 'OPEN',
+      remaining: 2,
+    });
+  });
+
+  it('passes at once when the last eligible member has voted and yes reaches the threshold', () => {
+    expect(tallyProposal({ ...secret, yes: 2, no: 1 })).toEqual({
+      status: 'PASSED',
+      required: 2,
+      remaining: 0,
+    });
+    expect(tallyProposal({ ...secret, yes: 3, no: 0 })).toMatchObject({ status: 'PASSED' });
+  });
+
+  it('is rejected at once when the last eligible member has voted and yes falls short', () => {
+    expect(tallyProposal({ ...secret, yes: 1, no: 2 })).toEqual({
+      status: 'REJECTED',
+      required: 2,
+      remaining: 0,
+    });
+  });
+
+  it('follows the window as before when not everyone voted', () => {
+    expect(tallyProposal({ ...secret, yes: 1, no: 0, now: closesAt })).toMatchObject({
+      status: 'EXPIRED',
+      remaining: 2,
+    });
+    expect(tallyProposal({ ...secret, yes: 2, no: 0, now: closesAt })).toMatchObject({
+      status: 'PASSED',
+    });
+  });
+
+  it('does not change a public vote: it closes as soon as the result is certain', () => {
+    expect(tallyProposal({ ...secret, secret: false, yes: 2, no: 0 })).toMatchObject({
+      status: 'PASSED',
+      remaining: 1,
+    });
+    expect(tallyProposal({ ...secret, secret: false, eligibleCount: 5, yes: 0, no: 3 })).toEqual({
+      status: 'REJECTED',
+      required: 3,
+      remaining: 2,
+    });
+  });
+});
+
+describe('the time a proposal closes (R11.3, D26)', () => {
+  it('a secret vote seen after its deadline closes at the deadline, not when the job ran', () => {
+    const late = new Date(closesAt.getTime() + 90_000);
+    expect(closeInstant({ secret: true, closesAt, now: late })).toEqual(closesAt);
+  });
+
+  it('a secret vote finished early closes now', () => {
+    expect(closeInstant({ secret: true, closesAt, now: before })).toEqual(before);
+  });
+
+  it('a public vote closes now, early or late', () => {
+    const late = new Date(closesAt.getTime() + 90_000);
+    expect(closeInstant({ secret: false, closesAt, now: late })).toEqual(late);
+    expect(closeInstant({ secret: false, closesAt, now: before })).toEqual(before);
   });
 });
 

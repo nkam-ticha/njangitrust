@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { useJobScheduler } from '../../jobs/dispatch';
 import { hashPhone } from '../../lib/crypto';
 import { getPrisma } from '../../lib/prisma';
 import { api, type TestUser } from '../../../test/helpers/client';
@@ -20,6 +21,8 @@ async function startedGroup() {
   await markFirstCycleStarted(groupId);
   return { admin: { ...admin, membershipId: adminMembershipId }, carine, paul, groupId };
 }
+
+afterEach(() => useJobScheduler(null));
 
 async function vote(user: TestUser, proposalId: string, choice: 'YES' | 'NO') {
   const card = await api(user).post(`/v1/proposals/${proposalId}/votes`, { choice });
@@ -94,6 +97,26 @@ describe('MEMBER_ADD proposal and votes (R11, R12.1)', () => {
     expect((await api(admin).get(`/v1/proposals/${proposalId}`)).body.proposal.status).toBe(
       'REJECTED',
     );
+  });
+
+  it('shows the result when the deciding vote returns, without waiting for any queued job', async () => {
+    const { carine, paul, admin, groupId } = await startedGroup();
+    const person = signupBody();
+    const card = await api(admin).post(`/v1/groups/${groupId}/proposals`, {
+      type: 'MEMBER_ADD',
+      name: person.name,
+      phone: person.phone,
+    });
+    const proposalId = (await confirm(admin, card.body.action.id)).body.action.result.ref as string;
+    // A serverless host: queued jobs run at the next cron tick, which never comes in this test.
+    useJobScheduler(() => Promise.resolve());
+    await vote(carine, proposalId, 'YES');
+    expect((await api(admin).get(`/v1/proposals/${proposalId}`)).body.proposal.status).toBe('OPEN');
+    await vote(paul, proposalId, 'YES');
+    expect((await api(admin).get(`/v1/proposals/${proposalId}`)).body.proposal).toMatchObject({
+      status: 'PASSED',
+      tally: { yes: 2, no: 0 },
+    });
   });
 
   it('lets only members active when the proposal was made vote (3.1)', async () => {

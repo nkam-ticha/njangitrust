@@ -3,7 +3,7 @@
 import type { TFunction } from 'i18next';
 import { pick, type Lang } from '@njangi/shared';
 import type { ProposalDto } from '@njangi/shared/contracts/proposals';
-import type { ProposalCardProps } from '@/ui';
+import type { NotEligibleReason, ProposalCardProps } from '@/ui';
 
 /** "2 jours" / "5 heures" until the vote closes. */
 export function timeLeft(closesAt: string, now: number, t: TFunction): string {
@@ -11,6 +11,20 @@ export function timeLeft(closesAt: string, now: number, t: TFunction): string {
   return hours >= 48
     ? t('time.duration.days', { count: Math.round(hours / 24) })
     : t('time.duration.hours', { count: hours });
+}
+
+/** Why the member does not vote on an open proposal, in the words the card has for it. */
+export function notEligibleReason(
+  p: ProposalDto,
+  myMembershipId: string | null,
+): NotEligibleReason | null {
+  if (p.status !== 'OPEN' || p.canVote || p.myVote) return null;
+  const s = p.subject;
+  const aboutMe = 'member' in s && s.member.membershipId === myMembershipId;
+  if (aboutMe && (s.type === 'MEMBER_REMOVE' || s.type === 'FINE_WAIVER')) return 'excludedTarget';
+  if (aboutMe && s.type === 'EARLY_EXIT') return 'excludedProposer';
+  if (aboutMe && s.type === 'ADMIN_LOAN') return 'excludedAdmin';
+  return 'notEligible';
 }
 
 export function proposalCardProps(
@@ -39,7 +53,7 @@ export function proposalCardProps(
           : p.myVote === 'VOTED'
             ? 'secret'
             : 'none',
-    notEligible: open && !p.canVote && !p.myVote ? 'notEligible' : null,
+    notEligible: notEligibleReason(p, ctx.myMembershipId),
     effect: p.effect ? pick(p.effect, ctx.lang) : undefined,
   };
 }

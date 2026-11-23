@@ -132,10 +132,10 @@ export function ProposalCard(p: ProposalCardProps) {
           <>
             <VoteBar
               fill={p.voted / Math.max(1, p.eligible)}
-              label={t('votes.card.participation', { voted: p.voted, eligible: p.eligible })}
+              label={t('votes.card.participation', { count: p.voted, eligible: p.eligible })}
             />
             <Txt variant="secondary" color="textSecondary">
-              {`${t('votes.card.participation', { voted: p.voted, eligible: p.eligible })}. ${t('votes.card.participationNote')}`}
+              {`${t('votes.card.participation', { count: p.voted, eligible: p.eligible })}. ${t('votes.card.participationNote')}`}
             </Txt>
           </>
         ) : (

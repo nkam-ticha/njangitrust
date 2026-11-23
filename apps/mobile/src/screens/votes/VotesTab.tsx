@@ -1,7 +1,7 @@
 // S-18 Votes tab (SCREENS.md; R11, GOV-01..04): open proposals first, then closed ones. "Oui" or
 // "Non" prepares the vote card; the card is confirmed in a sheet (spec 4.5). Secret votes show
 // participation only until they close.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -37,7 +37,12 @@ export function VotesTab() {
   const proposals = useProposals(groupId);
   const refresh = useRefreshProposals(groupId);
   const vote = useCastVote();
-  const [now] = useState(() => Date.now());
+  // "Closes in 5 hours" follows the clock while the tab stays open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   const [voting, setVoting] = useState<{ proposal: ProposalDto; action: PendingActionDto } | null>(
     null,
   );

@@ -8,9 +8,8 @@ import { ui } from '../../lib/texts';
 import { authorizeGroup } from '../../permissions';
 import { defineActionHandler, type ActionContext } from '../pending-actions';
 import { proposalError } from './proposals.errors';
-import { dispatchJob } from '../../jobs/dispatch';
 import { memberNames } from './proposals.context';
-import { announceParticipation } from './proposals.tally';
+import { announceParticipation, settleAfterVote } from './proposals.tally';
 import { proposalDefinition } from './types';
 
 export const voteArgsSchema = z.strictObject({
@@ -121,20 +120,17 @@ export const voteCastHandler = defineActionHandler({
       data: args.choice === 'YES' ? { yesCount: { increment: 1 } } : { noCount: { increment: 1 } },
     });
     const participation = proposal.yesCount + proposal.noCount + 1;
-    if (proposal.secret) {
-      // D20.1, H1: a secret vote never closes early. Only the job at closesAt (scheduled when the
-      // proposal opened) closes it; nothing is scheduled per vote. Members see participation.
+    const everyoneVoted = participation >= proposal.eligibleMembershipIds.length;
+    if (proposal.secret && !everyoneVoted) {
+      // D20.1, H1: a secret vote never closes on a certain result. Only the job at closesAt
+      // (scheduled when the proposal opened) closes it, or the last eligible vote (D26). Nothing is
+      // scheduled per vote; members see participation only.
       ctx.afterCommit(() => announceParticipation(proposal, participation));
     } else {
-      // GOV-02: a public vote closes as soon as its result is certain, in a system job detached
-      // from this member's request (the job id names the proposal and the vote count only).
-      ctx.afterCommit(() =>
-        dispatchJob(
-          'votes.close',
-          { proposalId: proposal.id },
-          { jobId: `tally-${proposal.id}-${participation}` },
-        ),
-      );
+      // GOV-02, D26: a public vote closes as soon as its result is certain, a secret one when
+      // everybody has voted. Done right after this vote commits, as the system, so the result
+      // shows at once and never waits for a queue or for `closesAt`.
+      ctx.afterCommit(() => settleAfterVote(proposal.id, participation));
     }
     return {
       outcome: 'done',

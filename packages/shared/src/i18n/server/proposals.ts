@@ -150,10 +150,10 @@ export const proposalTexts = {
     fr: 'Le vote dure {{hours}} h, ou se termine dès que le résultat est certain.',
     en: 'The vote lasts {{hours}} hours, or ends as soon as the result is certain.',
   },
-  /** D20.1: a secret vote always runs its full window. */
+  /** D20.1, D26: a secret vote runs its full window unless every eligible member has voted. */
   voteWindowSecret: {
-    fr: 'Le vote dure {{hours}} h. Le résultat et les totaux sont publiés à la fin.',
-    en: 'The vote lasts {{hours}} hours. The result and the totals are published at the end.',
+    fr: 'Le vote dure {{hours}} h, ou se termine dès que tous les membres ont voté. Le résultat et les totaux sont publiés à la fin.',
+    en: 'The vote lasts {{hours}} hours, or ends as soon as every member has voted. The result and the totals are published at the end.',
   },
   /** D20.2: what a lock screen shows about a solidarity request (no event, no note). */
   solidarityOpenedBody: {

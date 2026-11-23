@@ -19,6 +19,11 @@ export function thresholdCount(kind: ThresholdKind, eligibleCount: number): numb
  * R11.2, R11.3: the state of a proposal. PASSED as soon as the threshold is reached (and, for a
  * ROTATION_CHANGE, every moved member voted yes); REJECTED as soon as that can no longer happen;
  * EXPIRED when the window ends first; otherwise OPEN.
+ *
+ * D26 (refines D20.1): a secret proposal does not close early on a certain result, because live
+ * participation plus an early close could reveal choices. It closes before `closesAt` only when
+ * every eligible member has voted: nobody is left who could change the outcome, and the final tally
+ * then reveals nothing that the closing would not.
  */
 export function tallyProposal(input: {
   thresholdKind: ThresholdKind;
@@ -27,6 +32,8 @@ export function tallyProposal(input: {
   no: number;
   /** ROTATION_CHANGE: the members whose position changes and how they voted. */
   mustApprove?: { required: number; yes: number; no: number };
+  /** R11.5: a secret proposal (MEMBER_REMOVE, ADMIN_CHANGE). Default false. */
+  secret?: boolean;
   closesAt: Date;
   now: Date;
 }): { status: ProposalStatus; required: number; remaining: number } {
@@ -40,15 +47,24 @@ export function tallyProposal(input: {
   }
   const remaining = input.eligibleCount - input.yes - input.no;
   const approvals = input.mustApprove;
+  const timeIsUp = assertDate(input.now, 'now') >= assertDate(input.closesAt, 'closesAt');
+  if (input.secret && remaining > 0 && !timeIsUp) return { status: 'OPEN', required, remaining };
   const approved = !approvals || approvals.yes >= approvals.required;
   if (input.yes >= required && approved) return { status: 'PASSED', required, remaining };
   if (input.yes + remaining < required || (approvals && approvals.no > 0)) {
     return { status: 'REJECTED', required, remaining };
   }
-  if (assertDate(input.now, 'now') >= assertDate(input.closesAt, 'closesAt')) {
-    return { status: 'EXPIRED', required, remaining };
-  }
+  if (timeIsUp) return { status: 'EXPIRED', required, remaining };
   return { status: 'OPEN', required, remaining };
+}
+
+/**
+ * When a proposal that is being closed counts as closed. A secret proposal seen after its deadline
+ * is closed as of `closesAt` (D20.1: the result's time cannot point to the job that ran it); every
+ * other close, including a secret vote that every eligible member has finished (D26), is now.
+ */
+export function closeInstant(input: { secret: boolean; closesAt: Date; now: Date }): Date {
+  return input.secret && input.now >= input.closesAt ? input.closesAt : input.now;
 }
 
 /** R11.4: one vote per eligible member, never changed, only while the proposal is open. */

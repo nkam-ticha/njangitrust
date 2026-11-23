@@ -1,6 +1,7 @@
 // Privacy-guard H1, M1, M-A and owner decision D20.1 (R11.5, FSD GOV-03, AC-07): a secret vote
-// never closes its proposal. The vote runs its full window; result and totals appear together at
-// `closesAt`, written by a system job whose time, ids and records cannot be matched to any voter.
+// never closes on a certain result. The vote runs its full window; result and totals appear
+// together at `closesAt`, written by a system job whose time, ids and records cannot be matched to
+// any voter. D26 refines this: once every eligible member has voted, the result shows at once.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { settleBackground, useJobScheduler } from '../../jobs/dispatch';
 import { jobOptions } from '../../jobs/queues';
@@ -149,6 +150,74 @@ describe('a secret proposal runs its full window (D20.1, M-A)', () => {
           JSON.stringify(e.payload).includes('"PASSED"'),
       ),
     ).toBe(true);
+  });
+});
+
+describe('a secret proposal closes at once when every eligible member has voted (D26)', () => {
+  it('publishes the result and totals right after the last vote, before closesAt', async () => {
+    const { admin, carine, paul, groupId, proposalId } = await secretVoteGroup();
+    await voteYes(carine, proposalId);
+    await voteYes(paul, proposalId);
+    expect(await proposalOf(admin, proposalId)).toMatchObject({ status: 'OPEN', tally: null });
+    events = recordRealtimeEvents();
+    await voteYes(admin, proposalId);
+
+    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
+    expect(row.status).toBe('PASSED');
+    expect(row.closedAt!.getTime()).toBeLessThan(row.closesAt.getTime());
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'PASSED',
+      participation: 3,
+      tally: { yes: 3, no: 0 },
+    });
+    // Still no ballot, and the ledger result names no member.
+    expect(await getPrisma().ballot.count({ where: { proposalId } })).toBe(0);
+    const closed = ledger.filter((e) => e.event.event === 'VOTE_CLOSED' && e.refId === proposalId);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.membershipId ?? null).toBeNull();
+    const passed = (await results(proposalId)).filter((a) => a.action === 'proposal.passed');
+    expect(passed).toHaveLength(1);
+    expect(passed[0]).toMatchObject({ actorUserId: null, deviceId: null, requestId: null });
+    expect(
+      await getPrisma().notification.count({
+        where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
+      }),
+    ).toBe(3);
+    expect(
+      events.some(
+        (e) =>
+          e.room === `group:${groupId}` &&
+          e.event === 'proposal.updated' &&
+          JSON.stringify(e.payload).includes('"PASSED"') &&
+          JSON.stringify(e.payload).includes('"yes":3'),
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects at once when everyone has voted and the majority is not there', async () => {
+    const { admin, carine, paul, proposalId } = await secretVoteGroup();
+    const no = async (user: TestUser) => {
+      const card = await api(user).post(`/v1/proposals/${proposalId}/votes`, { choice: 'NO' });
+      expect((await confirm(user, card.body.action.id)).status).toBe(200);
+    };
+    await no(carine);
+    await voteYes(paul, proposalId);
+    expect((await proposalOf(admin, proposalId)).status).toBe('OPEN');
+    await no(admin);
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'REJECTED',
+      tally: { yes: 1, no: 2 },
+    });
+  });
+
+  it('does not need the job queue: the result is there when the last vote returns', async () => {
+    const { admin, carine, paul, proposalId } = await secretVoteGroup();
+    // A serverless host: queued jobs wait for the next cron tick, which never comes here.
+    useJobScheduler(() => Promise.resolve());
+    await voteYes(carine, proposalId);
+    await voteYes(paul, proposalId);
+    await voteYes(admin, proposalId);
+    expect((await proposalOf(admin, proposalId)).status).toBe('PASSED');
   });
 });
 
