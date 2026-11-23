@@ -1,6 +1,6 @@
 // VOTE_CAST (L1, R11.4, R11.5). One vote per eligible member, never changed. For a secret
 // proposal the receipt and the counter are written in one transaction and no Ballot exists.
-import { validateVote } from '@njangi/rules';
+import { tallyProposal, validateVote } from '@njangi/rules';
 import { z } from 'zod';
 import type { Db } from '../../lib/prisma';
 import { proposalTexts } from '@njangi/shared/i18n/server/proposals';
@@ -9,7 +9,7 @@ import { authorizeGroup } from '../../permissions';
 import { defineActionHandler, type ActionContext } from '../pending-actions';
 import { proposalError } from './proposals.errors';
 import { memberNames } from './proposals.context';
-import { announceParticipation, settleAfterVote } from './proposals.tally';
+import { settleAfterVote } from './proposals.tally';
 import { proposalDefinition } from './types';
 
 export const voteArgsSchema = z.strictObject({
@@ -47,6 +47,23 @@ async function checkVote(ctx: ActionContext, args: VoteArgs, db: Db) {
   });
   if (!check.ok) throw proposalError(REFUSALS[check.code]);
   if (proposal.secret !== args.secret) throw proposalError('PROPOSAL_NOT_FOUND');
+  // D32: once the result is certain nobody left can change it. A vote that arrives between the
+  // deciding vote and the closing is refused, not added to the totals that are about to be published.
+  // (A ROTATION_CHANGE also needs its moved members' yes votes, which the counters do not show.)
+  if (proposal.mustApproveMembershipIds.length === 0) {
+    const state = tallyProposal({
+      thresholdKind: proposal.thresholdKind,
+      eligibleCount: proposal.eligibleMembershipIds.length,
+      yes: proposal.yesCount,
+      no: proposal.noCount,
+      secret: proposal.secret,
+      closesAt: proposal.closesAt,
+      now: ctx.now,
+    });
+    if (state.status === 'PASSED' || state.status === 'REJECTED') {
+      throw proposalError('PROPOSAL_CLOSED');
+    }
+  }
   return { proposal, membershipId: access.membership.id };
 }
 
@@ -120,18 +137,11 @@ export const voteCastHandler = defineActionHandler({
       data: args.choice === 'YES' ? { yesCount: { increment: 1 } } : { noCount: { increment: 1 } },
     });
     const participation = proposal.yesCount + proposal.noCount + 1;
-    const everyoneVoted = participation >= proposal.eligibleMembershipIds.length;
-    if (proposal.secret && !everyoneVoted) {
-      // D20.1, H1: a secret vote never closes on a certain result. Only the job at closesAt
-      // (scheduled when the proposal opened) closes it, or the last eligible vote (D26). Nothing is
-      // scheduled per vote; members see participation only.
-      ctx.afterCommit(() => announceParticipation(proposal, participation));
-    } else {
-      // GOV-02, D26: a public vote closes as soon as its result is certain, a secret one when
-      // everybody has voted. Done right after this vote commits, as the system, so the result
-      // shows at once and never waits for a queue or for `closesAt`.
-      ctx.afterCommit(() => settleAfterVote(proposal.id, participation));
-    }
+    // GOV-02, D32: every vote, secret ones included, is settled right after it commits, as the
+    // system. The proposal closes the moment its result is certain, so it shows at once and never
+    // waits for a queue, for `closesAt` or for members whose vote could not change it. While the
+    // result is open a secret vote shows participation only.
+    ctx.afterCommit(() => settleAfterVote(proposal.id, participation));
     return {
       outcome: 'done',
       resultRef: receipt.id,

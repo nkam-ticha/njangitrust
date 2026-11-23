@@ -1,8 +1,8 @@
 // Closing proposals (R11.2, R11.3, R11.8, FSD GOV-02, GOV-04). Runs as the system, in its own
 // transaction, never inside the voter's transaction: from the `votes.close` job, or right after a
-// vote that settles the proposal (`settleAfterVote`), so the result shows at once. A secret
-// proposal (MEMBER_REMOVE, ADMIN_CHANGE) closes early only when every eligible member has voted
-// (D26); otherwise it closes as of its `closesAt`, so neither the result's time nor its records can
+// vote (`settleAfterVote`), so the result shows at once. Every proposal, a secret one
+// (MEMBER_REMOVE, ADMIN_CHANGE) included, closes as soon as its result is certain (D32); a secret
+// one that is still undecided at `closesAt` closes as of that instant, so the result's time cannot
 // be matched to a voter (D20.1, privacy-guard H1, M1, M-A).
 import { closeInstant, tallyProposal } from '@njangi/rules';
 import { proposalTexts } from '@njangi/shared/i18n/server/proposals';
@@ -52,21 +52,9 @@ function announce(p: Proposal, status: Status) {
   });
 }
 
-/** `proposal.updated` while a secret vote is open: participation only (R11.5, D20.1). */
-export function announceParticipation(p: Proposal, participation: number): void {
-  emitToGroup(p.groupId, 'proposal.updated', {
-    id: p.id,
-    groupId: p.groupId,
-    status: 'OPEN',
-    participation,
-    tally: null,
-  });
-}
-
 /**
  * Re-tallies one proposal and, if its result is certain, closes and applies it. A secret proposal
- * stays open until `closesAt` unless every eligible member has voted (D26); after `closesAt` it
- * closes as of that instant.
+ * that is still undecided at `closesAt` closes as of that instant (D20.1, D32).
  */
 export async function settleProposal(proposalId: string, now: Date = clock.now()): Promise<Status> {
   const effects = new AfterCommit();
@@ -193,13 +181,43 @@ export async function settleAfterVote(proposalId: string, participation: number)
   }
 }
 
-/** Job `votes.close` scan: every open proposal past its closing time (R11.3). */
+/**
+ * Job `votes.close` scan: every open proposal past its closing time (R11.3), and every open
+ * proposal whose result is already certain, in case the request that took the deciding vote was
+ * cut off before it could close the proposal (D32).
+ */
 export async function closeDueProposals(now: Date = clock.now()): Promise<number> {
-  const due = await getPrisma().proposal.findMany({
-    where: { status: 'OPEN', closesAt: { lte: now } },
-    select: { id: true },
+  const open = await getPrisma().proposal.findMany({
+    where: { status: 'OPEN' },
+    select: {
+      id: true,
+      secret: true,
+      thresholdKind: true,
+      eligibleMembershipIds: true,
+      mustApproveMembershipIds: true,
+      yesCount: true,
+      noCount: true,
+      closesAt: true,
+    },
     take: 200,
   });
-  for (const { id } of due) await settleProposal(id, now);
-  return due.length;
+  let settled = 0;
+  for (const p of open) {
+    const due = p.closesAt <= now;
+    const certain =
+      p.mustApproveMembershipIds.length === 0 &&
+      tallyProposal({
+        secret: p.secret,
+        thresholdKind: p.thresholdKind,
+        eligibleCount: p.eligibleMembershipIds.length,
+        yes: p.yesCount,
+        no: p.noCount,
+        closesAt: p.closesAt,
+        now,
+      }).status !== 'OPEN';
+    if (!due && !certain) continue;
+    await settleProposal(p.id, now);
+    settled += 1;
+  }
+  return settled;
 }

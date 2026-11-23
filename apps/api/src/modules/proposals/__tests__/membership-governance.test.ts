@@ -9,13 +9,7 @@ import {
   uninstallFakeMoney,
   type FakeMoney,
 } from '../../../../test/helpers/fake-money-port';
-import {
-  closeAtDeadline,
-  propose,
-  proposalOf,
-  startedGroup,
-  vote,
-} from '../../../../test/helpers/governance';
+import { propose, proposalOf, startedGroup, vote } from '../../../../test/helpers/governance';
 
 let money: FakeMoney;
 beforeAll(() => {
@@ -141,14 +135,13 @@ describe('MEMBER_REMOVE (secret, target excluded, R12.3)', () => {
     expect((await vote(target, id, 'NO')).body.code).toBe('NOT_ELIGIBLE_VOTER');
 
     await vote(a, id, 'YES');
-    await vote(admin, id, 'YES');
-    // D20.1: the majority is in, but a secret vote runs its full window; totals come at the end.
     expect(await proposalOf(admin, id)).toMatchObject({
       status: 'OPEN',
-      participation: 2,
+      participation: 1,
       tally: null,
     });
-    expect(await closeAtDeadline(id)).toBe('PASSED');
+    await vote(admin, id, 'YES');
+    // D32: the majority is in, so nobody left could change the result: it closes at once.
     expect(await proposalOf(admin, id)).toMatchObject({
       status: 'PASSED',
       tally: { yes: 2, no: 0 },
@@ -192,9 +185,10 @@ describe('ADMIN_CHANGE (secret, R1.4)', () => {
     });
     expect((await proposalOf(admin, id)).secret).toBe(true);
     await vote(next, id, 'YES');
-    await vote(members[1]!, id, 'YES');
     expect((await proposalOf(admin, id)).status).toBe('OPEN');
-    expect(await closeAtDeadline(id)).toBe('PASSED');
+    await vote(members[1]!, id, 'YES');
+    // D32: the majority is in, so the admin changes at once.
+    expect((await proposalOf(admin, id)).status).toBe('PASSED');
     const roles = await getPrisma().membership.findMany({
       where: { groupId, role: 'ADMIN' },
       select: { id: true },

@@ -78,7 +78,7 @@ describe('tally and early close (R11.2, R11.3)', () => {
   });
 });
 
-describe('secret votes close early only when everyone has voted (D26)', () => {
+describe('secret votes close as soon as the result is certain (D32)', () => {
   const secret = {
     thresholdKind: 'MAJORITY' as const,
     eligibleCount: 3,
@@ -87,16 +87,29 @@ describe('secret votes close early only when everyone has voted (D26)', () => {
     now: before,
   };
 
-  it('stays open while someone can still vote, even when the threshold is reached', () => {
+  it('passes at once when the threshold is reached, even with a voter still to come', () => {
     expect(tallyProposal({ ...secret, yes: 2, no: 0 })).toEqual({
-      status: 'OPEN',
+      status: 'PASSED',
       required: 2,
       remaining: 1,
     });
   });
 
-  it('stays open while someone can still vote, even when the threshold is out of reach', () => {
-    expect(tallyProposal({ ...secret, eligibleCount: 5, yes: 0, no: 3 })).toMatchObject({
+  it('is rejected at once when the threshold can no longer be reached', () => {
+    expect(tallyProposal({ ...secret, yes: 0, no: 2 })).toEqual({
+      status: 'REJECTED',
+      required: 2,
+      remaining: 1,
+    });
+  });
+
+  it('stays open while the result is still undecided and someone can still vote', () => {
+    expect(tallyProposal({ ...secret, yes: 1, no: 0 })).toEqual({
+      status: 'OPEN',
+      required: 2,
+      remaining: 2,
+    });
+    expect(tallyProposal({ ...secret, eligibleCount: 5, yes: 1, no: 2 })).toMatchObject({
       status: 'OPEN',
       remaining: 2,
     });
@@ -119,7 +132,7 @@ describe('secret votes close early only when everyone has voted (D26)', () => {
     });
   });
 
-  it('follows the window as before when not everyone voted', () => {
+  it('follows the window when the result stays undecided', () => {
     expect(tallyProposal({ ...secret, yes: 1, no: 0, now: closesAt })).toMatchObject({
       status: 'EXPIRED',
       remaining: 2,

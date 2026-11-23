@@ -20,10 +20,10 @@ export function thresholdCount(kind: ThresholdKind, eligibleCount: number): numb
  * ROTATION_CHANGE, every moved member voted yes); REJECTED as soon as that can no longer happen;
  * EXPIRED when the window ends first; otherwise OPEN.
  *
- * D26 (refines D20.1): a secret proposal does not close early on a certain result, because live
- * participation plus an early close could reveal choices. It closes before `closesAt` only when
- * every eligible member has voted: nobody is left who could change the outcome, and the final tally
- * then reveals nothing that the closing would not.
+ * D32 (refines D26): a secret proposal closes as soon as its result is certain, like a public one.
+ * Once the threshold is reached (or can no longer be reached) no later vote can change the outcome,
+ * so waiting for the rest only delays the answer. Until then it stays open and shows participation
+ * only (R11.5).
  */
 export function tallyProposal(input: {
   thresholdKind: ThresholdKind;
@@ -48,7 +48,6 @@ export function tallyProposal(input: {
   const remaining = input.eligibleCount - input.yes - input.no;
   const approvals = input.mustApprove;
   const timeIsUp = assertDate(input.now, 'now') >= assertDate(input.closesAt, 'closesAt');
-  if (input.secret && remaining > 0 && !timeIsUp) return { status: 'OPEN', required, remaining };
   const approved = !approvals || approvals.yes >= approvals.required;
   if (input.yes >= required && approved) return { status: 'PASSED', required, remaining };
   if (input.yes + remaining < required || (approvals && approvals.no > 0)) {
@@ -61,7 +60,7 @@ export function tallyProposal(input: {
 /**
  * When a proposal that is being closed counts as closed. A secret proposal seen after its deadline
  * is closed as of `closesAt` (D20.1: the result's time cannot point to the job that ran it); every
- * other close, including a secret vote that every eligible member has finished (D26), is now.
+ * other close, including a secret vote whose result became certain (D32), is now.
  */
 export function closeInstant(input: { secret: boolean; closesAt: Date; now: Date }): Date {
   return input.secret && input.now >= input.closesAt ? input.closesAt : input.now;

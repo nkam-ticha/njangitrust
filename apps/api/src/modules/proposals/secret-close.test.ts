@@ -1,7 +1,8 @@
-// Privacy-guard H1, M1, M-A and owner decision D20.1 (R11.5, FSD GOV-03, AC-07): a secret vote
-// never closes on a certain result. The vote runs its full window; result and totals appear
-// together at `closesAt`, written by a system job whose time, ids and records cannot be matched to
-// any voter. D26 refines this: once every eligible member has voted, the result shows at once.
+// Privacy-guard H1, M1, M-A and owner decision D20.1 (R11.5, FSD GOV-03, AC-07), refined by D32: a
+// secret vote closes the moment its result is certain (nobody left could change it), and shows only
+// participation until then. A vote that stays undecided runs to `closesAt`, where a system job
+// publishes result and totals at that exact time, so no time, id or record can be matched to a
+// voter.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { settleBackground, useJobScheduler } from '../../jobs/dispatch';
 import { jobOptions } from '../../jobs/queues';
@@ -22,7 +23,7 @@ import {
 import { closeAtDeadline, propose, proposalOf } from '../../../test/helpers/governance';
 import { registerGovernancePorts, type LedgerEventInput } from './governance-ports';
 import { resetGovernancePortsForTests } from './governance-ports';
-import { settleProposal } from './proposals.tally';
+import { closeDueProposals, settleProposal } from './proposals.tally';
 
 const HOUR = 3_600_000;
 const ledger: LedgerEventInput[] = [];
@@ -81,95 +82,31 @@ const results = (proposalId: string) =>
   getPrisma().auditLog.findMany({ where: { target: `Proposal:${proposalId}` } });
 const atHour = (d: Date | null) => d === null || d.getTime() % HOUR === 0;
 
-describe('a secret proposal runs its full window (D20.1, M-A)', () => {
-  it('stays open when the deciding votes are in, showing participation only', async () => {
+describe('a secret proposal closes as soon as its result is certain (D32)', () => {
+  it('passes right after the deciding vote, before closesAt, without waiting for the last member', async () => {
     const { admin, carine, paul, groupId, proposalId } = await secretVoteGroup();
     events = recordRealtimeEvents();
     await voteYes(carine, proposalId);
-    await voteYes(paul, proposalId);
-
-    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
-    expect(row).toMatchObject({ status: 'OPEN', closedAt: null });
     expect(await proposalOf(admin, proposalId)).toMatchObject({
       status: 'OPEN',
-      participation: 2,
+      participation: 1,
       tally: null,
       closedAt: null,
     });
-    expect(ledger.filter((e) => e.refId === proposalId)).toEqual([]);
-    expect((await results(proposalId)).map((a) => a.action)).not.toContain('proposal.passed');
-    const groupEvents = events.filter((e) => e.room === `group:${groupId}`);
-    for (const e of groupEvents.filter((g) => g.event === 'proposal.updated'))
-      expect(e.payload).toMatchObject({ status: 'OPEN', tally: null });
-    const notices = await getPrisma().notification.count({
-      where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
-    });
-    expect(notices).toBe(0);
-
-    // A close job that runs early changes nothing.
-    expect(await settleProposal(proposalId, new Date(row.closesAt.getTime() - 1))).toBe('OPEN');
-  });
-
-  it('publishes result and totals together at closesAt, at that exact time, as the system', async () => {
-    const { admin, carine, paul, groupId, proposalId } = await secretVoteGroup();
-    await voteYes(carine, proposalId);
     await voteYes(paul, proposalId);
-    events = recordRealtimeEvents();
-    await closeAtDeadline(proposalId);
-
-    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
-    expect(row.status).toBe('PASSED');
-    // Not the job's run time: the deadline everybody already knew.
-    expect(row.closedAt!.getTime()).toBe(row.closesAt.getTime());
-    expect(row.appliedAt!.getTime()).toBe(row.closesAt.getTime());
-    expect(await proposalOf(admin, proposalId)).toMatchObject({
-      status: 'PASSED',
-      participation: 2,
-      tally: { yes: 2, no: 0 },
-    });
-
-    const closed = ledger.filter((e) => e.event.event === 'VOTE_CLOSED' && e.refId === proposalId);
-    expect(closed).toHaveLength(1);
-    expect(closed[0]!.occurredAt.getTime()).toBe(row.closesAt.getTime());
-    expect(closed[0]!.membershipId ?? null).toBeNull();
-
-    const passed = (await results(proposalId)).filter((a) => a.action === 'proposal.passed');
-    expect(passed).toHaveLength(1);
-    expect(passed[0]).toMatchObject({ actorUserId: null, deviceId: null, requestId: null });
-
-    const notices = await getPrisma().notification.findMany({
-      where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
-    });
-    expect(notices).toHaveLength(3);
-    expect(new Set(notices.map((n) => n.bodyFr)).size).toBe(1);
-    expect(
-      events.some(
-        (e) =>
-          e.room === `group:${groupId}` &&
-          e.event === 'proposal.updated' &&
-          JSON.stringify(e.payload).includes('"PASSED"'),
-      ),
-    ).toBe(true);
-  });
-});
-
-describe('a secret proposal closes at once when every eligible member has voted (D26)', () => {
-  it('publishes the result and totals right after the last vote, before closesAt', async () => {
-    const { admin, carine, paul, groupId, proposalId } = await secretVoteGroup();
-    await voteYes(carine, proposalId);
-    await voteYes(paul, proposalId);
-    expect(await proposalOf(admin, proposalId)).toMatchObject({ status: 'OPEN', tally: null });
-    events = recordRealtimeEvents();
-    await voteYes(admin, proposalId);
 
     const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
     expect(row.status).toBe('PASSED');
     expect(row.closedAt!.getTime()).toBeLessThan(row.closesAt.getTime());
     expect(await proposalOf(admin, proposalId)).toMatchObject({
       status: 'PASSED',
-      participation: 3,
-      tally: { yes: 3, no: 0 },
+      participation: 2,
+      tally: { yes: 2, no: 0 },
     });
+    // The one member left can no longer vote: the result is final.
+    expect(
+      (await api(admin).post(`/v1/proposals/${proposalId}/votes`, { choice: 'NO' })).status,
+    ).toBe(409);
     // Still no ballot, and the ledger result names no member.
     expect(await getPrisma().ballot.count({ where: { proposalId } })).toBe(0);
     const closed = ledger.filter((e) => e.event.event === 'VOTE_CLOSED' && e.refId === proposalId);
@@ -178,22 +115,80 @@ describe('a secret proposal closes at once when every eligible member has voted 
     const passed = (await results(proposalId)).filter((a) => a.action === 'proposal.passed');
     expect(passed).toHaveLength(1);
     expect(passed[0]).toMatchObject({ actorUserId: null, deviceId: null, requestId: null });
+    const groupEvents = events.filter((e) => e.room === `group:${groupId}`);
+    // While it was open, the events carried participation only.
+    for (const e of groupEvents.filter(
+      (g) => g.event === 'proposal.updated' && JSON.stringify(g.payload).includes('"OPEN"'),
+    ))
+      expect(e.payload).toMatchObject({ tally: null });
     expect(
       await getPrisma().notification.count({
         where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
       }),
     ).toBe(3);
-    expect(
-      events.some(
-        (e) =>
-          e.room === `group:${groupId}` &&
-          e.event === 'proposal.updated' &&
-          JSON.stringify(e.payload).includes('"PASSED"') &&
-          JSON.stringify(e.payload).includes('"yes":3'),
-      ),
-    ).toBe(true);
   });
 
+  it('is rejected right after the vote that makes yes unreachable', async () => {
+    const { admin, carine, paul, proposalId } = await secretVoteGroup();
+    const no = async (user: TestUser) => {
+      const card = await api(user).post(`/v1/proposals/${proposalId}/votes`, { choice: 'NO' });
+      expect((await confirm(user, card.body.action.id)).status).toBe(200);
+    };
+    await no(carine);
+    expect((await proposalOf(admin, proposalId)).status).toBe('OPEN');
+    await no(paul);
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'REJECTED',
+      tally: { yes: 0, no: 2 },
+    });
+  });
+
+  it('keeps an undecided vote open, showing participation only, and a close job changes nothing', async () => {
+    const { admin, carine, groupId, proposalId } = await secretVoteGroup();
+    events = recordRealtimeEvents();
+    await voteYes(carine, proposalId);
+    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
+    expect(row).toMatchObject({ status: 'OPEN', closedAt: null });
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'OPEN',
+      participation: 1,
+      tally: null,
+    });
+    for (const e of events.filter(
+      (g) => g.room === `group:${groupId}` && g.event === 'proposal.updated',
+    ))
+      expect(e.payload).toMatchObject({ status: 'OPEN', tally: null });
+    expect(await settleProposal(proposalId, new Date(row.closesAt.getTime() - 1))).toBe('OPEN');
+  });
+
+  it('publishes an undecided vote at closesAt, at that exact time, as the system', async () => {
+    const { admin, carine, groupId, proposalId } = await secretVoteGroup();
+    await voteYes(carine, proposalId);
+    events = recordRealtimeEvents();
+    await closeAtDeadline(proposalId);
+
+    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
+    expect(row.status).toBe('EXPIRED');
+    // Not the job's run time: the deadline everybody already knew.
+    expect(row.closedAt!.getTime()).toBe(row.closesAt.getTime());
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'EXPIRED',
+      participation: 1,
+      tally: { yes: 1, no: 0 },
+    });
+    const closed = ledger.filter((e) => e.event.event === 'VOTE_CLOSED' && e.refId === proposalId);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]!.occurredAt.getTime()).toBe(row.closesAt.getTime());
+    expect(closed[0]!.membershipId ?? null).toBeNull();
+    const notices = await getPrisma().notification.findMany({
+      where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
+    });
+    expect(notices).toHaveLength(3);
+    expect(new Set(notices.map((n) => n.bodyFr)).size).toBe(1);
+  });
+});
+
+describe('a secret proposal whose last vote is cast closes at once (D26, D32)', () => {
   it('rejects at once when everyone has voted and the majority is not there', async () => {
     const { admin, carine, paul, proposalId } = await secretVoteGroup();
     const no = async (user: TestUser) => {
@@ -216,8 +211,42 @@ describe('a secret proposal closes at once when every eligible member has voted 
     useJobScheduler(() => Promise.resolve());
     await voteYes(carine, proposalId);
     await voteYes(paul, proposalId);
-    await voteYes(admin, proposalId);
     expect((await proposalOf(admin, proposalId)).status).toBe('PASSED');
+  });
+});
+
+describe('a result that is certain but not yet closed (D32)', () => {
+  it('refuses a vote that can no longer change anything', async () => {
+    const { admin, carine, paul, proposalId } = await secretVoteGroup();
+    // Two yes votes are in (the counters), but the closing has not run yet.
+    await getPrisma().proposal.update({ where: { id: proposalId }, data: { yesCount: 2 } });
+    const late = await api(admin).post(`/v1/proposals/${proposalId}/votes`, { choice: 'NO' });
+    expect(late.status).toBe(409);
+    expect(late.body.code).toBe('PROPOSAL_CLOSED');
+    // The totals that will be published are not changed by a late vote.
+    const row = await getPrisma().proposal.findUniqueOrThrow({ where: { id: proposalId } });
+    expect([row.yesCount, row.noCount]).toEqual([2, 0]);
+    void carine;
+    void paul;
+  });
+
+  it('is closed by the periodic scan when the request that decided it was cut off', async () => {
+    const { admin, groupId, proposalId } = await secretVoteGroup();
+    // The scan leaves an undecided vote alone, even though it is open for 72 hours.
+    await closeDueProposals(new Date());
+    expect((await proposalOf(admin, proposalId)).status).toBe('OPEN');
+    // A deciding vote whose closing never ran.
+    await getPrisma().proposal.update({ where: { id: proposalId }, data: { yesCount: 2 } });
+    expect(await closeDueProposals(new Date())).toBeGreaterThanOrEqual(1);
+    expect(await proposalOf(admin, proposalId)).toMatchObject({
+      status: 'PASSED',
+      tally: { yes: 2, no: 0 },
+    });
+    expect(
+      await getPrisma().notification.count({
+        where: { groupId, deepLink: `/votes/${proposalId}`, titleEn: 'Vote result' },
+      }),
+    ).toBe(3);
   });
 });
 
