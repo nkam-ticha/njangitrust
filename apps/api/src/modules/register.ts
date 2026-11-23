@@ -20,6 +20,7 @@ import {
   meetingScheduleHandler,
 } from './meetings';
 import { registerStatementJobs } from './statements';
+import { registerRetentionJobs } from './retention';
 import { registerPendingActionJobs } from './pending-actions/pending-actions.jobs';
 import { proposalCreateHandler, registerProposalJobs, voteCastHandler } from './proposals';
 import { payHandler, pollPaymentIntent, registerPaymentJobs } from './payments';
@@ -175,4 +176,5 @@ export function registerJobs(): void {
   registerReconciliationJobs();
   registerSolidarityJobs();
   registerStatementJobs();
+  registerRetentionJobs();
 }
