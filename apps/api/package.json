@@ -15,7 +15,8 @@
     "db:migrate:create": "prisma migrate dev --create-only",
     "db:status": "prisma migrate status",
     "db:reset:test": "tsx scripts/reset-test-db.ts",
-    "db:seed": "tsx --env-file=.env prisma/seed/index.ts"
+    "db:seed": "tsx --env-file=.env prisma/seed/index.ts",
+    "developer:hash": "tsx scripts/hash-developer-password.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",

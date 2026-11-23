@@ -68,6 +68,19 @@ const schema = z
 
     JWT_SECRET: secret('JWT_SECRET'),
     JWT_REFRESH_SECRET: secret('JWT_REFRESH_SECRET'),
+    /**
+     * D28: the developer console's own login. Both unset: the developer login is off. The hash is
+     * an argon2id hash made with `tsx scripts/hash-developer-password.ts` (never the password).
+     */
+    DEVELOPER_USERNAME: optionalString.pipe(z.string().min(3).max(64).optional()),
+    DEVELOPER_PASSWORD_HASH: optionalString.pipe(
+      z
+        .string()
+        .startsWith('$argon2id$', 'DEVELOPER_PASSWORD_HASH must be an argon2id hash')
+        .optional(),
+    ),
+    /** Signs developer tokens. Unset: a key derived from JWT_SECRET, never the same key. */
+    DEVELOPER_JWT_SECRET: optionalString.pipe(secret('DEVELOPER_JWT_SECRET').optional()),
     CRON_SECRET: optionalString.pipe(z.string().min(32).optional()),
     /** Separate shared secret for trusted operator disbursement-refund callbacks. */
     DISBURSEMENT_REFUND_SECRET: optionalString.pipe(z.string().min(32).optional()),
@@ -185,6 +198,20 @@ const schema = z
       ctx.addIssue({
         code: 'custom',
         path: ['JWT_REFRESH_SECRET'],
+        message: 'must differ from JWT_SECRET',
+      });
+    }
+    if (Boolean(env.DEVELOPER_USERNAME) !== Boolean(env.DEVELOPER_PASSWORD_HASH)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DEVELOPER_PASSWORD_HASH'],
+        message: 'DEVELOPER_USERNAME and DEVELOPER_PASSWORD_HASH must be set together',
+      });
+    }
+    if (env.DEVELOPER_JWT_SECRET && env.DEVELOPER_JWT_SECRET === env.JWT_SECRET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DEVELOPER_JWT_SECRET'],
         message: 'must differ from JWT_SECRET',
       });
     }

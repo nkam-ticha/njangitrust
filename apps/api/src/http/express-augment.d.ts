@@ -12,6 +12,8 @@ declare global {
       clientKind: ClientKind;
       /** Set by the auth middleware once the access token and session are verified. */
       actor?: AuthActor;
+      /** Set by the developer-console middleware (D28); never together with `actor`. */
+      developer?: { username: string };
     }
   }
 }

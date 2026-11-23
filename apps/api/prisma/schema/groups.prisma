@@ -22,6 +22,8 @@ model Group {
   currentCycle    Cycle?      @relation("GroupCurrentCycle", fields: [currentCycleId], references: [id], onDelete: Restrict)
   /// Which provider account holds this group's money (2.5 invariant 6).
   providerAccount String      @default("default")
+  /// D28: set when a developer closed and hid the group. Members no longer see it; the ledger stays.
+  hiddenByDeveloperAt DateTime? @db.Timestamptz(3)
 
   memberships        Membership[]
   invites            Invite[]

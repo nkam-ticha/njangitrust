@@ -16,5 +16,11 @@ export {
   type GroupAction,
   type OwnerAction,
 } from './policies';
-export { authorizeGroup, authorizeOwner, loadGroupActor, type GroupAccess } from './group-access';
+export {
+  authorizeGroup,
+  authorizeOwner,
+  loadGroupActor,
+  lockGroup,
+  type GroupAccess,
+} from './group-access';
 export { denialToError, permissionError } from './permission-errors';

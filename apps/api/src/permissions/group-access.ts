@@ -27,12 +27,36 @@ export async function loadGroupActor(
       id: true,
       name: true,
       status: true,
+      hiddenByDeveloperAt: true,
       memberships: { where: { userId }, select: { id: true, role: true, status: true }, take: 1 },
     },
   });
-  if (!group) return { group: null, actor: { userId, membership: null } };
-  const { memberships, ...rest } = group;
+  // D28: a group a developer closed and hid does not exist for its members.
+  if (!group || group.hiddenByDeveloperAt)
+    return { group: null, actor: { userId, membership: null } };
+  const { memberships, hiddenByDeveloperAt: _hidden, ...rest } = group;
   return { group: rest, actor: { userId, membership: memberships[0] ?? null } };
+}
+
+/**
+ * D28: takes the group's row lock, before any member lock. Money actions that start an operation
+ * (a payment, a withdrawal) take it first and then re-check access: a developer closing the group
+ * holds it exclusively while counting what is in flight, so an operation is either seen by that
+ * count or refused here once the close has committed. `share` lets such actions run side by side;
+ * `update` is for those that go on to append to the ledger, which takes the exclusive lock itself
+ * (a shared lock held by two of them would deadlock on that upgrade). Lock order: Group, Membership.
+ */
+export async function lockGroup(
+  db: Db,
+  groupId: string,
+  mode: 'share' | 'update' = 'share',
+): Promise<void> {
+  if (!UUID.test(groupId)) return;
+  if (mode === 'update') {
+    await db.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${groupId}::uuid FOR UPDATE`;
+  } else {
+    await db.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${groupId}::uuid FOR SHARE`;
+  }
 }
 
 /**
