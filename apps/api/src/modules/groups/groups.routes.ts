@@ -36,21 +36,28 @@ export function groupsRoutes(): Router {
     }),
   );
 
-  // GRP-02/03: the admin starts the first cycle; returns a START_CYCLE card to confirm.
+  // GRP-02/03, D40.2: the admin starts the first cycle, or (between cycles) the next one with a
+  // chosen first payout date; returns a START_CYCLE card to confirm.
   router.post(
     '/:groupId/cycles/start',
-    handle({ params: z.strictObject({ groupId: uuidSchema }) }, async ({ params }, req, res) => {
-      const actor = actorOf(req);
-      const action = await createPendingAction({
-        userId: actor.userId,
-        groupId: params.groupId,
-        lang: actor.lang,
-        origin: 'UI',
-        type: 'START_CYCLE',
-        args: { groupId: params.groupId },
-      });
-      res.status(201).json({ action: toPendingAction(action) });
-    }),
+    handle(
+      {
+        params: z.strictObject({ groupId: uuidSchema }),
+        body: z.strictObject({ firstPayoutAt: z.string().datetime({ offset: true }).optional() }),
+      },
+      async ({ params, body }, req, res) => {
+        const actor = actorOf(req);
+        const action = await createPendingAction({
+          userId: actor.userId,
+          groupId: params.groupId,
+          lang: actor.lang,
+          origin: 'UI',
+          type: 'START_CYCLE',
+          args: { groupId: params.groupId, ...body },
+        });
+        res.status(201).json({ action: toPendingAction(action) });
+      },
+    ),
   );
 
   return router;

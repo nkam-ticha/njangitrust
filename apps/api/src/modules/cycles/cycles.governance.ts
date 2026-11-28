@@ -23,6 +23,7 @@ import { appendLedgerEntry } from '../ledger';
 import { settleDueDebts } from '../payouts/payouts.settlement';
 import { proposalError } from '../proposals/proposals.errors';
 import { getCurrentParams } from '../rulesets';
+import { lockRoundsThenGroup } from './cycles.locks';
 import { readChain } from '../statements/ledger-read';
 
 type Tx = Prisma.TransactionClient;
@@ -31,7 +32,8 @@ const DEBT_KINDS = ['BID', 'FINE', 'CORRECTION', 'LOAN_INSTALLMENT'] as const;
 const OPEN_PAYMENT = ['CREATED', 'PENDING', 'EXPIRED'] as const;
 
 async function lockGroup(tx: Tx, groupId: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "Group" WHERE "id" = ${groupId}::uuid FOR UPDATE`;
+  // The shared order: rounds first, then the group (cycles.locks.ts).
+  await lockRoundsThenGroup(tx, groupId);
 }
 
 async function currentCycle(tx: Tx, groupId: string) {

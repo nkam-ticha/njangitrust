@@ -192,12 +192,22 @@ export async function acceptInvite(
       throw inviteError('GROUP_FULL', { params: { max: MAX_MEMBERS } });
 
     const founding = invite.group.status === 'FORMING';
+    // D40: between two cycles there is no current cycle; the newcomer starts with the next one.
+    const lastCycleNumber = founding
+      ? null
+      : (invite.group.currentCycle?.number ??
+        (
+          await tx.cycle.findFirst({
+            where: { groupId: invite.groupId },
+            orderBy: { number: 'desc' },
+            select: { number: true },
+          })
+        )?.number ??
+        0);
     const data = {
       role: 'MEMBER' as const,
       status: founding ? ('ACTIVE' as const) : ('INVITED' as const),
-      activeFromCycle: newMemberActiveFromCycle(
-        founding ? null : (invite.group.currentCycle?.number ?? 0),
-      ),
+      activeFromCycle: newMemberActiveFromCycle(lastCycleNumber),
       leftAt: null,
     };
     const membership = existing

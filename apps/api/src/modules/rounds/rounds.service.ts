@@ -19,8 +19,10 @@ export async function currentRound(userId: string, groupId: string) {
   });
   if (!group.currentCycleId) throw roundError('ROUND_NOT_FOUND');
   const round = await getPrisma().round.findFirst({
+    // The newest round in progress: an earlier round that is paid out (PAYOUT, and CLOSED once the
+    // next one opens) is behind us. Groups whose rounds were never closed rely on this order too.
     where: { cycleId: group.currentCycleId, status: { in: ['OPEN', 'PAYOUT'] } },
-    orderBy: { number: 'asc' },
+    orderBy: { number: 'desc' },
   });
   if (!round) throw roundError('ROUND_NOT_FOUND');
   return readRound(userId, groupId, round.number);

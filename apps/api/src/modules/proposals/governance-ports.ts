@@ -59,12 +59,15 @@ export interface MoneyGovernancePort {
     },
   ): Promise<{ effectiveFromRoundId: string | null; effectiveFromRoundNumber: number | null }>;
   /**
-   * R1.1, R2.1, R2.3, GRP-02/03: starts the group's first cycle (rounds, verifiable draw and its
-   * EVENT, obligations), sets Group.status ACTIVE and currentCycleId, and returns the draw.
+   * R1.1, R2.1, R2.3, GRP-02/03: starts a cycle (rounds, draw or kept order and its EVENT,
+   * obligations). The first cycle (group FORMING) needs nothing more; a later one (D40.2, between
+   * cycles) takes the admin's chosen `firstPayoutAt` and also needs `effects` for its chat line
+   * and notifications (an EffectSink; omitted only by callers that run outside a request).
    */
   startCycle(
     tx: Tx,
-    input: { groupId: string; startedByUserId: string },
+    input: { groupId: string; startedByUserId: string; firstPayoutAt?: Date },
+    effects?: EffectSink,
   ): Promise<{ cycleNumber: number; firstBeneficiaryMembershipId: string | null }>;
   /** R2.4: the new order applies from the next round. */
   applyRotationChange(

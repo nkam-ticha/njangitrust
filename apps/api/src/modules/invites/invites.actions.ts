@@ -41,6 +41,20 @@ async function checkInvite(
   const firstCycleStarted = access.group.status !== 'FORMING';
   const pendingInvites = await db.invite.count({ where: openInvitesWhere(args.groupId, ctx.now) });
   const memberCount = (await countMembers(args.groupId, db)) + pendingInvites;
+  // D40.4: between two cycles the admin invites directly while fewer than 3 will take part.
+  const betweenCycles =
+    firstCycleStarted &&
+    !(
+      await db.group.findUniqueOrThrow({
+        where: { id: args.groupId },
+        select: { currentCycleId: true },
+      })
+    ).currentCycleId;
+  const participantCount = betweenCycles
+    ? await db.membership.count({
+        where: { groupId: args.groupId, status: { in: ['ACTIVE', 'INVITED'] } },
+      })
+    : undefined;
 
   if (args.proposalId) {
     const proposal = await db.proposal.findFirst({
@@ -69,6 +83,8 @@ async function checkInvite(
     firstCycleStarted,
     memberAddPassed: args.proposalId !== null,
     memberCount,
+    betweenCycles,
+    ...(participantCount === undefined ? {} : { participantCount }),
   });
   if (!decision.ok) {
     if (decision.code === 'GROUP_FULL')
