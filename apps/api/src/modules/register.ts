@@ -27,7 +27,7 @@ import { payHandler, pollPaymentIntent, registerPaymentJobs } from './payments';
 import { pollDisbursement } from './payouts/withdrawals.service';
 import { registerCampayRechecks } from './providers';
 import { withdrawHandler, registerDisbursementJobs, registerPayoutJobs } from './payouts';
-import { applyRotationChange, currentRotation, registerCycleJobs, startFirstCycle } from './cycles';
+import { applyRotationChange, currentRotation, registerCycleJobs, startCycle } from './cycles';
 import { applyRuleSet, settleExit } from './cycles/cycles.governance';
 import {
   correctLedger,
@@ -131,7 +131,7 @@ function registerMoneyLedgerEvents(): void {
     },
     // Every operation governance asks of the money modules.
     money: {
-      startCycle: startFirstCycle,
+      startCycle,
       currentRotation,
       applyRotationChange,
       applyRuleSet,

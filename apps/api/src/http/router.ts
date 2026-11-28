@@ -7,6 +7,7 @@ import { groupsRoutes } from '../modules/groups/groups.routes';
 import { invitePublicRoutes, inviteGroupRoutes } from '../modules/invites/invites.routes';
 import { accountRoutes } from '../modules/account';
 import { meRoutes } from '../modules/me/me.routes';
+import { meGroupRoutes } from '../modules/me/me.group-routes';
 import { membersRoutes } from '../modules/members/members.routes';
 import {
   notificationPrefsRoutes,
@@ -17,6 +18,7 @@ import { proposalGroupRoutes, proposalRoutes } from '../modules/proposals/propos
 import { solidarityRoutes } from '../modules/solidarity/solidarity.routes';
 import { rulesetsRoutes } from '../modules/rulesets/rulesets.routes';
 import { roundsRoutes } from '../modules/rounds/rounds.routes';
+import { cyclesRoutes } from '../modules/cycles/cycles.routes';
 import { paymentGroupRoutes, paymentRoutes } from '../modules/payments';
 import { payoutRoutes, withdrawalRoutes } from '../modules/payouts';
 import { loanGroupRoutes, loanDecisionRoutes } from '../modules/loans';
@@ -57,8 +59,10 @@ export function v1Router(): Router {
   // Public: statement authenticity (2.14).
   v1.use('/verify', verifyRoutes());
 
+  v1.use('/groups', meGroupRoutes());
   v1.use('/groups', groupsRoutes());
   v1.use('/groups', roundsRoutes());
+  v1.use('/groups', cyclesRoutes());
   v1.use('/groups', paymentGroupRoutes());
   v1.use('/groups', payoutRoutes());
   v1.use('/groups', loanGroupRoutes());
