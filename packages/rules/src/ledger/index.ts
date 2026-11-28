@@ -1,3 +1,4 @@
+export * from './account-totals';
 export * from './accounts';
 export * from './balances';
 export * from './clawback-release';

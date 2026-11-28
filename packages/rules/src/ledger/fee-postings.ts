@@ -36,6 +36,15 @@ export type PaymentPartRecord = {
 /** R4.4: PAYMENT_RECEIVED metadata. */
 export type PaymentFeeMetadata = { fee: Fcfa; feeSource: FeeSource; parts: PaymentPartRecord[] };
 
+/**
+ * R4.2: what a non-debt part credits after its fee share (amount - feeShare). The one definition:
+ * paymentReceivedPostings posts it, and the withdrawal check reads it back from the recorded
+ * metadata (lockedPayoutCredits), so the two cannot disagree. Never below zero.
+ */
+export function partNetCredit(part: { amount: Fcfa; feeShare: Fcfa }): Fcfa {
+  return Math.max(0, part.amount - part.feeShare);
+}
+
 function partAccount(part: PaymentPartWithFee, payer: string): string {
   switch (part.kind) {
     case 'CONTRIBUTION':
@@ -78,7 +87,7 @@ export function paymentReceivedPostings(input: {
       post(postings, account, -(part.amount - charged));
       post(postings, GENERAL_FUND, part.feeShare - charged);
     } else {
-      post(postings, account, -(part.amount - part.feeShare));
+      post(postings, account, -partNetCredit(part));
     }
     records.push({
       obligationId: part.ref ?? null,
