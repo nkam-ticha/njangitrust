@@ -8,6 +8,7 @@ import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { queryClient } from '@/api/queryClient';
 import { restoreSession } from '@/api/session';
+import { armColdStart } from '@/features/appLock/appLockStore';
 import { useSession } from '@/state/session';
 import { ThemeProvider } from '@/theme';
 import { fontSources } from '@/theme/fonts';
@@ -59,6 +60,8 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 
 // Keep the splash up until the fonts are loaded and the session is known.
 void SplashScreen.preventAutoHideAsync();
+// The app lock asks at once only when this launch restores an existing session (D36).
+armColdStart();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(fontSources);

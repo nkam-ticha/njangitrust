@@ -112,21 +112,14 @@ export function SolidaritySection({ group }: { group: MyGroupDto }) {
         onPress={() => setRequesting(true)}
       />
 
-      <BottomSheet
+      <SolidarityRequestSheet
         visible={requesting}
-        onClose={() => setRequesting(false)}
-        title={t('solidarityRequest.title')}
-      >
-        {requesting ? (
-          <SolidarityRequestSheet
-            groupId={groupId}
-            members={(members.data ?? []).filter((m) => m.status === 'ACTIVE')}
-            myMembershipId={group.membershipId}
-            fundBalance={fundBalance}
-            onDone={() => setRequesting(false)}
-          />
-        ) : null}
-      </BottomSheet>
+        groupId={groupId}
+        members={(members.data ?? []).filter((m) => m.status === 'ACTIVE')}
+        myMembershipId={group.membershipId}
+        fundBalance={fundBalance}
+        onDone={() => setRequesting(false)}
+      />
     </View>
   );
 }
@@ -147,6 +140,7 @@ function RequestRow({ item, lang }: { item: SolidarityRequestItem; lang: 'fr' | 
 }
 
 interface SolidarityRequestSheetProps {
+  visible: boolean;
   groupId: string | null;
   members: { membershipId: string; name: string }[];
   myMembershipId: string;
@@ -154,7 +148,9 @@ interface SolidarityRequestSheetProps {
   onDone: () => void;
 }
 
+/** The request sheet: its title is the sheet's, and "Continuer" stays pinned above the gesture bar (#88). */
 function SolidarityRequestSheet({
+  visible,
   groupId,
   members,
   myMembershipId,
@@ -172,6 +168,23 @@ function SolidarityRequestSheet({
   const [amount, setAmount] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [action, setAction] = useState<PendingActionDto | null>(null);
+  // Each opening starts from an empty form (state adjusted during render, not in an effect).
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setForOther(false);
+      setRecipient(myMembershipId);
+      setEvent('DEUIL');
+      setAmount(null);
+      setNote('');
+      setAction(null);
+    }
+  }
+  const close = () => {
+    request.reset();
+    onDone();
+  };
 
   // The note is shown to the group, so it can never carry a phone number (spec 2.11): say so here
   // instead of letting the request fail with a generic error.
@@ -184,123 +197,133 @@ function SolidarityRequestSheet({
 
   if (action) {
     return (
-      <ActionCard
-        action={action}
-        onConfirmed={() => {
-          refresh();
-          onDone();
-        }}
-        onCancelled={() => setAction(null)}
-        onClose={onDone}
-      />
+      <BottomSheet visible={visible} onClose={close} title={t('solidarityRequest.title')}>
+        <ActionCard
+          action={action}
+          onConfirmed={() => {
+            refresh();
+            onDone();
+          }}
+          onCancelled={() => setAction(null)}
+          onClose={close}
+        />
+      </BottomSheet>
     );
   }
 
   return (
-    <View style={styles.column}>
-      {isFundEmpty ? (
-        <Banner
-          kind="info"
-          text={
-            fundBalance !== null && fundBalance > 0
-              ? t('solidarityRequest.insufficientBalance', {
-                  balance: formatXAF(fundBalance, lang),
-                  min: formatXAF(MIN_SUPPORT_AMOUNT, lang),
-                })
-              : t('solidarityRequest.fundEmpty')
+    <BottomSheet
+      visible={visible}
+      onClose={close}
+      title={t('solidarityRequest.title')}
+      footer={
+        <Button
+          fullWidth
+          label={t('solidarityRequest.prepare')}
+          loading={request.isPending}
+          offline={!online}
+          disabled={
+            isFundEmpty ||
+            noteError !== null ||
+            amount === null ||
+            amount < MIN_SUPPORT_AMOUNT ||
+            (fundBalance !== null && amount > fundBalance) ||
+            request.isPending
+          }
+          onPress={() => {
+            if (amount === null || amount < MIN_SUPPORT_AMOUNT) return;
+            request.mutate(
+              {
+                recipientMembershipId: recipient,
+                event,
+                amount,
+                ...(note.trim() ? { note: note.trim() } : {}),
+              },
+              { onSuccess: (prepared) => setAction(prepared) },
+            );
+          }}
+        />
+      }
+    >
+      <View style={styles.column}>
+        {isFundEmpty ? (
+          <Banner
+            kind="info"
+            text={
+              fundBalance !== null && fundBalance > 0
+                ? t('solidarityRequest.insufficientBalance', {
+                    balance: formatXAF(fundBalance, lang),
+                    min: formatXAF(MIN_SUPPORT_AMOUNT, lang),
+                  })
+                : t('solidarityRequest.fundEmpty')
+            }
+          />
+        ) : null}
+        <Txt variant="sectionTitle">{t('solidarityRequest.recipient')}</Txt>
+        <ChoiceRow
+          label={t('solidarityRequest.me')}
+          selected={!forOther}
+          onPress={() => {
+            setForOther(false);
+            setRecipient(myMembershipId);
+          }}
+        />
+        <ChoiceRow
+          label={t('solidarityRequest.other')}
+          selected={forOther}
+          onPress={() => setForOther(true)}
+        />
+        {forOther
+          ? members
+              .filter((m) => m.membershipId !== myMembershipId)
+              .map((m) => (
+                <ChoiceRow
+                  key={m.membershipId}
+                  label={m.name}
+                  selected={recipient === m.membershipId}
+                  onPress={() => setRecipient(m.membershipId)}
+                />
+              ))
+          : null}
+
+        <Txt variant="sectionTitle">{t('solidarityRequest.event')}</Txt>
+        {EVENTS.map((key) => (
+          <ChoiceRow
+            key={key}
+            label={t(`caisse.solidarity.events.${key}`)}
+            selected={event === key}
+            onPress={() => setEvent(key)}
+          />
+        ))}
+
+        <AmountInput
+          label={t('solidarityRequest.amount')}
+          value={amount}
+          onChange={setAmount}
+          min={MIN_SUPPORT_AMOUNT}
+          max={fundBalance && fundBalance >= MIN_SUPPORT_AMOUNT ? fundBalance : undefined}
+          helper={
+            !isFundEmpty && fundBalance !== null
+              ? t('solidarityRequest.max', { amount: formatXAF(fundBalance, lang) })
+              : t('solidarityRequest.min', { amount: formatXAF(MIN_SUPPORT_AMOUNT, lang) })
           }
         />
-      ) : null}
-      <Txt variant="sectionTitle">{t('solidarityRequest.recipient')}</Txt>
-      <ChoiceRow
-        label={t('solidarityRequest.me')}
-        selected={!forOther}
-        onPress={() => {
-          setForOther(false);
-          setRecipient(myMembershipId);
-        }}
-      />
-      <ChoiceRow
-        label={t('solidarityRequest.other')}
-        selected={forOther}
-        onPress={() => setForOther(true)}
-      />
-      {forOther
-        ? members
-            .filter((m) => m.membershipId !== myMembershipId)
-            .map((m) => (
-              <ChoiceRow
-                key={m.membershipId}
-                label={m.name}
-                selected={recipient === m.membershipId}
-                onPress={() => setRecipient(m.membershipId)}
-              />
-            ))
-        : null}
-
-      <Txt variant="sectionTitle">{t('solidarityRequest.event')}</Txt>
-      {EVENTS.map((key) => (
-        <ChoiceRow
-          key={key}
-          label={t(`caisse.solidarity.events.${key}`)}
-          selected={event === key}
-          onPress={() => setEvent(key)}
+        <TextField
+          label={t('solidarityRequest.note')}
+          placeholder={t('solidarityRequest.notePlaceholder')}
+          helper={t('solidarityRequest.noteHelp')}
+          value={note}
+          onChangeText={setNote}
+          maxLength={300}
+          error={noteError}
         />
-      ))}
-
-      <AmountInput
-        label={t('solidarityRequest.amount')}
-        value={amount}
-        onChange={setAmount}
-        min={MIN_SUPPORT_AMOUNT}
-        max={fundBalance && fundBalance >= MIN_SUPPORT_AMOUNT ? fundBalance : undefined}
-        helper={
-          !isFundEmpty && fundBalance !== null
-            ? t('solidarityRequest.max', { amount: formatXAF(fundBalance, lang) })
-            : t('solidarityRequest.min', { amount: formatXAF(MIN_SUPPORT_AMOUNT, lang) })
-        }
-      />
-      <TextField
-        label={t('solidarityRequest.note')}
-        placeholder={t('solidarityRequest.notePlaceholder')}
-        helper={t('solidarityRequest.noteHelp')}
-        value={note}
-        onChangeText={setNote}
-        maxLength={300}
-        error={noteError}
-      />
-      {request.error ? (
-        <Txt variant="secondary" color="textDanger">
-          {errorMessage(request.error, t, lang)}
-        </Txt>
-      ) : null}
-      <Button
-        fullWidth
-        label={t('solidarityRequest.prepare')}
-        loading={request.isPending}
-        offline={!online}
-        disabled={
-          isFundEmpty ||
-          noteError !== null ||
-          amount === null ||
-          amount < MIN_SUPPORT_AMOUNT ||
-          (fundBalance !== null && amount > fundBalance) ||
-          request.isPending
-        }
-        onPress={() => {
-          if (amount === null || amount < MIN_SUPPORT_AMOUNT) return;
-          request.mutate(
-            {
-              recipientMembershipId: recipient,
-              event,
-              amount,
-              ...(note.trim() ? { note: note.trim() } : {}),
-            },
-            { onSuccess: (prepared) => setAction(prepared) },
-          );
-        }}
-      />
-    </View>
+        {request.error ? (
+          <Txt variant="secondary" color="textDanger">
+            {errorMessage(request.error, t, lang)}
+          </Txt>
+        ) : null}
+      </View>
+    </BottomSheet>
   );
 }
 

@@ -25,6 +25,10 @@ import { useChangeLanguage } from '@/features/me/useMe';
 import { progressCopy } from '@/dev/progress';
 import { TabScreen } from '../shell/TabScreen';
 import { ChangeNumberSheet, DeleteAccountSheet } from './AccountSheets';
+import { MyGroups } from './MyGroups';
+import { PrivacySection } from './PrivacySection';
+import { ReliabilityCard } from './ReliabilityCard';
+import { SecuritySection } from './SecuritySection';
 
 type Sheet = 'language' | 'logout' | 'logoutAll' | 'number' | 'delete' | null;
 
@@ -83,32 +87,13 @@ export function MoiTab() {
         </GroupedList>
       </View>
 
+      {group ? <ReliabilityCard groupId={group.groupId} groupName={group.name} /> : null}
+
       {groups.length ? (
         <>
           <SectionHeader title={t('moi.groups')} />
-          <View style={styles.flush}>
-            <GroupedList>
-              {groups.map((g) => (
-                <ListRow
-                  key={g.groupId}
-                  title={g.name}
-                  subtitle={
-                    g.status === 'FORMING'
-                      ? t('groupSwitcher.rowNotStarted')
-                      : t('common.membersCount', { count: g.memberCount })
-                  }
-                  trailing={
-                    g.role === 'ADMIN' ? (
-                      <Txt variant="captionStrong" color="textSecondary">
-                        {t('common.roles.ADMIN')}
-                      </Txt>
-                    ) : undefined
-                  }
-                  selected={g.groupId === group?.groupId}
-                  onPress={() => setGroupId(g.groupId)}
-                />
-              ))}
-            </GroupedList>
+          <View style={styles.groups}>
+            <MyGroups groups={groups} activeId={group?.groupId ?? null} onSelect={setGroupId} />
           </View>
         </>
       ) : null}
@@ -149,6 +134,12 @@ export function MoiTab() {
             />
           ) : null}
           <ListRow
+            title={t('moi.notifications')}
+            titleWeight="regular"
+            chevron
+            onPress={() => router.push(newRoute('/notification-settings'))}
+          />
+          <ListRow
             title={t('moi.agentHistory')}
             titleWeight="regular"
             chevron
@@ -187,6 +178,8 @@ export function MoiTab() {
           ) : null}
         </GroupedList>
       </View>
+      <SecuritySection />
+      <PrivacySection />
       <Button
         variant="secondary"
         fullWidth
@@ -267,5 +260,6 @@ export function MoiTab() {
 const styles = StyleSheet.create({
   me: { flexDirection: 'row', alignItems: 'center', gap: space.s3, paddingTop: space.s2 },
   flush: { marginHorizontal: -space.s4 },
+  groups: { paddingHorizontal: 0 },
   flex: { flex: 1 },
 });

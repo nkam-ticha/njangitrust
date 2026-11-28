@@ -10,7 +10,6 @@ import { formatDateShort, formatXAF } from '@njangi/shared';
 import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
 import { space } from '@/theme';
 import {
-  AmountInput,
   AmountText,
   AppHeader,
   Banner,
@@ -38,8 +37,10 @@ import {
   type LoanDto,
   type LoanQuoteDto,
 } from '@/features/loans/useLoans';
+import { useLoanLimit } from '@/features/loans/useLoanLimit';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { ActionCard } from '../shared/ActionCard';
+import { LoanAmountControl } from './LoanAmountControl';
 import { Screen } from '../shared/Screen';
 
 const ACTIVE = ['REQUESTED', 'APPROVED', 'DISBURSED', 'OVERDUE'] as const;
@@ -261,6 +262,7 @@ function RequestForm({
   const lang = useLang();
   const online = useConnectivity((s) => s.online);
   const quote = useLoanQuote(groupId);
+  const limit = useLoanLimit(groupId);
   const request = useRequestLoan(groupId);
   const [amount, setAmount] = useState<number | null>(null);
   const [months, setMonths] = useState<number>(1);
@@ -282,9 +284,9 @@ function RequestForm({
   return (
     <View style={styles.column}>
       <SectionHeader inset={false} title={t('loans.request.title')} />
-      <AmountInput
-        label={t('loans.request.amount')}
+      <LoanAmountControl
         value={amount}
+        limit={limit.data ?? null}
         onChange={(v) => {
           setAmount(v);
           setResult(null);

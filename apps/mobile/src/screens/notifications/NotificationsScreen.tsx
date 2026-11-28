@@ -20,8 +20,8 @@ import {
   type IconComponent,
 } from '@/ui';
 import { useMarkRead, useNotifications } from '@/features/notifications/useNotifications';
-import { PIN_RESET_OWNER_LINK, resolveDeepLink } from '@/features/notifications/deepLinks';
-import { useActiveGroup } from '@/features/groups/useGroups';
+import { PIN_RESET_OWNER_LINK } from '@/features/notifications/deepLinks';
+import { useOpenLink } from '@/features/notifications/useOpenLink';
 import { useCancelMyPinReset } from '@/features/pinResets/usePinResets';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { Screen } from '../shared/Screen';
@@ -43,7 +43,7 @@ export function NotificationsScreen() {
   const { colors } = useTheme();
   const lang = useLang();
   const router = useRouter();
-  const { setGroupId } = useActiveGroup();
+  const openLink = useOpenLink();
   const list = useNotifications();
   const markRead = useMarkRead();
   const cancelReset = useCancelMyPinReset();
@@ -56,10 +56,7 @@ export function NotificationsScreen() {
 
   const open = (n: NotificationDto) => {
     if (!n.readAt) markRead.mutate({ ids: [n.id] });
-    const target = isPinResetAlert(n) ? null : resolveDeepLink(n.deepLink);
-    if (!target) return;
-    if (target.groupId) setGroupId(target.groupId);
-    router.push(target.route);
+    if (!isPinResetAlert(n)) openLink(n.deepLink);
   };
 
   return (

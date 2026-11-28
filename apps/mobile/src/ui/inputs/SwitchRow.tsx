@@ -1,6 +1,6 @@
 // Switch row (DESIGN_SYSTEM.md 5.2): React Native's Switch in a labelled row.
 // A switch that can't change (Sécurité notifications) is on, disabled, with the reason below.
-import { StyleSheet, Switch, View } from 'react-native';
+import { Platform, StyleSheet, Switch, View } from 'react-native';
 import { size, space, useTheme } from '@/theme';
 import { Txt } from '../primitives/Txt';
 
@@ -33,6 +33,8 @@ export function SwitchRow({ label, helper, value, onChange, disabled }: SwitchRo
         trackColor={{ false: colors.outline, true: colors.primary }}
         thumbColor={colors.canvas}
         ios_backgroundColor={colors.outline}
+        // react-native-web colours the thumb with its own green unless told otherwise.
+        {...(Platform.OS === 'web' ? { activeThumbColor: colors.canvas } : {})}
       />
     </View>
   );

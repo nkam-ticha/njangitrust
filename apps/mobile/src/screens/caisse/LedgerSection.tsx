@@ -28,6 +28,7 @@ import { ledgerTypeOf } from '@/features/money/ledgerTypes';
 import { useLedger, useReconciliation } from '@/features/money/queries';
 import type { LedgerEntryDto } from '@/features/money/schemas';
 import { errorMessage } from '@/features/errors/errorMessage';
+import { LedgerExport } from './LedgerExport';
 
 /** The filters the API knows (one type each); "decisions" is the governance event type. */
 const FILTERS: { key: string; type: string | null }[] = [
@@ -74,6 +75,7 @@ export function LedgerSection({ group }: { group: MyGroupDto }) {
       )}
 
       <Txt color="textSecondary">{t('caisse.ledger.intro')}</Txt>
+      <LedgerExport groupId={groupId} />
 
       <ChipRow label={t('caisse.ledger.title')}>
         {FILTERS.map((f) => (

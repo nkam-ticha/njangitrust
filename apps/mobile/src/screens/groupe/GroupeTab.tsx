@@ -1,10 +1,11 @@
 // Groupe tab (SCREENS.md S-11; spec 1.5, 2.7 Chat, CHT-01..02): the group's chat, newest at the bottom.
 // Messages page back in time; system events (payments, votes, rules, meetings) are compact rows; removed
 // messages keep a placeholder. The unread line is captured before the read marker is sent.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, StyleSheet, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import {
   Bot,
@@ -58,6 +59,7 @@ import { useVoiceRecorder } from '@/features/chat/useVoiceRecorder';
 import { baseMime, kindForMime } from '@/features/chat/media';
 import { copyToClipboard } from '@/ui/chat/clipboard';
 import { ChatAttachment } from './ChatAttachment';
+import { JumpToMessage } from './JumpToMessage';
 import { TabScreen } from '../shell/TabScreen';
 
 type Row =
@@ -175,6 +177,18 @@ export function GroupeTab() {
   const voice = useVoiceRecorder();
   const [attachOpen, setAttachOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // A notification can open the chat on one message (`?message=<id>`); it may be gone (D33).
+  const router = useRouter();
+  const params = useLocalSearchParams<{ message?: string }>();
+  const targetMessage = typeof params.message === 'string' ? params.message : null;
+  const [goneNotice, setGoneNotice] = useState(false);
+  const linkDone = useCallback(() => router.setParams({ message: undefined }), [router]);
+  const linkGone = useCallback(() => setGoneNotice(true), []);
+  useEffect(() => {
+    if (!goneNotice) return;
+    const timer = setTimeout(() => setGoneNotice(false), 8000);
+    return () => clearTimeout(timer);
+  }, [goneNotice]);
 
   useChatRealtime(groupId);
 
@@ -391,6 +405,19 @@ export function GroupeTab() {
         )
       }
     >
+      <Txt variant="caption" color="textSecondary" align="center" style={styles.retention}>
+        {t('chat.retention')}
+      </Txt>
+      {goneNotice ? (
+        <Txt
+          variant="secondary"
+          color="textSecondary"
+          align="center"
+          accessibilityLiveRegion="polite"
+        >
+          {t('chat.messageGone')}
+        </Txt>
+      ) : null}
       {left ? <Txt color="textSecondary">{t('chat.leftReadOnly')}</Txt> : null}
       {pinned ? (
         <View style={styles.pinned}>
@@ -453,6 +480,21 @@ export function GroupeTab() {
             />
           )}
           contentContainerStyle={styles.content}
+        />
+      ) : null}
+      {targetMessage ? (
+        <JumpToMessage
+          messageId={targetMessage}
+          index={rows.findIndex(
+            (r) => (r.kind === 'message' || r.kind === 'system') && r.message.id === targetMessage,
+          )}
+          ready={messages.isSuccess}
+          hasMore={!!messages.hasNextPage}
+          loading={messages.isFetchingNextPage}
+          loadMore={() => void messages.fetchNextPage()}
+          onFound={() => setTimeout(() => scrollToMessage(targetMessage), 150)}
+          onGone={linkGone}
+          onDone={linkDone}
         />
       ) : null}
       {agentIsAnswering ? (
@@ -702,4 +744,5 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   content: { paddingHorizontal: space.s2, paddingVertical: space.s2, gap: space.s2 },
   pinned: { gap: space.s1, padding: space.s3, marginBottom: space.s2 },
+  retention: { paddingHorizontal: space.s4, paddingTop: space.s1 },
 });
