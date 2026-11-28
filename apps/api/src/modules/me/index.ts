@@ -6,3 +6,4 @@ export {
   updateMe,
   type MyGroupSource,
 } from './me.service';
+export { myReliability, reliabilityOfMembership } from './me.reliability';
