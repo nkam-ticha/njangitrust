@@ -32,12 +32,15 @@ import {
   useRefreshMoney,
   useRotation,
 } from '@/features/money/queries';
+import { useCycles } from '@/features/cycles/queries';
 import { errorMessage } from '@/features/errors/errorMessage';
 import { BiddingPanel } from '../bids/BiddingPanel';
+import { BetweenCyclesPanel } from './BetweenCyclesPanel';
 import { BreakdownSheet } from './BreakdownSheet';
 import { MyMoney } from './MyMoney';
 import { PaySheet } from './PaySheet';
-import { WithdrawSheet } from './WithdrawSheet';
+import { PreviousRoundsPicker } from './PreviousRoundsPicker';
+import { WithdrawBottomSheet } from './WithdrawSheet';
 
 type Sheet = 'pay' | 'withdraw' | 'breakdown' | null;
 
@@ -47,6 +50,7 @@ export function TourSection({ group }: { group: MyGroupDto }) {
   const router = useRouter();
   const groupId = group.groupId;
   const round = useCurrentRound(groupId);
+  const cycles = useCycles(groupId);
   const members = useMembers(groupId);
   const money = useMyMoney(groupId);
   const dues = useMyDues(groupId);
@@ -75,6 +79,10 @@ export function TourSection({ group }: { group: MyGroupDto }) {
     );
   }
   const current = round.data;
+  if (!current && cycles.data?.phase === 'BETWEEN_CYCLES') {
+    // Between two cycles (D40.2): the last cycle's result, and the admin's way to start the next.
+    return <BetweenCyclesPanel group={group} withMoney />;
+  }
   if (!current) {
     return (
       <EmptyState
@@ -233,6 +241,8 @@ export function TourSection({ group }: { group: MyGroupDto }) {
         </>
       ) : null}
 
+      <PreviousRoundsPicker group={group} currentNumber={current.number} />
+
       <Button
         variant="secondary"
         fullWidth
@@ -253,22 +263,18 @@ export function TourSection({ group }: { group: MyGroupDto }) {
         ) : null}
       </BottomSheet>
 
-      <BottomSheet
-        visible={sheet === 'withdraw'}
-        onClose={close}
-        title={t('withdraw.titleGeneric')}
-      >
-        {sheet === 'withdraw' && money.data ? (
-          <WithdrawSheet
-            groupId={groupId}
-            available={money.data.available}
-            ownNumber={ownNumber}
-            operator={operator}
-            onWithdrawn={refresh}
-            onDone={close}
-          />
-        ) : null}
-      </BottomSheet>
+      {money.data ? (
+        <WithdrawBottomSheet
+          visible={sheet === 'withdraw'}
+          onClose={close}
+          groupId={groupId}
+          available={money.data.available}
+          ownNumber={ownNumber}
+          operator={operator}
+          onWithdrawn={refresh}
+          onDone={close}
+        />
+      ) : null}
 
       <BottomSheet
         visible={sheet === 'breakdown'}

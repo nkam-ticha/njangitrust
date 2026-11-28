@@ -22,6 +22,7 @@ import { useRules } from '@/features/groups/useGroups';
 import { useFunds } from '@/features/money/queries';
 import { useLoans } from '@/features/loans/useLoans';
 import { errorMessage } from '@/features/errors/errorMessage';
+import { BetweenCyclesPanel } from './BetweenCyclesPanel';
 
 export function FundSection({ group }: { group: MyGroupDto }) {
   const { t } = useTranslation();
@@ -51,6 +52,7 @@ export function FundSection({ group }: { group: MyGroupDto }) {
 
   return (
     <View style={styles.column}>
+      <BetweenCyclesPanel group={group} />
       <View style={styles.card}>
         <Txt variant="secondary" color="textSecondary">
           {t('caisse.fund.balance')}

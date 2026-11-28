@@ -67,7 +67,7 @@ export function MyMoney({ money, dues, onPay, onWithdraw }: MyMoneyProps) {
         ) : null}
         {figures.debtsDue > 0 ? (
           <Txt variant="secondary" color="textSecondary">
-            {t('common.labelOnly', { label: t('moi.debts') })}{' '}
+            {t('common.labelOnly', { label: t('withdraw.debtsHeld') })}{' '}
             <AmountText amount={figures.debtsDue} size="small" />
           </Txt>
         ) : null}
