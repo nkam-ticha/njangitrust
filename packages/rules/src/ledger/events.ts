@@ -18,6 +18,13 @@ export type CycleStartedEvent = {
   mode: RotationMode;
   latestHash: string;
   drawSeed: string | null;
+  /**
+   * D40.3: 'CARRIED' when a cycle after the first keeps the previous order (no draw, no seed).
+   * Absent or 'DRAW' for every earlier entry: those stay valid and are checked as draws.
+   */
+  orderSource?: 'DRAW' | 'CARRIED';
+  /** L7: for a kept order, when each newcomer (last in the order) joined: ISO instants, by membership. */
+  newcomerJoinedAt?: Record<string, string>;
   order: string[];
   /** M3: the cycle's active members, sorted (both modes). */
   members: string[];
@@ -61,6 +68,21 @@ export type GovernanceEvent =
       no?: number;
       eligible: number;
     }
+  | {
+      /** D40.1, R9.3: a cycle closed; what the general fund held and what was shared (integers only). */
+      event: 'CYCLE_CLOSED';
+      cycleNumber: number;
+      mode: RotationMode;
+      fundBalance: number;
+      receivables: number;
+      availableForLoans: number;
+      distributable: number;
+      share: number;
+      distributed: number;
+      remainder: number;
+      eligibleCount: number;
+      reason: 'DISTRIBUTION_OFF' | 'NOTHING_TO_DISTRIBUTE' | 'NO_ELIGIBLE_MEMBER' | null;
+    }
   | { event: 'ROTATION_CHANGED'; cycleNumber: number; order: string[]; proposalId: string }
   | {
       event: 'BIDS_PUBLISHED';
@@ -102,6 +124,62 @@ export function cycleStartedEvent(input: {
     activeMembershipIds: input.activeMembershipIds,
   });
   return { ...base, drawSeed: seed, order };
+}
+
+/**
+ * D40.3: the CYCLE_STARTED event of a cycle that keeps the previous order. No seed: the order is the
+ * previous final order with leavers dropped and newcomers last (carryRotation), checked against the
+ * previous cycle by the export verifier. A bidding cycle has no order, so it uses cycleStartedEvent.
+ */
+export function carriedCycleStartedEvent(input: {
+  cycleNumber: number;
+  latestLedgerHash: string;
+  activeMembershipIds: readonly string[];
+  order: readonly string[];
+  newcomerJoinedAt?: Record<string, string>;
+}): CycleStartedEvent {
+  const members = [...input.activeMembershipIds].sort();
+  const sorted = [...input.order].sort();
+  if (members.length !== sorted.length || members.some((id, i) => id !== sorted[i])) {
+    throw new RangeError('the kept order must be exactly the cycle members');
+  }
+  return {
+    event: 'CYCLE_STARTED',
+    cycleNumber: input.cycleNumber,
+    mode: 'FIXED',
+    latestHash: input.latestLedgerHash,
+    drawSeed: null,
+    orderSource: 'CARRIED',
+    ...(input.newcomerJoinedAt && Object.keys(input.newcomerJoinedAt).length > 0
+      ? { newcomerJoinedAt: { ...input.newcomerJoinedAt } }
+      : {}),
+    order: [...input.order],
+    members,
+  };
+}
+
+/** D40.1: the CYCLE_CLOSED event, from the figures of planCycleClose. */
+export function cycleClosedEvent(input: {
+  cycleNumber: number;
+  mode: RotationMode;
+  facts: {
+    fundBalance: number;
+    receivables: number;
+    availableForLoans: number;
+    distributable: number;
+    share: number;
+    distributed: number;
+    remainder: number;
+    eligibleCount: number;
+    reason: 'DISTRIBUTION_OFF' | 'NOTHING_TO_DISTRIBUTE' | 'NO_ELIGIBLE_MEMBER' | null;
+  };
+}): Extract<GovernanceEvent, { event: 'CYCLE_CLOSED' }> {
+  return {
+    event: 'CYCLE_CLOSED',
+    cycleNumber: input.cycleNumber,
+    mode: input.mode,
+    ...input.facts,
+  };
 }
 
 /** R8.3: the no-bid draw; the beneficiary is the first member of the verifiable shuffle. */
@@ -166,6 +244,17 @@ export function drawEventProblem(
   if (event.latestHash !== latestHashAtDraw)
     return 'the latest hash is not the hash before the draw';
   if (event.event === 'CYCLE_STARTED') {
+    if (event.orderSource === 'CARRIED') {
+      // D40.3: no draw to re-run. What can be checked here is the shape; the positions against the
+      // previous cycle are checked by the export verifier (drawProblems).
+      if (event.mode !== 'FIXED') return 'a kept order is only for a fixed cycle';
+      if (event.drawSeed !== null) return 'a kept order has no seed, the seed must be empty';
+      const members = [...event.members].sort();
+      const order = [...event.order].sort();
+      return members.length === order.length && members.every((id, i) => id === order[i])
+        ? null
+        : "the kept order must be exactly the cycle's members";
+    }
     if (event.mode === 'BIDDING')
       return event.drawSeed === null ? null : 'a bidding cycle has no draw';
     if (event.drawSeed !== drawSeed(groupId, event.cycleNumber, event.latestHash))

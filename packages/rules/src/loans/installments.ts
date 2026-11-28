@@ -31,6 +31,25 @@ function place(
     : { status: 'NEXT_CYCLE', nthRound: null, onOrAfter: rule.onOrAfter };
 }
 
+/**
+ * C: places date-based installments (weekly, two-weekly, custom) in order, each on the first round
+ * deadline on or after its date that is STRICTLY LATER than the round of the previous installment
+ * of the same loan: two installments of one loan never share a round. When no such round is left
+ * it stays NEXT_CYCLE with its date.
+ */
+function placeInOrder(rounds: readonly RoundDates[], onOrAfter: readonly Date[]): InstallmentDue[] {
+  let after = -1;
+  return onOrAfter.map((date) => {
+    const index = rounds.findIndex((r, i) => i > after && r.dueAt.getTime() >= date.getTime());
+    if (index < 0) {
+      after = rounds.length;
+      return { status: 'NEXT_CYCLE', nthRound: null, onOrAfter: date };
+    }
+    after = index;
+    return { status: 'DATED', dueAt: rounds[index]!.dueAt };
+  });
+}
+
 const byPayout = (rounds: readonly RoundDates[]) =>
   [...rounds].sort((a, b) => assertDate(a.payoutAt) - assertDate(b.payoutAt));
 
@@ -56,15 +75,15 @@ export function installmentDueDates(input: {
   const rounds = byPayout(input.rounds);
   const index = rounds.findIndex((r) => r.payoutAt.getTime() > approved);
   const current = index < 0 ? rounds.length : index;
-  return Array.from({ length: input.months }, (_, i) => {
-    const k = i + 1;
-    return input.frequency === 'MONTHLY'
-      ? place(index < 0 ? [] : rounds.slice(current + 1), { nthRound: k, onOrAfter: null })
-      : place(rounds.slice(current), {
-          nthRound: null,
-          onOrAfter: addCalendarMonths(input.approvedAt, k),
-        });
-  });
+  if (input.frequency !== 'MONTHLY') {
+    return placeInOrder(
+      rounds.slice(current),
+      Array.from({ length: input.months }, (_, i) => addCalendarMonths(input.approvedAt, i + 1)),
+    );
+  }
+  return Array.from({ length: input.months }, (_, i) =>
+    place(index < 0 ? [] : rounds.slice(current + 1), { nthRound: i + 1, onOrAfter: null }),
+  );
 }
 
 /**
@@ -77,11 +96,19 @@ export function redateNextCycleInstallments(
   rounds: readonly RoundDates[],
 ): InstallmentDue[] {
   const sorted = byPayout(rounds);
+  // C: the date-based waiting ones are placed together, in order, one round each.
+  const dated = placeInOrder(
+    sorted,
+    installments.flatMap((due) =>
+      due.status === 'NEXT_CYCLE' && due.nthRound === null ? [due.onOrAfter] : [],
+    ),
+  );
+  let next = 0;
   return installments.map((due) =>
     due.status === 'DATED'
       ? due
       : due.nthRound !== null
         ? place(sorted, { nthRound: due.nthRound, onOrAfter: null })
-        : place(sorted, { nthRound: null, onOrAfter: due.onOrAfter }),
+        : dated[next++]!,
   );
 }

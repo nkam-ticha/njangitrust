@@ -13,6 +13,18 @@ const members = (
   }));
 
 describe('end-of-cycle distribution of the general fund (R9.3, R9.4, R7.8)', () => {
+  it('refuses a negative general fund balance instead of sharing a wrong figure (L10)', () => {
+    expect(() =>
+      fundDistribution({
+        distributeFundAtCycleEnd: true,
+        generalFundBalance: -1,
+        outstandingReceivables: 0,
+        availableForLoans: 10,
+        candidates: [{ membershipId: 'M1', activeWholeCycle: true, outstandingDebt: 0 }],
+      }),
+    ).toThrow(RangeError);
+  });
+
   it('E8: 37 003 FCFA among 9 eligible members gives 4 111 each and leaves 4 in the fund', () => {
     const candidates = members(10, [
       {},

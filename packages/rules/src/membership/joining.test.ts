@@ -18,6 +18,26 @@ describe('joining (R1.6, R12.1) and leaving at cycle end (R12.2)', () => {
     });
   });
 
+  it('between cycles, the admin invites directly only while fewer than 3 will take part (D40.4)', () => {
+    const between = { firstCycleStarted: true, memberAddPassed: false, memberCount: 5 } as const;
+    expect(canInvite({ ...between, betweenCycles: true, participantCount: 2 })).toEqual({
+      ok: true,
+    });
+    expect(canInvite({ ...between, betweenCycles: true, participantCount: 3 })).toEqual({
+      ok: false,
+      code: 'MEMBER_ADD_VOTE_REQUIRED',
+    });
+    // Inside a cycle nothing changes, whatever the count.
+    expect(canInvite({ ...between, betweenCycles: false, participantCount: 2 })).toEqual({
+      ok: false,
+      code: 'MEMBER_ADD_VOTE_REQUIRED',
+    });
+    // The 50-member cap still applies.
+    expect(
+      canInvite({ ...between, memberCount: 50, betweenCycles: true, participantCount: 2 }),
+    ).toMatchObject({ ok: false, code: 'GROUP_FULL' });
+  });
+
   it('never grows a group beyond 50 members (R1.1)', () => {
     expect(
       canInvite({ firstCycleStarted: false, memberAddPassed: false, memberCount: 50 }),

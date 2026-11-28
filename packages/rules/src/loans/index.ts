@@ -5,3 +5,4 @@ export * from './installments';
 export * from './quote';
 export * from './refund';
 export * from './repayment';
+export * from './next-cycle-installments';

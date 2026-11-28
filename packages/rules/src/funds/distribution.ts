@@ -35,6 +35,7 @@ export function fundDistribution(input: {
       remainder: Fcfa;
     }
   | Refusal<'DISTRIBUTION_OFF' | 'NOTHING_TO_DISTRIBUTE' | 'NO_ELIGIBLE_MEMBER'> {
+  assertNonNegativeFcfa(input.generalFundBalance, 'generalFundBalance');
   if (!input.distributeFundAtCycleEnd) return { ok: false, code: 'DISTRIBUTION_OFF' };
   assertNonNegativeFcfa(input.outstandingReceivables, 'outstandingReceivables');
   assertNonNegativeFcfa(input.availableForLoans, 'availableForLoans');

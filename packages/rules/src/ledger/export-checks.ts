@@ -167,6 +167,10 @@ export function drawProblems(
       issue = 'the draw event is malformed';
     }
     if (issue) problems.push({ seq: tx.seq, code: 'DRAW_MISMATCH', detail: issue });
+    if (!issue && event.event === 'CYCLE_STARTED' && event.orderSource === 'CARRIED') {
+      const carried = carriedOrderIssue(event, states.get(event.cycleNumber - 1));
+      if (carried) problems.push({ seq: tx.seq, code: 'DRAW_MISMATCH', detail: carried });
+    }
     if (event.event === 'CYCLE_STARTED') {
       started.set(event.cycleNumber, { seq: tx.seq, event });
       current = {
@@ -260,13 +264,20 @@ export function proposalProblems(proposals: readonly ExportProposal[]): LedgerPr
 const PHONE = /(?:\+?237[\s.-]?)?6(?:[\s.-]?\d){8}/;
 /** IDs and hashes (hex and dashes) are not free text and are skipped. */
 const HEX_ID = /^[0-9a-f-]+$/i;
+/**
+ * A UUID is random hex: a "6" followed by eight more digits turns up inside one far more often than
+ * real phone numbers are rare, so an account name like `payable:member:<uuid>` was wrongly flagged.
+ * UUIDs are stripped out (replaced by a mark that cannot itself start a false match) before the
+ * phone pattern is tried; a real number next to or inside such a string is still caught.
+ */
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 /** 2.11, 2.14: every place in the export where a phone number appears unmasked (paths only, no digits). */
 export function unmaskedPhoneProblems(data: unknown): LedgerProblem[] {
   const problems: LedgerProblem[] = [];
   const walk = (value: unknown, path: string, seq: number | null): void => {
     if (typeof value === 'string') {
-      if (!HEX_ID.test(value) && PHONE.test(value)) {
+      if (!HEX_ID.test(value) && PHONE.test(value.replace(UUID, '#'))) {
         problems.push({
           seq,
           code: 'UNMASKED_PHONE_NUMBER',
@@ -287,6 +298,49 @@ export function unmaskedPhoneProblems(data: unknown): LedgerProblem[] {
 }
 
 /** L2: every rotation position a member has held (draws, rotation changes, current rotations). */
+/**
+ * M4, D40.3: the rotation in force at the end of a cycle: the order drawn or carried at its start, then
+ * each vote or redraw applied in turn (a redraw replaces the tail from its round on).
+ */
+function finalOrder(cycle: CycleState): string[] {
+  let order: string[] = [];
+  for (const s of cycle.segments) order = [...order.slice(0, s.fromRound - 1), ...s.order];
+  return order;
+}
+
+/**
+ * D40.3: a kept order starts from the previous cycle's final order: everyone still in the cycle keeps
+ * their relative position, and whoever was not in that order (a newcomer) comes after them.
+ */
+function carriedOrderIssue(
+  event: CycleStartedEvent,
+  previous: CycleState | undefined,
+): string | null {
+  const before = previous ? finalOrder(previous) : [];
+  if (before.length === 0) {
+    return `cycle ${event.cycleNumber} keeps an order but cycle ${event.cycleNumber - 1} had no order to keep`;
+  }
+  const members = new Set(event.members);
+  // M1: someone who left and came back is a newcomer, whatever slot they had before.
+  const continuing = before.filter((id) => !previous!.left.has(id));
+  const kept = continuing.filter((id) => members.has(id));
+  const inBefore = new Set(continuing);
+  const head = event.order.slice(0, kept.length);
+  const tail = event.order.slice(kept.length);
+  if (!kept.every((id, i) => head[i] === id) || tail.some((id) => inBefore.has(id)))
+    return 'the kept order must keep the previous positions and put newcomers last';
+  // L7: when the event records join dates, newcomers are in order of join date, then id.
+  const joined = event.newcomerJoinedAt;
+  if (joined) {
+    const at = (id: string) => (typeof joined[id] === 'string' ? Date.parse(joined[id]) : NaN);
+    if (tail.some((id) => Number.isNaN(at(id)))) return 'every newcomer needs a join date';
+    const sorted = [...tail].sort((a, b) => at(a) - at(b) || (a < b ? -1 : a > b ? 1 : 0));
+    if (!tail.every((id, i) => sorted[i] === id))
+      return 'newcomers must be in order of join date, then membership id';
+  }
+  return null;
+}
+
 function rotationPositions(
   transactions: readonly LedgerTransaction[],
   cycles: readonly ExportCycle[],
