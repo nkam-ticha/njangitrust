@@ -1,0 +1,137 @@
+# Continuous integration (GitHub Actions): checks, unit tests and the API tests on PostgreSQL 16.
+# No secrets and no deploy step. The API tests need random signing keys: they are generated inside
+# the job, used by that job only, and never stored. The throwaway database accepts local connections
+# without a password (it exists only inside the job), so no password appears anywhere in this file.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types, format and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pnpm version is read from "packageManager" in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The API's database client is generated from the Prisma schema (not committed).
+      - name: Generate the database client
+        run: pnpm --filter @njangi/api db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Rules tests
+        run: pnpm test:rules
+
+      - name: Shared tests
+        run: pnpm --filter @njangi/shared test
+
+      - name: Ledger verifier tests
+        run: pnpm --filter @njangi/verify-ledger test
+
+      - name: Agent evaluation tests
+        run: pnpm --filter @njangi/agent-eval test
+
+      - name: Mobile tests
+        run: pnpm --filter @njangi/mobile exec vitest run
+
+  api-tests:
+    name: API tests (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PAYMENT_PROVIDER: mock
+      PGHOST: localhost
+      PGUSER: postgres
+      # The two roles of docs/DECISIONS.md D2: the owner runs the migrations, the app role has no
+      # UPDATE or DELETE on the ledger tables (the migrations revoke them).
+      TEST_DATABASE_URL: postgresql://njangi_app@localhost:5432/njangitrust_test
+      TEST_MIGRATION_DATABASE_URL: postgresql://njangi_owner@localhost:5432/njangitrust_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the database client
+        run: pnpm --filter @njangi/api db:generate
+
+      # Same roles, database and privileges as apps/api/scripts/setup-db.ps1, for the test database.
+      - name: Create the roles and the test database
+        run: |
+          psql -v ON_ERROR_STOP=1 -X <<'SQL'
+          CREATE ROLE njangi_owner LOGIN CREATEDB;
+          CREATE ROLE njangi_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+          CREATE DATABASE njangitrust_test OWNER njangi_owner;
+          REVOKE ALL ON DATABASE njangitrust_test FROM PUBLIC;
+          GRANT CONNECT, TEMPORARY ON DATABASE njangitrust_test TO njangi_app;
+          \connect njangitrust_test
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          GRANT USAGE ON SCHEMA public TO njangi_app;
+          ALTER DEFAULT PRIVILEGES FOR ROLE njangi_owner IN SCHEMA public
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO njangi_app;
+          ALTER DEFAULT PRIVILEGES FOR ROLE njangi_owner IN SCHEMA public
+            GRANT USAGE, SELECT ON SEQUENCES TO njangi_app;
+          SQL
+
+      # Random keys for this run only (the API refuses to start without them).
+      - name: Generate throwaway signing keys
+        run: |
+          {
+            echo "JWT_SECRET=$(openssl rand -hex 32)"
+            echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)"
+            echo "HASH_SECRET=$(openssl rand -hex 32)"
+            echo "STORAGE_SIGNING_SECRET=$(openssl rand -hex 32)"
+          } >> "$GITHUB_ENV"
+
+      # The Vitest global setup applies the migrations as the owner role, then the tests run one
+      # file at a time on the shared database.
+      - name: API tests
+        run: pnpm --filter @njangi/api test

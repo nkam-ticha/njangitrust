@@ -1,0 +1,99 @@
+# Continuous integration (GitLab CI): checks, unit tests and the API tests on PostgreSQL 16.
+# No secrets and no deploy step. The API tests need random signing keys: they are generated inside
+# the job, used by that job only, and never stored. The throwaway database accepts connections
+# without a password (it exists only inside the job), so no password appears anywhere in this file.
+
+image: node:22-bookworm
+
+stages:
+  - check
+  - test
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+variables:
+  CI: 'true'
+  # The pnpm store lives inside the project so GitLab can cache it between pipelines.
+  PNPM_STORE_DIR: '$CI_PROJECT_DIR/.pnpm-store'
+
+.pnpm:
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    # The exact pnpm version is read from "packageManager" in the root package.json.
+    - npm install --global "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
+    - pnpm config set store-dir "$PNPM_STORE_DIR"
+    - pnpm install --frozen-lockfile
+    # The API's database client is generated from the Prisma schema (not committed).
+    - pnpm --filter @njangi/api db:generate
+
+checks:
+  extends: .pnpm
+  stage: check
+  timeout: 20m
+  script:
+    - pnpm lint
+    - pnpm typecheck
+    - pnpm format:check
+
+unit-tests:
+  extends: .pnpm
+  stage: check
+  timeout: 20m
+  script:
+    - pnpm test:rules
+    - pnpm --filter @njangi/shared test
+    - pnpm --filter @njangi/verify-ledger test
+    - pnpm --filter @njangi/agent-eval test
+    - pnpm --filter @njangi/mobile exec vitest run
+
+api-tests:
+  extends: .pnpm
+  stage: test
+  timeout: 45m
+  services:
+    - name: postgres:16
+      alias: postgres
+  variables:
+    POSTGRES_HOST_AUTH_METHOD: trust
+    PAYMENT_PROVIDER: mock
+    PGHOST: postgres
+    PGUSER: postgres
+    # The two roles of docs/DECISIONS.md D2: the owner runs the migrations, the app role has no
+    # UPDATE or DELETE on the ledger tables (the migrations revoke them).
+    TEST_DATABASE_URL: postgresql://njangi_app@postgres:5432/njangitrust_test
+    TEST_MIGRATION_DATABASE_URL: postgresql://njangi_owner@postgres:5432/njangitrust_test
+  script:
+    - apt-get update -qq && apt-get install -y -qq postgresql-client
+    - until pg_isready -q; do sleep 2; done
+    # Same roles, database and privileges as apps/api/scripts/setup-db.ps1, for the test database.
+    - |
+      psql -v ON_ERROR_STOP=1 -X <<'SQL'
+      CREATE ROLE njangi_owner LOGIN CREATEDB;
+      CREATE ROLE njangi_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      CREATE DATABASE njangitrust_test OWNER njangi_owner;
+      REVOKE ALL ON DATABASE njangitrust_test FROM PUBLIC;
+      GRANT CONNECT, TEMPORARY ON DATABASE njangitrust_test TO njangi_app;
+      \connect njangitrust_test
+      REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+      GRANT USAGE ON SCHEMA public TO njangi_app;
+      ALTER DEFAULT PRIVILEGES FOR ROLE njangi_owner IN SCHEMA public
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO njangi_app;
+      ALTER DEFAULT PRIVILEGES FOR ROLE njangi_owner IN SCHEMA public
+        GRANT USAGE, SELECT ON SEQUENCES TO njangi_app;
+      SQL
+    # Random keys for this run only (the API refuses to start without them).
+    - export JWT_SECRET="$(openssl rand -hex 32)"
+    - export JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
+    - export HASH_SECRET="$(openssl rand -hex 32)"
+    - export STORAGE_SIGNING_SECRET="$(openssl rand -hex 32)"
+    # The Vitest global setup applies the migrations as the owner role, then the tests run one
+    # file at a time on the shared database.
+    - pnpm --filter @njangi/api test
