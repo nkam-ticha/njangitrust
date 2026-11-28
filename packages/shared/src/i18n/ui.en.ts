@@ -308,6 +308,25 @@ export const uiEn: UiCopyShape = {
         'Photos, videos and documents download by themselves only on Wi-Fi. Voice notes are light and always download.',
       webNote: 'On the web, notifications appear in the app only.',
       pushOff: 'Notifications are off for NjangiTrust on this phone. You’ll still find them here.',
+      quietHoursOff: 'Off. You can be notified at any hour.',
+      mediaTitle: 'Downloading media',
+      mediaHelp: 'Choose when the group’s photos, videos and documents download by themselves.',
+      mediaChoice: {
+        WIFI_ONLY: 'On Wi-Fi only',
+        ALWAYS: 'Always',
+        NEVER: 'Never, I tap to download',
+      },
+      push: {
+        on: 'Notifications are on for this phone.',
+        explain:
+          'Turn them on to know when a payment is due, a vote is open or a message arrives, even when the app is closed.',
+        enable: 'Turn on notifications',
+        openSettings: 'Open the phone’s settings',
+        expoGo:
+          'Phone notifications do not work in Expo Go on Android. You’ll find them in the app.',
+        failed:
+          'Notifications could not be turned on right now. You’ll find them in the app, and you can try again.',
+      },
     },
   },
 
@@ -1215,6 +1234,8 @@ export const uiEn: UiCopyShape = {
     },
     empty: 'No messages yet. Say hello to the group, or ask @njangi a question.',
     leftReadOnly: 'You have left this group. The conversation is no longer available.',
+    retention: 'Messages and files are deleted automatically after 3 months.',
+    messageGone: 'This message no longer exists. Messages are deleted after 3 months.',
     pendingActivationNote: 'You can read and write. Your contributions start at the next cycle.',
     system: {
       paymentReceived: '{{name}} paid the round {{round}} contribution.',
@@ -1303,6 +1324,13 @@ export const uiEn: UiCopyShape = {
       youPayHelp:
         'Njangi prepares the card with the exact amount and fees. You confirm before any payment.',
     },
+    previous: {
+      roundChip: 'Round {{round}}',
+      beneficiary: '{{name}} received {{date}}',
+      beneficiaryYou: 'You received {{date}}',
+      paidOf: '{{paid}} of {{total}} paid this round',
+      unpaidTitle: 'Not paid ({{count}})',
+    },
     breakdown: {
       title: 'Round {{round}} details',
       gross: 'Contributions received',
@@ -1341,6 +1369,37 @@ export const uiEn: UiCopyShape = {
       emptyLoansCta: 'You can borrow up to {{amount}}.',
       loansToDecide_one: '{{count}} request to decide',
       loansToDecide_other: '{{count}} requests to decide',
+    },
+    cycleEnd: {
+      title: 'End of the cycle',
+      share: 'Your share of the general fund: {{amount}}',
+      debt: 'You have no share this time: you still owe some payments. Settle them to count at the next sharing.',
+      none: 'The general fund was not shared this time. It stays in the fund for the next cycle.',
+      notInCycle: 'You joined after this cycle started, so you were not counted in its sharing.',
+      left: 'You left the group with this cycle, as you had announced.',
+      remainder: '{{amount}} stays in the fund for the next cycle.',
+      betweenCycles: {
+        title: 'Between two cycles',
+        memberBody: 'The cycle is over. Waiting for the admin to start the next one.',
+        adminBody: 'The cycle is over. Choose the first payout to start the next one.',
+        notEnough:
+          'At least 3 members are needed to start the next cycle ({{count}} today). Invite more from the Groupe tab.',
+        start: 'Start the next cycle',
+      },
+      next: {
+        title: 'Start cycle {{cycle}}',
+        participants_one: '{{count}} member will take part.',
+        participants_other: '{{count}} members will take part.',
+        newcomers_one: '{{count}} of them is new: they join from this cycle.',
+        newcomers_other: '{{count}} of them are new: they join from this cycle.',
+        orderKept: 'Round order: the same as the last cycle.',
+        orderDrawn: 'Round order: drawn by lot (the last cycle had no fixed order).',
+        orderBidding: 'Bidding mode: each round’s beneficiary is decided by bids.',
+        firstPayout: 'First payout',
+        firstPayoutTime: 'Time',
+        start: 'Start',
+        suggested: 'Suggested: {{date}}',
+      },
     },
     solidarity: {
       title: 'Solidarity fund',
@@ -1390,6 +1449,13 @@ export const uiEn: UiCopyShape = {
       exportCsv: 'Spreadsheet (CSV)',
       exportJson: 'Data (JSON)',
       exportHelp: 'Every entry, posting and fingerprint. Numbers are masked.',
+      exportJsonHelp: 'To verify the records with the verification tool.',
+      exportCsvHelp: 'To open in Excel or Google Sheets.',
+      exportPhoneNote:
+        'On the phone, the content opens in the share sheet. Save it to Files or send it by email or WhatsApp.',
+      exportDone: 'Records exported.',
+      exportTooLarge:
+        'The records are too long to share from the phone. Export them from the web version.',
       empty: 'No entries for these filters. Remove a filter to see everything.',
       emptyAll: 'The records are empty. The first entry appears with the first payment.',
       rowA11y: '{{date}}, {{description}}, {{amount}}, reference {{ref}}',
@@ -1579,6 +1645,7 @@ export const uiEn: UiCopyShape = {
   withdraw: {
     title: 'Your round {{round}} payout',
     titleGeneric: 'Withdraw your money',
+    reviewTitle: 'Review and confirm',
     available: 'Available',
     availableA11y: 'Available: {{words}}',
     breakdown: 'How this amount is worked out',
@@ -1594,6 +1661,7 @@ export const uiEn: UiCopyShape = {
     prepare: 'Continue',
     hold: 'Withdrawals on hold until {{date}}, after your number change.',
     paused: 'Withdrawals paused for the whole group: today’s check found a difference.',
+    debtsHeld: 'Debts held back from your withdrawals',
     inProgress:
       'A withdrawal is already in progress. Wait for it to finish before starting another.',
     nothing: 'Nothing to withdraw for now.',
@@ -1816,6 +1884,10 @@ export const uiEn: UiCopyShape = {
       quote: 'See the calculation',
       installmentRow: 'Instalment {{n}}',
       nextCycle: 'In the next cycle',
+      decrease: 'Decrease the amount',
+      increase: 'Increase the amount',
+      presets: 'Quick amounts',
+      max: 'Maximum',
     },
     notEligible: {
       activeLoan: 'You already have a loan in progress. Repay it before asking for another.',
@@ -2032,6 +2104,14 @@ export const uiEn: UiCopyShape = {
     logout: 'Log out',
     version: 'Version {{version}}',
     allGroupsTotal: 'All my groups: {{amount}} to pay this month',
+    reliabilityIn: 'In {{group}}',
+    reliabilityFailed: 'Your reliability could not be loaded.',
+    summary: {
+      unread_one: '{{count}} unread message',
+      unread_other: '{{count}} unread messages',
+      votes_one: '{{count}} open vote',
+      votes_other: '{{count}} open votes',
+    },
   },
 
   paymentNumber: {
@@ -2125,6 +2205,9 @@ export const uiEn: UiCopyShape = {
       action: 'Prepare the export',
       preparing: 'Preparing the export…',
       ready: 'Your export is ready.',
+      ownOnly:
+        'The file holds only your own data: no other member’s number, no secret vote, no PIN.',
+      tooLarge: 'The file is too long to share from the phone. Export it from the web version.',
     },
     delete: {
       title: 'Delete my account',
@@ -2137,6 +2220,8 @@ export const uiEn: UiCopyShape = {
       done: 'Your account is deleted.',
     },
     screenshots: 'Screenshots are blocked on PIN and money screens.',
+    retention:
+      'The group’s messages, photos, videos, documents and voice notes, and your history with the assistant, are deleted automatically after 3 months. Payments, votes and the group’s records stay.',
   },
 
   agentHistory: {

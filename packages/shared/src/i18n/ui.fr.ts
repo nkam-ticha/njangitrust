@@ -313,6 +313,25 @@ export const uiFr = {
       webNote: 'Sur le web, les notifications s’affichent dans l’app uniquement.',
       pushOff:
         'Les notifications sont coupées pour NjangiTrust sur ce téléphone. Tu les retrouveras quand même ici.',
+      quietHoursOff: 'Désactivées. Tu peux recevoir des notifications à toute heure.',
+      mediaTitle: 'Téléchargement des médias',
+      mediaHelp: 'Choisis quand les photos, vidéos et documents du groupe se téléchargent seuls.',
+      mediaChoice: {
+        WIFI_ONLY: 'Sur Wi-Fi uniquement',
+        ALWAYS: 'Toujours',
+        NEVER: 'Jamais, je touche pour télécharger',
+      },
+      push: {
+        on: 'Les notifications sont activées sur ce téléphone.',
+        explain:
+          'Active-les pour savoir qu’un paiement est à faire, qu’un vote est ouvert ou qu’un message est arrivé, même quand l’app est fermée.',
+        enable: 'Activer les notifications',
+        openSettings: 'Ouvrir les réglages du téléphone',
+        expoGo:
+          'Les notifications du téléphone ne marchent pas dans Expo Go sur Android. Tu les retrouves dans l’app.',
+        failed:
+          'Impossible d’activer les notifications pour le moment. Tu les retrouves dans l’app, et tu peux réessayer.',
+      },
     },
   },
 
@@ -1251,6 +1270,8 @@ export const uiFr = {
     },
     empty: 'Aucun message pour le moment. Dis bonjour au groupe, ou pose une question à @njangi.',
     leftReadOnly: 'Tu as quitté ce groupe. Le fil n’est plus disponible.',
+    retention: 'Les messages et les fichiers sont supprimés automatiquement après 3 mois.',
+    messageGone: 'Ce message n’existe plus. Les messages sont supprimés après 3 mois.',
     pendingActivationNote: 'Tu peux lire et écrire. Tes cotisations commencent au prochain cycle.',
     system: {
       paymentReceived: '{{name}} a payé la cotisation du tour {{round}}.',
@@ -1339,6 +1360,13 @@ export const uiFr = {
       youPayHelp:
         'Njangi prépare la carte avec le montant exact et les frais. Tu confirmes avant tout paiement.',
     },
+    previous: {
+      roundChip: 'Tour {{round}}',
+      beneficiary: '{{name}} a reçu {{date}}',
+      beneficiaryYou: 'Tu as reçu {{date}}',
+      paidOf: '{{paid}} sur {{total}} ont payé ce tour',
+      unpaidTitle: 'Pas payé ({{count}})',
+    },
     breakdown: {
       title: 'Détail du tour {{round}}',
       gross: 'Cotisations reçues',
@@ -1378,6 +1406,38 @@ export const uiFr = {
       emptyLoansCta: 'Tu peux emprunter jusqu’à {{amount}}.',
       loansToDecide_one: '{{count}} demande à décider',
       loansToDecide_other: '{{count}} demandes à décider',
+    },
+    cycleEnd: {
+      title: 'Fin du cycle',
+      share: 'Ta part de la caisse générale : {{amount}}',
+      debt: 'Tu n’as pas de part cette fois : il te reste des sommes à payer. Règle-les pour compter au prochain partage.',
+      none: 'La caisse générale n’a pas été partagée cette fois. Elle reste dans la caisse pour le cycle suivant.',
+      notInCycle:
+        'Tu as rejoint le groupe après le début de ce cycle, tu n’as donc pas compté dans son partage.',
+      left: 'Tu as quitté le groupe avec ce cycle, comme tu l’avais annoncé.',
+      remainder: '{{amount}} reste dans la caisse pour le cycle suivant.',
+      betweenCycles: {
+        title: 'Entre deux cycles',
+        memberBody: 'Le cycle est terminé. On attend que l’admin démarre le suivant.',
+        adminBody: 'Le cycle est terminé. Choisis le premier versement pour démarrer le suivant.',
+        notEnough:
+          'Il faut au moins 3 membres pour démarrer le cycle suivant ({{count}} aujourd’hui). Invite d’autres membres depuis l’onglet Groupe.',
+        start: 'Démarrer le cycle suivant',
+      },
+      next: {
+        title: 'Démarrer le cycle {{cycle}}',
+        participants_one: '{{count}} membre participera.',
+        participants_other: '{{count}} membres participeront.',
+        newcomers_one: '{{count}} est nouveau : il rejoint à partir de ce cycle.',
+        newcomers_other: '{{count}} sont nouveaux : ils rejoignent à partir de ce cycle.',
+        orderKept: 'Ordre des tours : le même que le cycle précédent.',
+        orderDrawn: 'Ordre des tours : tiré au sort (le cycle précédent n’avait pas d’ordre fixe).',
+        orderBidding: 'Mode enchères : le bénéficiaire de chaque tour est décidé par les enchères.',
+        firstPayout: 'Premier versement',
+        firstPayoutTime: 'Heure',
+        start: 'Démarrer',
+        suggested: 'Proposé : {{date}}',
+      },
     },
     solidarity: {
       title: 'Caisse de secours',
@@ -1427,6 +1487,13 @@ export const uiFr = {
       exportCsv: 'Tableur (CSV)',
       exportJson: 'Données (JSON)',
       exportHelp: 'Toutes les opérations, écritures et empreintes. Les numéros sont masqués.',
+      exportJsonHelp: 'Pour vérifier le registre avec l’outil de vérification.',
+      exportCsvHelp: 'Pour l’ouvrir dans Excel ou Google Sheets.',
+      exportPhoneNote:
+        'Sur le téléphone, le contenu s’ouvre dans la feuille de partage. Enregistre-le dans Fichiers ou envoie-le par e-mail ou WhatsApp.',
+      exportDone: 'Registre exporté.',
+      exportTooLarge:
+        'Le registre est trop long pour être partagé depuis le téléphone. Exporte-le depuis la version web.',
       empty: 'Aucune opération pour ces filtres. Retire un filtre pour tout voir.',
       emptyAll: 'Le registre est vide. La première opération apparaîtra au premier paiement.',
       rowA11y: '{{date}}, {{description}}, {{amount}}, référence {{ref}}',
@@ -1617,6 +1684,7 @@ export const uiFr = {
   withdraw: {
     title: 'Ton versement du tour {{round}}',
     titleGeneric: 'Retirer ton argent',
+    reviewTitle: 'Vérifie et confirme',
     available: 'Disponible',
     availableA11y: 'Disponible : {{words}}',
     breakdown: 'Comment ce montant est calculé',
@@ -1632,6 +1700,7 @@ export const uiFr = {
     prepare: 'Continuer',
     hold: 'Retraits en attente jusqu’au {{date}}, après ton changement de numéro.',
     paused: 'Retraits en pause pour tout le groupe : la vérification du jour a trouvé un écart.',
+    debtsHeld: 'Dettes retenues sur tes retraits',
     inProgress: 'Un retrait est déjà en cours. Attends sa fin pour en lancer un autre.',
     nothing: 'Rien à retirer pour le moment.',
     nothingTurn: 'Ton tour : tour {{round}}, {{date}}.',
@@ -1853,6 +1922,10 @@ export const uiFr = {
       quote: 'Voir le calcul',
       installmentRow: 'Échéance {{n}}',
       nextCycle: 'Au prochain cycle',
+      decrease: 'Diminuer le montant',
+      increase: 'Augmenter le montant',
+      presets: 'Montants rapides',
+      max: 'Maximum',
     },
     notEligible: {
       activeLoan: 'Tu as déjà un prêt en cours. Rembourse-le avant d’en demander un autre.',
@@ -2071,6 +2144,14 @@ export const uiFr = {
     logout: 'Se déconnecter',
     version: 'Version {{version}}',
     allGroupsTotal: 'Tous mes groupes : {{amount}} à payer ce mois',
+    reliabilityIn: 'Dans {{group}}',
+    reliabilityFailed: 'Ta fiabilité n’a pas pu être chargée.',
+    summary: {
+      unread_one: '{{count}} message non lu',
+      unread_other: '{{count}} messages non lus',
+      votes_one: '{{count}} vote ouvert',
+      votes_other: '{{count}} votes ouverts',
+    },
   },
 
   paymentNumber: {
@@ -2165,6 +2246,10 @@ export const uiFr = {
       action: 'Préparer l’export',
       preparing: 'Préparation de l’export…',
       ready: 'Ton export est prêt.',
+      ownOnly:
+        'Le fichier ne contient que tes propres données : ni les numéros des autres membres, ni les votes secrets, ni ton code PIN.',
+      tooLarge:
+        'Le fichier est trop long pour être partagé depuis le téléphone. Exporte-le depuis la version web.',
     },
     delete: {
       title: 'Supprimer mon compte',
@@ -2177,6 +2262,8 @@ export const uiFr = {
       done: 'Ton compte est supprimé.',
     },
     screenshots: 'Les captures d’écran sont bloquées sur les écrans de code PIN et d’argent.',
+    retention:
+      'Les messages, photos, vidéos, documents et notes vocales du groupe, et ton historique avec l’assistant, sont supprimés automatiquement après 3 mois. Les paiements, les votes et le registre du groupe restent.',
   },
 
   agentHistory: {

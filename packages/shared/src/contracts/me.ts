@@ -70,3 +70,46 @@ export const deviceSchema = z.strictObject({
   lastSeenAt: instantSchema,
 });
 export type DeviceDto = z.infer<typeof deviceSchema>;
+
+/**
+ * R14, STA-02: the share of the member's last `window` due items paid on time, with the counts.
+ * `percent` is null while the member has fewer than 3 due items ("Nouveau membre", R14.2).
+ */
+export const reliabilitySchema = z.strictObject({
+  onTime: z.number().int().min(0),
+  total: z.number().int().min(0),
+  percent: z.number().int().min(0).max(100).nullable(),
+  window: z.number().int().min(1),
+});
+export type ReliabilityDto = z.infer<typeof reliabilitySchema>;
+
+/** GET /groups/:groupId/me/reliability. */
+export const reliabilityResponseSchema = z.strictObject({ reliability: reliabilitySchema });
+
+/** One group of `GET /me/summary` (GRP-05). Amounts are whole FCFA, as the group's own screens show them. */
+export const summaryGroupSchema = z.strictObject({
+  groupId: uuidSchema,
+  name: z.string(),
+  role: membershipRoleSchema,
+  status: groupStatusSchema,
+  /** The round in progress, or null before the first cycle starts. */
+  currentRound: z
+    .strictObject({
+      number: z.number().int(),
+      total: z.number().int(),
+      dueAt: instantSchema,
+    })
+    .nullable(),
+  /** What the member owes now in this group. */
+  myDue: z.number().int().min(0),
+  /** What the member can withdraw now from this group. */
+  available: z.number().int().min(0),
+  unreadMessages: z.number().int().min(0),
+  /** Open votes the member may cast and has not cast yet. */
+  openVotes: z.number().int().min(0),
+});
+export type SummaryGroupDto = z.infer<typeof summaryGroupSchema>;
+
+/** GET /me/summary. */
+export const combinedSummarySchema = z.strictObject({ groups: z.array(summaryGroupSchema) });
+export type CombinedSummaryDto = z.infer<typeof combinedSummarySchema>;

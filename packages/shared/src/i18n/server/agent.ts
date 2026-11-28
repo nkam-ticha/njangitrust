@@ -31,6 +31,11 @@ export const agentErrorTexts = {
     fr: 'Plusieurs membres portent ce nom. Lequel veux-tu dire ?',
     en: 'Several members have that name. Which one do you mean?',
   },
+  /** Spec 4.4: in the group chat everyone reads the reply; one member's own situation stays private. */
+  PERSONAL_IN_GROUP: {
+    fr: 'Dans le groupe, je ne parle pas de la situation personnelle d’un membre (amendes, dettes, prêts). Écris-moi en privé.',
+    en: 'In the group chat I do not discuss one member’s own situation (fines, debts, loans). Write to me privately.',
+  },
   GROUP_NOT_FOUND: {
     fr: 'Je ne trouve aucun de tes groupes avec ce nom.',
     en: 'I can’t find one of your groups with that name.',
