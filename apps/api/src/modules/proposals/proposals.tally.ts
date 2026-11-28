@@ -199,6 +199,8 @@ export async function closeDueProposals(now: Date = clock.now()): Promise<number
       noCount: true,
       closesAt: true,
     },
+    // The oldest deadlines first, so a long list never leaves the longest-waiting vote behind.
+    orderBy: { closesAt: 'asc' },
     take: 200,
   });
   let settled = 0;
@@ -216,8 +218,17 @@ export async function closeDueProposals(now: Date = clock.now()): Promise<number
         now,
       }).status !== 'OPEN';
     if (!due && !certain) continue;
-    await settleProposal(p.id, now);
-    settled += 1;
+    // One proposal that cannot be settled (a stored payload that no longer parses, say) must not
+    // freeze every other vote of the app: log it by id and carry on. It stays open to be looked at.
+    try {
+      await settleProposal(p.id, now);
+      settled += 1;
+    } catch (error) {
+      log.error(
+        { proposalId: p.id, errorName: error instanceof Error ? error.name : 'unknown' },
+        'a proposal could not be settled, the others go on',
+      );
+    }
   }
   return settled;
 }
