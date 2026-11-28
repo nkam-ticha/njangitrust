@@ -23,7 +23,7 @@ import {
   type AgentTurnDto,
 } from '@njangi/shared/contracts/agent';
 import { api } from '@/api/client';
-import { getSocket } from '@/api/socket';
+import { getSocket, withSocket } from '@/api/socket';
 import { seedPendingActions } from '@/features/pendingActions/seed';
 import { belongsToThread, conversationKey, conversationPrefix } from './keys';
 import { applyDelta, type AgentStream } from './stream';
@@ -120,34 +120,38 @@ export function useAgentStream(
   const [stream, setStream] = useState<AgentStream | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    // `agent.done` also announces a result event or a private reply to an @njangi mention: the cards
-    // it carries are cached at once, and the conversation is read once (not once per event).
-    const onDone = (turn: AgentDonePayload) => {
-      seedPendingActions(qc, [...turn.actions, ...turn.reply.actions]);
-      // Only the thread this screen shows is read again: another group's reply waits for its turn.
-      if (!belongsToThread(conversationId, turn.conversationId)) return;
-      clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => {
-        void qc.invalidateQueries({ queryKey: conversationKey(groupId) });
-      }, 250);
-    };
-    const onDelta = (delta: AgentDeltaPayload) => setStream((s) => applyDelta(s, delta));
-    const onActivity = (payload: { turnId: string; tool: string }) =>
-      setStream((s) =>
-        s && (s.turnId === null || s.turnId === payload.turnId)
-          ? { ...s, turnId: payload.turnId, tool: payload.tool }
-          : s,
-      );
-    socket.on('agent.delta', onDelta);
-    socket.on('agent.activity', onActivity);
-    socket.on('agent.done', onDone);
+    // Waits for the realtime link when it is not up yet, and listens again after a reconnection.
+    const stop = withSocket((socket) => {
+      // `agent.done` also announces a result event or a private reply to an @njangi mention: the cards
+      // it carries are cached at once, and the conversation is read once (not once per event).
+      const onDone = (turn: AgentDonePayload) => {
+        seedPendingActions(qc, [...turn.actions, ...turn.reply.actions]);
+        // Only the thread this screen shows is read again: another group's reply waits for its turn.
+        if (!belongsToThread(conversationId, turn.conversationId)) return;
+        clearTimeout(refreshTimer.current);
+        refreshTimer.current = setTimeout(() => {
+          void qc.invalidateQueries({ queryKey: conversationKey(groupId) });
+        }, 250);
+      };
+      const onDelta = (delta: AgentDeltaPayload) => setStream((s) => applyDelta(s, delta));
+      const onActivity = (payload: { turnId: string; tool: string }) =>
+        setStream((s) =>
+          s && (s.turnId === null || s.turnId === payload.turnId)
+            ? { ...s, turnId: payload.turnId, tool: payload.tool }
+            : s,
+        );
+      socket.on('agent.delta', onDelta);
+      socket.on('agent.activity', onActivity);
+      socket.on('agent.done', onDone);
+      return () => {
+        socket.off('agent.delta', onDelta);
+        socket.off('agent.activity', onActivity);
+        socket.off('agent.done', onDone);
+      };
+    });
     return () => {
+      stop();
       clearTimeout(refreshTimer.current);
-      socket.off('agent.delta', onDelta);
-      socket.off('agent.activity', onActivity);
-      socket.off('agent.done', onDone);
     };
   }, [qc, groupId, conversationId]);
   // A new answer starts with an empty stream; the end of an answer clears it.

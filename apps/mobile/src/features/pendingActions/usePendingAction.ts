@@ -17,7 +17,7 @@ import {
   type PendingActionDto,
 } from '@njangi/shared/contracts/pending-actions';
 import { api } from '@/api/client';
-import { getSocket } from '@/api/socket';
+import { withSocket } from '@/api/socket';
 import { createKeyedFlights } from '@/lib/singleFlight';
 import { applyUpdate, pendingActionKey } from './actionState';
 import { cancelFlow, confirmFlow, type CardStore } from './confirmFlow';
@@ -67,20 +67,22 @@ export function usePendingAction(initial: PendingActionDto): UsePendingAction {
   const action = data ?? initial;
 
   // Realtime: only forward moves are applied (actionState.ts).
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) return;
-    const onUpdate = (payload: PendingActionUpdatedPayload) => {
-      if (payload.id !== id) return;
-      qc.setQueryData<PendingActionDto>(pendingActionKey(id), (old) =>
-        old ? applyUpdate(old, payload) : old,
-      );
-    };
-    socket.on('pendingAction.updated', onUpdate);
-    return () => {
-      socket.off('pendingAction.updated', onUpdate);
-    };
-  }, [id, qc]);
+  useEffect(
+    () =>
+      withSocket((socket) => {
+        const onUpdate = (payload: PendingActionUpdatedPayload) => {
+          if (payload.id !== id) return;
+          qc.setQueryData<PendingActionDto>(pendingActionKey(id), (old) =>
+            old ? applyUpdate(old, payload) : old,
+          );
+        };
+        socket.on('pendingAction.updated', onUpdate);
+        return () => {
+          socket.off('pendingAction.updated', onUpdate);
+        };
+      }),
+    [id, qc],
+  );
 
   // A card nobody tapped for 10 minutes becomes "expired" on screen without a reload.
   const expiresAt = action.status === 'PENDING' ? action.expiresAt : null;
