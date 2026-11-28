@@ -26,6 +26,8 @@ model Cycle {
 
   rounds Round[]
 
+  /// D40: at most one open cycle per group, by the partial unique index "Cycle_one_open_per_group"
+  /// (WHERE "closedAt" IS NULL, migration 20261124110000). Prisma cannot express it here.
   @@unique([groupId, number])
 }
 

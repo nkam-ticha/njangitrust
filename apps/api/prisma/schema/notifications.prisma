@@ -39,6 +39,7 @@ model Notification {
   pushTickets  PushTicket[]
 
   @@index([userId, createdAt])
+  @@index([createdAt])
   @@index([userId, readAt])
 }
 

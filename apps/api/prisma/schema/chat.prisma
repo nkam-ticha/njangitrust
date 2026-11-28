@@ -36,6 +36,7 @@ model Message {
   hiddenByAdminAt    DateTime?   @db.Timestamptz(3)
 
   @@index([groupId, createdAt])
+  @@index([createdAt])
 }
 
 enum AttachmentKind {
@@ -65,6 +66,7 @@ model Attachment {
   message              Message?
 
   @@index([groupId, createdAt])
+  @@index([createdAt])
 }
 
 /// D7, spec 2.12: one presigned upload. The attachment exists only once the real file type has
@@ -86,4 +88,5 @@ model UploadTicket {
   attachmentId String?        @unique @db.Uuid
 
   @@index([userId, createdAt])
+  @@index([createdAt])
 }

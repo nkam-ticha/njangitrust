@@ -17,4 +17,5 @@ model DeploymentJob {
   @@unique([name, jobKey])
   @@index([status, runAt, createdAt])
   @@index([status, leaseUntil])
+  @@index([status, updatedAt])
 }
