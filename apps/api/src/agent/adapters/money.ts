@@ -147,6 +147,20 @@ async function groupOverview(ctx: AgentCtx, groupId: string): Promise<AgentData>
   };
 }
 
+/** The payout figures the whole group may hear (spec 4.4): what was collected, not what one member owes. */
+const GROUP_BREAKDOWN_KEYS = new Set(['collected', 'collectionFees', 'credited']);
+
+/**
+ * Entries that are one member's own debts. The registre shows them on screen; the agent does not
+ * read them out in the group chat (spec 4.4), and a read scoped to one member is refused there.
+ */
+const PERSONAL_DEBT_TYPES = new Set<string>([
+  'FINE_ASSESSED',
+  'BID_ASSESSED',
+  'AUTO_SETTLEMENT',
+  'CLAWBACK',
+]);
+
 const LEDGER_TYPES = new Set<string>([
   'PAYMENT_RECEIVED',
   'POT_ASSIGNED',
@@ -176,14 +190,22 @@ export const moneyAdapter: AgentMoneyPort = {
     if (!found) return {};
     const round = found.round;
     const fr = ctx.lang === 'fr';
-    const [owed, mine] = await Promise.all([
-      duesOf(ctx, groupId),
-      orNull(() => readMyMoney(ctx.userId, groupId), ['NO_ACTIVE_CYCLE']),
-    ]);
-    const forRound = owed.dues.filter((d) => d.roundNumber === round.number);
-    const roundTotal = forRound.reduce((sum, d) => sum + d.amount, 0);
+    // In the group chat everyone reads the reply: the member's own dues and money are not even
+    // read there (spec 4.4), so no later change can print them.
+    const personal =
+      ctx.channel === 'GROUP'
+        ? null
+        : await Promise.all([
+            duesOf(ctx, groupId),
+            orNull(() => readMyMoney(ctx.userId, groupId), ['NO_ACTIVE_CYCLE']),
+          ]);
     const deadline = formatDateTime(round.dueAt, ctx.lang);
     const payout = formatDateTime(round.payoutAt, ctx.lang);
+    const [owed, mine] = personal ?? [null, null];
+    const roundTotal =
+      owed?.dues
+        .filter((d) => d.roundNumber === round.number)
+        .reduce((sum, d) => sum + d.amount, 0) ?? 0;
     return {
       cycle: fr
         ? `cycle ${round.cycle}, tour ${round.number}`
@@ -195,16 +217,20 @@ export const moneyAdapter: AgentMoneyPort = {
               : `${round.beneficiaryName}; deadline: ${deadline}; payout: ${payout}`,
           }
         : {}),
-      myRound: [
-        `myRound${round.number}`,
-        roundTotal > 0
-          ? fr
-            ? `à payer, ${money(roundTotal, 'fr')}`
-            : `to pay, ${money(roundTotal, 'en')}`
-          : fr
-            ? 'payé'
-            : 'paid',
-      ],
+      ...(personal
+        ? {
+            myRound: [
+              `myRound${round.number}`,
+              roundTotal > 0
+                ? fr
+                  ? `à payer, ${money(roundTotal, 'fr')}`
+                  : `to pay, ${money(roundTotal, 'en')}`
+                : fr
+                  ? 'payé'
+                  : 'paid',
+            ] as [string, string],
+          }
+        : {}),
       ...(mine ? { myMoney: myMoneyLine(ctx, mine).text } : {}),
     };
   },
@@ -261,16 +287,21 @@ export const moneyAdapter: AgentMoneyPort = {
       NO_ROUND,
     );
     if (!found) throw agentError('ROUND_NOT_FOUND');
+    // In the group chat everyone reads the answer: only what the whole group collected. What the
+    // beneficiary owes, had withheld or already withdrew is their own situation (spec 4.4).
+    const inGroup = ctx.channel === 'GROUP';
     const amounts: Record<string, string> = {};
     for (const [key, value] of Object.entries(found.breakdown)) {
-      if (typeof value === 'number') amounts[key] = money(value, ctx.lang);
+      if (typeof value !== 'number') continue;
+      if (inGroup && !GROUP_BREAKDOWN_KEYS.has(key)) continue;
+      amounts[key] = money(value, ctx.lang);
     }
     return {
       round: found.round,
       beneficiary: round.beneficiaryName,
       payout: formatDateTime(found.payoutAt, ctx.lang),
       ...amounts,
-      debtsDue: money(found.debtsDue, ctx.lang),
+      ...(inGroup ? {} : { debtsDue: money(found.debtsDue, ctx.lang) }),
     };
   },
 
@@ -285,6 +316,10 @@ export const moneyAdapter: AgentMoneyPort = {
 
   async ledger(ctx, input) {
     const groupId = groupOf(ctx);
+    const inGroup = ctx.channel === 'GROUP';
+    if (inGroup && (input.member || (input.type && PERSONAL_DEBT_TYPES.has(input.type)))) {
+      throw agentError('PERSONAL_IN_GROUP');
+    }
     let membershipId: string | undefined;
     if (input.member) {
       const who = await resolveMember(ctx, groupId, input.member);
@@ -308,31 +343,33 @@ export const moneyAdapter: AgentMoneyPort = {
     });
     return {
       entries: await Promise.all(
-        page.entries.map(async (entry) => {
-          const entryAmount = entry.postings.reduce(
-            (sum, p) => (p.amount > 0 ? sum + p.amount : sum),
-            0,
-          );
-          let deadline: string | undefined;
-          const meta = entry.metadata as { deadline?: unknown } | null;
-          if (typeof meta?.deadline === 'string') {
-            deadline = formatDateTime(new Date(meta.deadline), ctx.lang);
-          } else if (entry.roundId) {
-            const round = await getPrisma().round.findUnique({
-              where: { id: entry.roundId },
-              select: { dueAt: true },
-            });
-            if (round) deadline = formatDateTime(round.dueAt, ctx.lang);
-          }
-          return {
-            seq: entry.seq,
-            date: formatDateTime(entry.occurredAt, ctx.lang),
-            what: ctx.lang === 'fr' ? entry.descriptionFr : entry.descriptionEn,
-            amount: money(entryAmount, ctx.lang),
-            ...(entry.type === 'FINE_ASSESSED' ? { fine: money(entryAmount, ctx.lang) } : {}),
-            ...(deadline ? { deadline } : {}),
-          };
-        }),
+        page.entries
+          .filter((entry) => !inGroup || !PERSONAL_DEBT_TYPES.has(entry.type))
+          .map(async (entry) => {
+            const entryAmount = entry.postings.reduce(
+              (sum, p) => (p.amount > 0 ? sum + p.amount : sum),
+              0,
+            );
+            let deadline: string | undefined;
+            const meta = entry.metadata as { deadline?: unknown } | null;
+            if (typeof meta?.deadline === 'string') {
+              deadline = formatDateTime(new Date(meta.deadline), ctx.lang);
+            } else if (entry.roundId) {
+              const round = await getPrisma().round.findUnique({
+                where: { id: entry.roundId },
+                select: { dueAt: true },
+              });
+              if (round) deadline = formatDateTime(round.dueAt, ctx.lang);
+            }
+            return {
+              seq: entry.seq,
+              date: formatDateTime(entry.occurredAt, ctx.lang),
+              what: ctx.lang === 'fr' ? entry.descriptionFr : entry.descriptionEn,
+              amount: money(entryAmount, ctx.lang),
+              ...(entry.type === 'FINE_ASSESSED' ? { fine: money(entryAmount, ctx.lang) } : {}),
+              ...(deadline ? { deadline } : {}),
+            };
+          }),
       ),
       more: page.nextBefore !== null,
     };
@@ -340,6 +377,10 @@ export const moneyAdapter: AgentMoneyPort = {
 
   async loans(ctx, input) {
     const groupId = groupOf(ctx);
+    // In the group chat everyone reads the answer: loans without borrower, schedule or a flag for
+    // the asker, and never one member's loans (spec 4.4).
+    const inGroup = ctx.channel === 'GROUP';
+    if (inGroup && input.member) throw agentError('PERSONAL_IN_GROUP');
     let membershipId: string | undefined;
     if (input.member) {
       const who = await resolveMember(ctx, groupId, input.member);
@@ -354,17 +395,25 @@ export const moneyAdapter: AgentMoneyPort = {
         .slice(0, 20)
         .map((loan) => ({
           loanId: loan.id,
-          borrower: loan.borrower.name,
-          mine: loan.borrower.membershipId === ctx.membershipId,
+          ...(inGroup
+            ? {}
+            : {
+                borrower: loan.borrower.name,
+                mine: loan.borrower.membershipId === ctx.membershipId,
+              }),
           amount: money(loan.principal, ctx.lang),
           months: loan.months,
           status: loan.status,
           ...(loan.totalDue !== null ? { totalToRepay: money(loan.totalDue, ctx.lang) } : {}),
-          installments: loan.installments.map((i) => ({
-            amount: money(i.amount, ctx.lang),
-            dueAt: formatDateTime(i.dueAt, ctx.lang),
-            status: i.status,
-          })),
+          ...(inGroup
+            ? {}
+            : {
+                installments: loan.installments.map((i) => ({
+                  amount: money(i.amount, ctx.lang),
+                  dueAt: formatDateTime(i.dueAt, ctx.lang),
+                  status: i.status,
+                })),
+              }),
         })),
     };
   },

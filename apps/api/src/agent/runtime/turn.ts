@@ -11,6 +11,8 @@ import { agentTexts } from '@njangi/shared/i18n/server/agent';
 import { refusesWithoutTrying, verifyReply } from '../guards/claims';
 import { MAX_TOOL_STEPS } from '../guards/rate-limit';
 import { detectLanguage } from '../guards/language';
+import { skippedExplainRule } from '../guards/explain-rule';
+import { ungroundedAmounts, usesVous } from '../guards/grounding';
 import { maskPhonesDeep } from '../guards/phone-guard';
 import { redactForStorage, redactToolArgs } from '../guards/redaction';
 import { StreamGuard } from '../guards/stream-guard';
@@ -31,7 +33,14 @@ import { runTool, type ToolRun } from '../tools/execute';
 import { toLlmTool, type ToolRegistry } from '../tools/registry';
 import type { AgentCtx } from '../types';
 import { HISTORY_LIMIT, historyMessages, memberMessage, systemMessage } from './messages';
-import { stepNote, tryFirstNote, unsupportedClaimNote } from './notes';
+import {
+  explainRuleNote,
+  stepNote,
+  tryFirstNote,
+  tuNote,
+  unsupportedClaimNote,
+  ungroundedAmountNote,
+} from './notes';
 import { guidePrefetch } from './prefetch';
 import { notPreparedText, reconcileReply } from './reconcile';
 import { routeCategories } from './routing';
@@ -180,6 +189,14 @@ export async function runTurn(deps: TurnDeps, input: TurnInput): Promise<TurnRes
     if (verifyReply(text, runs, { guided: isGuided }) === 'unsupported') {
       return unsupportedClaimNote(runs, responseLang);
     }
+    // Rule 1: an amount no tool, event or message of this turn gave is an invented one.
+    const invented = ungroundedAmounts(
+      text,
+      messages.slice(1).map((m) => (typeof m.content === 'string' ? m.content : '')),
+    );
+    if (invented.length > 0) return ungroundedAmountNote(invented, responseLang);
+    if (responseLang === 'fr' && usesVous(text)) return tuNote();
+    if (input.text && skippedExplainRule(input.text, runs)) return explainRuleNote(responseLang);
     return runs.length === 0 && !isGuided && refusesWithoutTrying(text)
       ? tryFirstNote(responseLang)
       : null;

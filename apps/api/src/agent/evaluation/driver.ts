@@ -7,6 +7,7 @@
 // holds everything else (scenarios, scripted replies, checks, report).
 import type { PendingActionDto } from '@njangi/shared/contracts/pending-actions';
 import { registerAgentJobs } from '../index';
+import { refreshEvaluationWorld } from './world';
 import { agentConfig, setAgentConfigForTests } from '../config';
 import { EVENT_TOOL } from '../store/types';
 import { agentMessageLimiter } from '../guards/rate-limit';
@@ -191,6 +192,8 @@ export function openDriver(mode: Mode): EvaluationDriver | null {
     promptVersion: PROMPT_VERSION,
 
     async capabilities() {
+      // Facts relative to "now" go stale between runs: re-anchor them (evaluation database only).
+      await refreshEvaluationWorld(DEFAULT_GROUP, new Date(clock.nowMs()));
       const built = agentStatus().capabilities;
       const needs = new Set<Need>(
         (Object.keys(built) as (keyof typeof built)[]).filter((k) => built[k]),

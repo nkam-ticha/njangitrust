@@ -93,12 +93,24 @@ export async function answerGroupMention(mention: GroupMention): Promise<Mention
   });
   if (!text || !(await tryConsumeAgentMessage(mention.authorUserId))) return 'UNAVAILABLE';
   const actor = await authorActor(mention.authorUserId);
+  // Spec 4.8 point 6: a quoted message is data, never folded into the member's own text.
+  const quotedMessage =
+    (await chat.quotedText?.({
+      groupId: mention.groupId,
+      messageId: mention.messageId,
+      userId: mention.authorUserId,
+    })) ?? null;
   return withTurnLease(
     actor.userId,
     async (): Promise<MentionOutcome> => {
       // The other path (app or job) may have answered while this one waited for the lease.
       if (await answered()) return 'ALREADY_ANSWERED';
-      const ctx = await buildCtx(actor, { groupId: mention.groupId, channel: 'GROUP', text });
+      const ctx = await buildCtx(actor, {
+        groupId: mention.groupId,
+        channel: 'GROUP',
+        text,
+        quotedMessage,
+      });
       const answer = await groupAnswer(ctx, text);
       await chat.postAgentReply({
         groupId: mention.groupId,

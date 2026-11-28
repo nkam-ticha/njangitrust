@@ -541,10 +541,10 @@ export const APP_GUIDE: readonly GuideEntry[] = [
       'couper',
       'mute',
     ],
-    routes: ['(app)/notifications'],
+    routes: ['(app)/notifications', '(app)/notification-settings'],
     text: {
-      fr: 'La cloche «Notifications» en haut de chaque onglet ouvre la liste de tes notifications (paiements, échéances, votes, réunions, sécurité) ; «Tout marquer comme lu» les marque toutes comme lues. Pour choisir lesquelles tu reçois, fixer des heures calmes ou couper les messages du groupe, dis-le-moi : il n’y a pas encore d’écran pour ça, mais je peux le régler. Les alertes de sécurité ne se coupent jamais.',
-      en: 'The “Notifications” bell at the top of each tab opens the list of your notifications (payments, due dates, votes, meetings, security); “Mark all as read” marks them all as read. To choose which ones you receive, set quiet hours or mute the group’s messages, tell me: there is no screen for that yet, but I can set it. Security alerts can never be muted.',
+      fr: 'La cloche «Notifications» en haut de chaque onglet ouvre la liste de tes notifications (paiements, échéances, votes, réunions, sécurité) ; «Tout marquer comme lu» les marque toutes comme lues. Pour choisir lesquelles tu reçois, ouvre l’onglet «Moi» puis la ligne «Notifications» : l’écran «Réglages des notifications» te laisse régler les catégories, les «Heures calmes» et «Couper les messages du groupe» ; je peux aussi le faire pour toi. Les alertes de sécurité ne se coupent jamais.',
+      en: 'The “Notifications” bell at the top of each tab opens the list of your notifications (payments, due dates, votes, meetings, security); “Mark all as read” marks them all as read. To choose which ones you receive, open the “Me” tab then the “Notifications” row: the “Notification settings” screen lets you set the categories, “Quiet hours” and “Mute group messages”; I can also do it for you. Security alerts can never be muted.',
     },
   },
   {

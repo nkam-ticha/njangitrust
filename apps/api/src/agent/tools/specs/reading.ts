@@ -60,7 +60,8 @@ export const readingSpecs = {
     name: 'get_ledger',
     channels: BOTH,
     needs: 'money',
-    description: 'Ledger (registre) entries, newest first, optionally filtered.',
+    description:
+      'Ledger (registre) entries, newest first, optionally filtered. When the member asks WHY a fine or debt applies, read the entry here and then also call explain_rule for the official rule.',
     args: s({
       member: memberArg.optional(),
       type: z.string().min(1).max(40).optional().describe('Entry type, e.g. FINE_ASSESSED.'),
@@ -84,7 +85,7 @@ export const readingSpecs = {
     name: 'explain_rule',
     channels: BOTH,
     description:
-      'The official text of the rules about a topic (fine, loan, payout, vote, solidarity fund, payment number…), or a rule id such as R6.1, in the member’s language.',
+      'The official text of the rules about a topic (fine, loan, payout, vote, solidarity fund, payment number…), or a rule id such as R6.1, in the member’s language. Call it whenever you explain why a fine or debt applies, next to get_ledger.',
     args: s({ topic: z.string().min(1).max(120) }),
     example: { topic: 'amende' },
   }),

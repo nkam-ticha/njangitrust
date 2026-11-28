@@ -622,3 +622,134 @@ describe('the claim guard: the reply must match what the tools did (spec 4.2, 4.
     expect(result.reply).toBe('Désolé, je ne peux vraiment pas.');
   });
 });
+
+describe('the grounding guard: no amount the server did not give (spec 4.2 rule 1)', () => {
+  const OVERVIEW = implement(SPECS.get_my_overview, () =>
+    Promise.resolve({ status: 'OK', data: { toPay: '11 000 FCFA' } }),
+  );
+
+  it('takes back an invented amount once and lets the model call the tool', async () => {
+    const { llm, deps } = setup(
+      [
+        { text: 'Tu dois 12 000 FCFA.' },
+        { toolCalls: [{ name: 'get_my_overview', args: {} }] },
+        { text: 'Tu dois 11 000 FCFA.' },
+      ],
+      { registry: new ToolRegistry([...fakeTools, OVERVIEW]) },
+    );
+    const result = await turn(deps, 'Je dois combien ?');
+    expect(llm.requests).toHaveLength(3);
+    const notes = llm.requests[1]!.messages.filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join(' | ');
+    expect(notes).toContain('12000 FCFA');
+    expect(notes).toContain('get_my_overview');
+    expect(result.reply).toBe('Tu dois 11 000 FCFA.');
+  });
+
+  it('accepts an amount that a tool returned or that the member typed', async () => {
+    const { llm, deps } = setup(
+      [
+        { toolCalls: [{ name: 'get_my_overview', args: {} }] },
+        { text: 'Tu dois 11 000 FCFA ; je prépare 20 000 FCFA.' },
+      ],
+      { registry: new ToolRegistry([...fakeTools, OVERVIEW]) },
+    );
+    const result = await turn(deps, 'Retire 20 000 et dis-moi combien je dois');
+    expect(llm.requests).toHaveLength(2);
+    expect(result.reply).toBe('Tu dois 11 000 FCFA ; je prépare 20 000 FCFA.');
+  });
+
+  it('corrects only once: a second invented amount is not looped on', async () => {
+    const { llm, deps } = setup(
+      [{ text: 'Tu dois 12 000 FCFA.' }, { text: 'Tu dois 13 000 FCFA.' }],
+      {
+        registry: new ToolRegistry([...fakeTools, OVERVIEW]),
+      },
+    );
+    await turn(deps, 'Je dois combien ?');
+    expect(llm.requests).toHaveLength(2);
+  });
+
+  it('does not check the group chat, which never states personal amounts anyway', async () => {
+    const { llm, deps } = setup([{ text: 'Le fonds contient 99 000 FCFA.' }], {
+      registry: new ToolRegistry([...fakeTools]),
+    });
+    await turn(deps, '@njangi le fonds ?', ctx({ channel: 'GROUP' }));
+    expect(llm.requests).toHaveLength(1);
+  });
+});
+
+describe('the "tu" guard (CLAUDE.md rule 10)', () => {
+  it('takes back a French reply that says "vous" once, and keeps the corrected one', async () => {
+    const { llm, deps } = setup([
+      { text: 'Votre compte affiche 0 FCFA.' },
+      { text: 'Ton compte affiche 0 FCFA.' },
+    ]);
+    const result = await turn(deps, 'Retire mon argent, je n’ai rien ? 0 FCFA ?');
+    expect(llm.requests).toHaveLength(2);
+    expect(result.reply).toBe('Ton compte affiche 0 FCFA.');
+  });
+
+  it('leaves an English reply and a correct French one alone', async () => {
+    const english = setup([{ text: 'You have 0 FCFA, with your own account.' }]);
+    await turn(english.deps, 'How much money do I have, 0 FCFA ?');
+    expect(english.llm.requests).toHaveLength(1);
+    const french = setup([{ text: 'Ton compte affiche 0 FCFA.' }]);
+    await turn(french.deps, 'Combien ai-je ? 0 FCFA ?');
+    expect(french.llm.requests).toHaveLength(1);
+  });
+});
+
+describe('the explain_rule guard (system prompt rule 7)', () => {
+  const tools = [
+    implement(SPECS.get_ledger, () =>
+      Promise.resolve({ status: 'OK', data: { entries: [{ what: 'Amende de retard, tour 3' }] } }),
+    ),
+    implement(SPECS.explain_rule, () =>
+      Promise.resolve({
+        status: 'OK',
+        data: { rule: 'R6.1 Une amende est due après l’échéance.' },
+      }),
+    ),
+  ];
+
+  it('gives one more step when a "why" answer read the ledger but not the rule', async () => {
+    const { llm, deps } = setup(
+      [
+        { toolCalls: [{ name: 'get_ledger', args: {} }] },
+        { text: 'Tu as reçu une amende de retard pour le tour 3.' },
+        { toolCalls: [{ name: 'explain_rule', args: { topic: 'amende' } }] },
+        { text: 'Selon R6.1, une amende est due après l’échéance : tour 3.' },
+      ],
+      { registry: new ToolRegistry([...fakeTools, ...tools]) },
+    );
+    const result = await turn(deps, 'Pourquoi j’ai une amende ?');
+    expect(llm.requests).toHaveLength(4);
+    expect(result.runs.map((r) => r.name)).toEqual(['get_ledger', 'explain_rule']);
+    expect(result.reply).toContain('R6.1');
+  });
+
+  it('does not interfere when explain_rule was called, or for another question', async () => {
+    const done = setup(
+      [
+        {
+          toolCalls: [
+            { name: 'get_ledger', args: {} },
+            { name: 'explain_rule', args: { topic: 'amende' } },
+          ],
+        },
+        { text: 'Selon R6.1, une amende est due après l’échéance.' },
+      ],
+      { registry: new ToolRegistry([...fakeTools, ...tools]) },
+    );
+    await turn(done.deps, 'Pourquoi j’ai une amende ?');
+    expect(done.llm.requests).toHaveLength(2);
+    const other = setup(
+      [{ toolCalls: [{ name: 'get_ledger', args: {} }] }, { text: 'Voici les écritures.' }],
+      { registry: new ToolRegistry([...fakeTools, ...tools]) },
+    );
+    await turn(other.deps, 'Montre-moi le registre');
+    expect(other.llm.requests).toHaveLength(2);
+  });
+});

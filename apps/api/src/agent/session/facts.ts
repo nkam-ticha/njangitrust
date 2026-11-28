@@ -62,6 +62,7 @@ export async function gatherSessionFacts(ctx: AgentCtx): Promise<SessionFacts> {
     role: ctx.role,
     channel: ctx.channel,
     now: ctx.now,
+    ...(ctx.quotedMessage ? { quotedMessage: ctx.quotedMessage } : {}),
     activeGroup: active
       ? {
           name: active.group.name,

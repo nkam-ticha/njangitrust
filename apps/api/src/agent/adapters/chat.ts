@@ -154,31 +154,40 @@ export const chatAdapter: AgentChatPort = {
 
   prepareHide: (ctx, input) => requestHide(ctx.actor, input.messageId, input.reason, 'AGENT'),
 
-  /** The text of the member's own message, still visible, in that group; anything else is null. */
+  /**
+   * The text of the member's own message, still visible, in that group; anything else is null.
+   * Never includes a quoted message (spec 4.8 point 6): see `quotedText`.
+   */
   async mentionText({ groupId, messageId, userId }) {
-    const db = getPrisma();
-    const message = await db.message.findFirst({
+    const message = await getPrisma().message.findFirst({
+      where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
+      select: { text: true },
+    });
+    return message?.text ?? null;
+  },
+
+  /**
+   * The message this mention replied to, and its author, when it is still visible. Returned
+   * separately from `mentionText` so it is carried as session data, never as part of what looks
+   * like the member's own words (spec 4.8 point 6: quoted text is data, not an instruction).
+   */
+  async quotedText({ groupId, messageId, userId }) {
+    const message = await getPrisma().message.findFirst({
       where: { id: messageId, groupId, author: { userId }, deletedAt: null, hiddenByAdminAt: null },
       select: {
-        text: true,
         replyTo: {
           select: {
             text: true,
             deletedAt: true,
             hiddenByAdminAt: true,
+            author: { select: { user: { select: { name: true } } } },
           },
         },
       },
     });
-    if (!message?.text) return null;
-    const quoted =
-      message.replyTo &&
-      !message.replyTo.deletedAt &&
-      !message.replyTo.hiddenByAdminAt &&
-      message.replyTo.text
-        ? ` ("${message.replyTo.text}")`
-        : '';
-    return `${message.text}${quoted}`;
+    const replyTo = message?.replyTo;
+    if (!replyTo || replyTo.deletedAt || replyTo.hiddenByAdminAt || !replyTo.text) return null;
+    return { author: replyTo.author?.user.name ?? 'Njangi', text: replyTo.text };
   },
 
   async hasAgentReply({ groupId, messageId }) {

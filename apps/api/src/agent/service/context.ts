@@ -12,7 +12,13 @@ import type { AgentCtx } from '../types';
 
 export async function buildCtx(
   actor: AuthActor,
-  input: { groupId: string | null; channel: AgentChannel; text: string | null },
+  input: {
+    groupId: string | null;
+    channel: AgentChannel;
+    text: string | null;
+    /** Group chat only: the message this mention replied to, if any (spec 4.8 point 6). */
+    quotedMessage?: { author: string; text: string } | null;
+  },
 ): Promise<AgentCtx> {
   const self = await getSelfSource(actor.userId);
   let group: { name: string; role: AgentCtx['role']; membershipId: string } | null = null;
@@ -44,6 +50,7 @@ export async function buildCtx(
     firstName: self.user.name.split(/\s+/)[0] ?? self.user.name,
     ownPhones,
     numberSlots: new NumberSlots(),
+    ...(input.quotedMessage !== undefined ? { quotedMessage: input.quotedMessage } : {}),
     turnId: randomUUID(),
     now: clock.now(),
   });

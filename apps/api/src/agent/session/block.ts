@@ -26,6 +26,12 @@ export interface SessionFacts {
   otherGroups: string[];
   /** Recent group chat lines when answering @njangi in the group channel. */
   recentChat?: string[];
+  /**
+   * Group chat only: the message this mention replied to (spec 4.8 point 6). Carried as data, on
+   * its own line, never folded into the member's own message so it can never pass as a member's
+   * words or as an instruction.
+   */
+  quotedMessage?: { author: string; text: string };
 }
 
 const T = {
@@ -86,6 +92,11 @@ export function buildSessionBlock(facts: SessionFacts): string {
   if (facts.recentChat?.length) {
     lines.push(
       `recentGroupChat:\n${facts.recentChat.map((line) => `  - ${clean(line).slice(0, 200)}`).join('\n')}`,
+    );
+  }
+  if (facts.quotedMessage) {
+    lines.push(
+      `quotedMessage: ${clean(facts.quotedMessage.author)}: ${clean(facts.quotedMessage.text).slice(0, 300)}`,
     );
   }
   return `<session>\n${lines.join('\n')}\n</session>`;

@@ -70,12 +70,22 @@ export interface AgentChatPort {
   preparePost(ctx: AgentCtx, input: { text: string }): Promise<PendingAction>;
   prepareAnnouncement(ctx: AgentCtx, input: { text: string }): Promise<PendingAction>;
   prepareHide(ctx: AgentCtx, input: { messageId: string; reason: string }): Promise<PendingAction>;
-  /** The text of an @njangi message, for its author only (4.4). */
+  /**
+   * The text of an @njangi message, for its author only (4.4). Never includes a quoted message
+   * (spec 4.8 point 6): a reply's own text is returned on its own by `quotedText`, so it is never
+   * folded into what looks like the member's own words.
+   */
   mentionText(input: {
     groupId: string;
     messageId: string;
     userId: string;
   }): Promise<string | null>;
+  /** The message this mention replied to, if any, and its author (spec 4.8 point 6). */
+  quotedText?(input: {
+    groupId: string;
+    messageId: string;
+    userId: string;
+  }): Promise<{ author: string; text: string } | null>;
   /** Posts the agent's answer in the group as an AGENT message everyone sees. */
   postAgentReply(input: { groupId: string; text: string; replyToMessageId: string }): Promise<void>;
   /** True when the agent already answered this message in the group (an answer is posted once). */

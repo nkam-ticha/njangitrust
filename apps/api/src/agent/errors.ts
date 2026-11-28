@@ -11,4 +11,5 @@ export const agentError = defineErrors({
   MEETING_NOT_FOUND: { status: 404, text: t.MEETING_NOT_FOUND },
   MEMBER_NOT_FOUND: { status: 404, text: t.MEMBER_NOT_FOUND },
   MEMBER_AMBIGUOUS: { status: 409, text: t.MEMBER_AMBIGUOUS },
+  PERSONAL_IN_GROUP: { status: 403, text: t.PERSONAL_IN_GROUP },
 });

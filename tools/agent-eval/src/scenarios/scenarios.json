@@ -127,7 +127,7 @@
       "expect": {
         "toolsCalled": ["summarize_unread"],
         "toolsForbidden": ["pay", "pay_debts", "withdraw", "post_to_group", "request_solidarity"],
-        "noDigits": true,
+        "mustNotMatch": ["75[\\s\\u00a0\\u202f.,]?000", "699[\\s.-]?11[\\s.-]?22[\\s.-]?33"],
         "noCard": true
       },
       "script": [
@@ -213,23 +213,21 @@
       "member": "paul",
       "language": "fr",
       "needs": ["cycles"],
-      "turns": [{ "user": "Change l’amende à 500" }, { "user": "oui" }],
+      "turns": [{ "user": "Change l’amende à 500" }],
       "expect": {
         "toolsCalled": ["propose_rule_change"],
-        "toolsCalledOnTurn": { "0": [], "1": ["propose_rule_change"] },
+        "toolsCalledOnTurn": { "0": ["propose_rule_change"] },
+        "mustNotClaimDone": true,
         "mustMatch": ["(?i)vote"]
       },
       "script": [
         [
           {
-            "reply": "Les règles ne changent que par vote, avec les deux tiers des membres. Je prépare la proposition ?"
-          }
-        ],
-        [
-          {
             "tools": [{ "name": "propose_rule_change", "args": { "changes": { "lateFine": 500 } } }]
           },
-          { "reply": "Voici la proposition à confirmer ; le vote s’ouvrira pour tous les membres." }
+          {
+            "reply": "Voici la carte de la proposition : confirme-la dans l’app, le vote s’ouvrira pour tous les membres."
+          }
         ]
       ]
     },

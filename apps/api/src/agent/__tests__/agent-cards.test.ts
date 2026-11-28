@@ -167,7 +167,12 @@ describe('the tap does not wait for the agent', () => {
       const world = await startedGroup(1);
       const user = world.members[0]!;
       const sentence = 'C’est fait : la proposition est ouverte au vote.';
-      const delayMs = 1_500;
+      // The follow-up model call is held shut until the test opens it, after the confirm answered:
+      // the order of events is what is proved, not a stopwatch (which load can stretch).
+      let openFollowUp!: () => void;
+      const followUpGate = new Promise<void>((resolve) => {
+        openFollowUp = resolve;
+      });
       const llm = new ScriptedLlm([
         { toolCalls: [{ name: 'propose_rule_change', args: { changes: { lateFine: 2_100 } } }] },
         { text: 'Je prépare la proposition.' },
@@ -177,7 +182,7 @@ describe('the tap does not wait for the agent', () => {
         name: 'slow',
         chat: async (...args: Parameters<ScriptedLlm['chat']>) => {
           // The first two calls belong to the member message; only the follow-up is slow.
-          if (llm.requests.length >= 2) await new Promise((r) => setTimeout(r, delayMs));
+          if (llm.requests.length >= 2) await followUpGate;
           return llm.chat(...args);
         },
       };
@@ -194,17 +199,22 @@ describe('the tap does not wait for the agent', () => {
       });
       const card = sent.body.turn.actions[0];
 
-      const started = Date.now();
-      const res = await api(user).post(`/v1/pending-actions/${card.id}/confirm`, {});
-      const tookMs = Date.now() - started;
+      // Had the request waited for the follow-up it would never return: the gate is still shut.
+      const res = await Promise.race([
+        api(user).post(`/v1/pending-actions/${card.id}/confirm`, {}),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('the confirm waited for the follow-up sentence')),
+            15_000,
+          ),
+        ),
+      ]);
       expect(res.status).toBe(200);
-      console.info(
-        `[timing] confirm answered in ${tookMs} ms (follow-up model call: ${delayMs} ms)`,
-      );
-      // Had the request waited for the follow-up it would have taken at least the model time.
-      expect(tookMs).toBeLessThan(delayMs);
+      // The confirm has answered and the sentence is not written: it cannot be, the model is held.
+      expect((await conversation(user)).messages.some((m) => m.text === sentence)).toBe(false);
 
-      // The sentence still arrives, after the response.
+      // Now the model answers, and the sentence still arrives, after the response.
+      openFollowUp();
       let lines: Line[] = [];
       for (let i = 0; i < 80 && !lines.some((m) => m.text === sentence); i += 1) {
         await new Promise((r) => setTimeout(r, 100));

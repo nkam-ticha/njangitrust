@@ -24,6 +24,12 @@ export interface AgentCtx {
   readonly ownPhones: readonly string[];
   /** The numbers the member typed in this turn, as markers the model can pass on (never digits). */
   readonly numberSlots?: NumberSlots;
+  /**
+   * Group chat only: the message this mention replied to, if any. Carried as session data (spec
+   * 4.8 point 6), never folded into the member's own message text, so it cannot pass as an
+   * instruction or as something the member themselves wrote.
+   */
+  readonly quotedMessage?: { author: string; text: string } | null;
   readonly turnId: string;
   readonly now: Date;
 }

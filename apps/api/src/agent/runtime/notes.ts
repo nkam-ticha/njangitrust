@@ -75,6 +75,31 @@ export function unsupportedClaimNote(runs: readonly ToolRun[], lang: Lang): stri
   );
 }
 
+/** The model stated an amount that is in no tool result, event or message of this conversation. */
+export function ungroundedAmountNote(amounts: readonly string[], lang: Lang): string {
+  return (
+    `Your reply states an amount (${amounts.join(', ')} FCFA) that appears in no tool result, session line or message of this conversation. ` +
+    'Never state an amount you were not given. Call the tool that returns the figure the member asked about (for example get_my_overview for what they owe), ' +
+    'then answer with the amounts it returns, copied exactly. ' +
+    languageRule(lang)
+  );
+}
+
+/** The member asked why a fine or debt applies and the model read the ledger only. */
+export function explainRuleNote(lang: Lang): string {
+  return (
+    'The member asked why a fine or a debt applies. You read the ledger but did not call explain_rule. ' +
+    'Call explain_rule NOW for the topic (for example "amende" or "fine"), then answer with the official rule and the ledger entry, ' +
+    'including the exact deadline of the entry when the ledger gave one. ' +
+    languageRule(lang)
+  );
+}
+
+/** A French reply used "vous": the app speaks to members with "tu". */
+export function tuNote(): string {
+  return 'Your reply addressed the member as "vous". Rewrite it entirely in French with "tu", "ton", "ta", "tes", and never "vous", "votre" or "vos". Keep every fact and amount exactly as it was.';
+}
+
 /** The model said "I can't" without trying any tool. */
 export function tryFirstNote(lang: Lang): string {
   return (
