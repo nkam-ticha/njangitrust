@@ -1,8 +1,8 @@
 // R5.3 auto-settlement: a payable is always reduced by whole due debts before it is available.
 import {
   autoSettlement,
+  accountBalance,
   autoSettlementPostings,
-  naturalBalance,
   payableAccount,
 } from '@njangi/rules';
 import type { Prisma } from '../../lib/prisma';
@@ -43,8 +43,10 @@ export async function settleDueDebts(
     select: { obligationIds: true },
   });
   const reserved = new Set(paying.flatMap((intent) => intent.obligationIds));
-  const raw = postings.reduce((sum, item) => sum + item.amount, 0);
-  const payableBalance = naturalBalance(account, raw);
+  const payableBalance = accountBalance(
+    account,
+    postings.map((item) => ({ account, amount: item.amount })),
+  );
   const debts = rows
     .filter((row) => !reserved.has(row.id))
     .map((row) => ({

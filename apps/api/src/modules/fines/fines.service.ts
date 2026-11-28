@@ -8,7 +8,7 @@ import {
 import type { Job } from 'bullmq';
 import { clock } from '../../lib/clock';
 import { getPrisma } from '../../lib/prisma';
-import { payableAccount } from '@njangi/rules';
+import { accountCreditsTotal, payableAccount } from '@njangi/rules';
 import { appendLedgerEntry } from '../ledger';
 
 /** Assess due round fines once. A request opened before dueAt protects the member while pending. */
@@ -136,15 +136,12 @@ export async function assessRoundFines(roundId: string, now: Date = clock.now())
         });
         const lockedPayout =
           currentRound?.beneficiaryMembershipId === installment.membershipId
-            ? ledger
-                .filter((entry) => entry.roundId === roundId)
-                .flatMap((entry) => entry.postings)
-                .filter(
-                  (posting) =>
-                    posting.account === payableAccount(installment.membershipId) &&
-                    posting.amount < 0,
-                )
-                .reduce((sum, posting) => sum - posting.amount, 0)
+            ? accountCreditsTotal(
+                payableAccount(installment.membershipId),
+                ledger
+                  .filter((entry) => entry.roundId === roundId)
+                  .flatMap((entry) => entry.postings),
+              )
             : 0;
         const priorDebts = await tx.obligation.findMany({
           where: {

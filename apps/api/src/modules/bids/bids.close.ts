@@ -4,7 +4,7 @@ import {
   closeBidding as determineBiddingOutcome,
   bidAssessedPostings,
   genesisHash,
-  naturalBalance,
+  accountBalance,
   potAccount,
   potAssignedPostings,
   type GovernanceEvent,
@@ -174,11 +174,10 @@ async function closeBiddingOnce(roundId: string, now: Date): Promise<boolean> {
       orderBy: { seq: 'asc' },
     });
     const account = potAccount(round.id);
-    const raw = entries
-      .flatMap((entry) => entry.postings)
-      .filter((posting) => posting.account === account)
-      .reduce((sum, posting) => sum + posting.amount, 0);
-    const pot = naturalBalance(account, raw);
+    const pot = accountBalance(
+      account,
+      entries.flatMap((entry) => entry.postings),
+    );
     if (pot > 0) {
       await appendLedgerEntry(tx, round.groupId, {
         type: 'POT_ASSIGNED',

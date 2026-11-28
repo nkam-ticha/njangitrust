@@ -3,6 +3,7 @@
 // it after the provider confirms.
 import { randomUUID } from 'node:crypto';
 import {
+  accountBalance,
   activeHold,
   availableToWithdraw,
   completionType,
@@ -14,7 +15,7 @@ import {
   checkLedger,
   loanSentPostings,
   MIN_WITHDRAWAL,
-  naturalBalance,
+  lockedPayoutCredits,
   payableAccount,
   resolveFee,
   validateWithdrawal,
@@ -140,59 +141,33 @@ async function loadMoneyState(db: Db, input: { userId: string; groupId: string }
     orderBy: { seq: 'asc' },
   });
   const payable = payableAccount(member.id);
-  const rawPayable = ledger
-    .flatMap((entry) => entry.postings)
-    .filter((posting) => posting.account === payable)
-    .reduce((sum, posting) => sum + posting.amount, 0);
-  const payableBalance = naturalBalance(payable, rawPayable);
-  const contributionIds = (
-    await db.obligation.findMany({
-      where: {
-        groupId: input.groupId,
-        creditorMembershipId: member.id,
-        kind: 'CONTRIBUTION',
-        status: { in: ['PAID', 'SETTLED'] },
-      },
-      select: { id: true, round: { select: { payoutAt: true } } },
-    })
-  ).map((row) => [row.id, row.round?.payoutAt ?? new Date(0)] as const);
-  const unlockAt = new Map(contributionIds);
-  const credits: { amount: number; payoutAt: Date }[] = [];
-  for (const entry of ledger) {
-    if (entry.type !== 'PAYMENT_RECEIVED') continue;
-    const metadata = entry.metadata as { parts?: unknown };
-    if (!Array.isArray(metadata.parts)) continue;
-    for (const value of metadata.parts) {
-      if (!value || typeof value !== 'object') continue;
-      const part = value as Record<string, unknown>;
-      if (
-        part.kind !== 'CONTRIBUTION' ||
-        part.account !== payable ||
-        typeof part.obligationId !== 'string'
-      )
-        continue;
-      const payoutAt = unlockAt.get(part.obligationId);
-      if (!payoutAt || !Number.isSafeInteger(part.amount) || !Number.isSafeInteger(part.feeShare))
-        continue;
-      credits.push({ amount: Math.max(0, Number(part.amount) - Number(part.feeShare)), payoutAt });
-    }
-  }
+  const payableBalance = accountBalance(
+    payable,
+    ledger.flatMap((entry) => entry.postings),
+  );
+  const contributionRows = await db.obligation.findMany({
+    where: {
+      groupId: input.groupId,
+      creditorMembershipId: member.id,
+      kind: 'CONTRIBUTION',
+      status: { in: ['PAID', 'SETTLED'] },
+    },
+    select: { id: true, round: { select: { payoutAt: true } } },
+  });
+  const contributionUnlockAt = new Map(
+    contributionRows.map((row) => [row.id, row.round?.payoutAt ?? new Date(0)] as const),
+  );
   // R5.2: a pot assigned at the close of the bids is locked until its round's payout time too.
   const potRounds = await db.round.findMany({
     where: { groupId: input.groupId, beneficiaryMembershipId: member.id },
     select: { id: true, payoutAt: true },
   });
-  const potUnlockAt = new Map(potRounds.map((round) => [round.id, round.payoutAt] as const));
-  for (const entry of ledger) {
-    if (entry.type !== 'POT_ASSIGNED' || !entry.roundId) continue;
-    const payoutAt = potUnlockAt.get(entry.roundId);
-    if (!payoutAt) continue;
-    for (const posting of entry.postings) {
-      if (posting.account === payable && posting.amount < 0) {
-        credits.push({ amount: -posting.amount, payoutAt });
-      }
-    }
-  }
+  const credits = lockedPayoutCredits({
+    payable,
+    entries: ledger,
+    contributionUnlockAt,
+    potUnlockAt: new Map(potRounds.map((round) => [round.id, round.payoutAt] as const)),
+  });
   const withdrawalDebts = debts.map((debt) => ({
     id: debt.id,
     kind: debt.kind as 'BID' | 'FINE' | 'CORRECTION' | 'LOAN_INSTALLMENT',
